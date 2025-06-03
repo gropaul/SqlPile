@@ -1,0 +1,8 @@
+/tests/.data/
+.idea
+
+# Ignore Python cache files
+__pycache__/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/

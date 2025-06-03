@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "sqlpile"
+version = "0.1.0"
+description = ""
+authors = ["PGross <paul.riedlingen@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+requests = "^2.32.3"
+urllib3 = "^2.4.0"
+pytest = "^8.4.0"
+pyjsparser = "^2.7.1"
+javalang = "^0.13.0"
+tree-sitter = "^0.24.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
