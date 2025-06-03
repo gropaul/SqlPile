@@ -1,41 +1,46 @@
 import json
-from typing import Optional
+import os
+from typing import Optional, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from analyse_repo import analyse_repo
-from config import logger
+from config import logger, DATA_DIR
+from data_loading import get_urls
 from extract_sql import RepoAnalysisResult
 
 
-def read_data():
-    """Read the JSON data from schemapile-perm.json file."""
-    # read the json schemapile-perm.json file
-    with open('.data/schemapile-perm.json', 'r') as file:
-        data = json.load(file)
-    return data
+def process_url(url: str) -> Optional[int]:
+    logger.info(f"Processing URL: {url}")
+    result: Optional[RepoAnalysisResult] = analyse_repo(url)
+
+    if result is not None:
+        result.save()
+        return result.get_number_of_queries()
+    return 0
 
 
 def main():
-    """Main function to process repositories."""
-    data = read_data()
-
     total_queries = 0
+    n_threads = 12  # Number of threads to use for parallel processing
+    urls = get_urls()
 
-    for item in data:
-        value = data[item]
-        # Get the repository URL
-        url = value['INFO']['URL']
+    logger.info(f"Total URLs to process: {len(urls)}")
+    if not urls:
+        logger.error("No URLs found to process. Exiting.")
+        return
 
-        # Analyze the repository and clone it if it exists
-        result: Optional[RepoAnalysisResult] = analyse_repo(url)
-
-        if result is not None:
-            total_queries += len(result.queries)
-            # save the result to a file
-            result.save()
-
-        if total_queries > 50:
-            logger.info(f"Total queries extracted: {total_queries}. Stopping further processing.")
-            exit(0)
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
+        futures = {executor.submit(process_url, url): url for url in urls}
+        for future in as_completed(futures):
+            try:
+                queries = future.result()
+                total_queries += queries
+                if total_queries > 1_000_000:
+                    logger.info(f"Total queries extracted: {total_queries}. Stopping further processing.")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+            except Exception as e:
+                logger.error(f"Error processing URL {futures[future]}: {e}")
 
 
 if __name__ == "__main__":

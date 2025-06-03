@@ -1,11 +1,5 @@
 from __future__ import annotations
 
-from pyjsparser import parse as js_parse
-import ast
-import codecs
-import importlib
-import re
-import tokenize
 from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, List, Dict, Tuple
@@ -35,7 +29,7 @@ __all__ = [
     "extract_strings",
     *[
         f"extract_{lang}_strings"
-        for lang in ("python", "js", "c", "java", "go")
+        for lang in ("python", "js", "c", "java", "go", "csharp")
     ],
 ]
 
@@ -57,13 +51,20 @@ _EXTENSION_MAP = {
     "java": "java",
     "kt": "java",
     "go": "go",
+    "cs": "csharp",
 }
 
 import codecs
 import re
 
 def is_string_literal(node):
-    is_string = node.type == "string_literal" or node.type == "interpreted_string_literal" or node.type == "string" or node.type == "template_string" or node.type == "raw_string_literal"
+    is_string = (node.type == "string_literal" or 
+                node.type == "interpreted_string_literal" or 
+                node.type == "string" or 
+                node.type == "template_string" or 
+                node.type == "raw_string_literal" or
+                node.type == "verbatim_string_literal" or
+                node.type == "interpolated_string_expression")
     if is_string:
         # print the children of the node
         # print(f"\nNode type: {node.type}, children types: {[child.type for child in node.children]}")
@@ -74,13 +75,52 @@ def is_string_literal(node):
     return False
 
 def get_string_content(node, source_code):
+    # Special handling for verbatim string literals in C#
+    if node.type == "verbatim_string_literal":
+        # Extract the content directly from the source code
+        text = source_code[node.start_byte:node.end_byte]
+        # Remove the @" prefix and " suffix
+        if text.startswith('@"') and text.endswith('"'):
+            return text[2:-1]
+        return text
+
+    # Special handling for interpolated string expressions in C#
+    if node.type == "interpolated_string_expression":
+        # Extract the content directly from the source code
+        text = source_code[node.start_byte:node.end_byte]
+        # Remove the $" prefix and " suffix
+        if text.startswith('$"') and text.endswith('"'):
+            return text[2:-1]
+        return text
+
     # find the string_fragment or multiline_string_fragment
     for child in node.children:
         content_types = (
             "string_fragment", "multiline_string_fragment", "string_content", "raw_string_content",
-            'raw_string_literal_content', 'interpreted_string_literal_content')
+            'raw_string_literal_content', 'interpreted_string_literal_content', 'string_literal_content')
         if child.type in content_types:
             return child.text.decode('utf-8') if hasattr(child, 'text') else ''
+
+    # if there are only two children, the first is the starting and the second is the ending quote,
+    # there is no content child
+    if len(node.children) == 2:
+        return ''
+
+    if len(node.children) == 3:
+        logger.debug("Node has 3 children, assuming the second is the content child: type=%s, text=%s",
+                        node.type, node.text.decode('utf-8') if hasattr(node, 'text') else 'N/A')
+        return node.children[1].text.decode('utf-8') if hasattr(node.children[1], 'text') else ''
+
+    # for all other lengths, thake the content of all children except the first and last
+    if len(node.children) > 3:
+        content = []
+        for child in node.children[1:-1]:
+            if hasattr(child, 'text'):
+                content.append(child.text.decode('utf-8'))
+        logger.debug("Node has more than 3 children, concatenating content of all children except the first and last: type=%s, text=%s",
+                        node.type, node.text.decode('utf-8') if hasattr(node, 'text') else 'N/A')
+        return ''.join(content)
+
 
     error_message = f"Node {node.type} does not have a string content child. Node text: {node.text.decode('utf-8') if hasattr(node, 'text') else 'N/A'};\n"
     for (child_index, child) in enumerate(node.children):
@@ -135,6 +175,7 @@ def extract_strings(
     language: str | None = None,
     *,
     dedupe: bool = False,
+    is_src: bool = False
 ) -> List[str]:
     """Return *all* string literals found in *path*.
 
@@ -145,18 +186,29 @@ def extract_strings(
     dedupe    : if *True*, remove duplicates while keeping first‑occurrence order.
     """
 
-    path = Path(path)
-    lang = (language or _EXTENSION_MAP.get(path.suffix.lstrip(".").lower()))
+    if not is_src:
+        path = Path(path)
+        src = Path(path).read_text("utf-8", errors="ignore")
+        lang = (language or _EXTENSION_MAP.get(path.suffix.lstrip(".").lower()))
+    else:
+        src = path
+        lang = language
+        if lang is None:
+            # raise an error if no language is specified
+            raise ValueError("No language specified and no extension mapping found")
+
     if lang is None:
-        logger.info("Skipping %s: no language specified and no extension mapping found", path)
+        logger.debug("Skipping %s: no language specified and no extension mapping found", path)
         return []
+    else:
+        logger.debug("Extracting strings from %s (%s)", path, lang)
 
     try:
         extractor = _EXTRACTORS[lang.lower()]
     except KeyError as exc:
         raise ValueError(f"No extractor registered for language '{lang}'") from exc
 
-    result = extractor(path)
+    result = extractor(src)
     return list(OrderedDict.fromkeys(result)) if dedupe else result
 
 
@@ -166,18 +218,20 @@ def extract_strings(
 
 
 @extractor_for("python")
-def extract_python_strings(path: str | Path) -> List[str]:
-    strings: list[str] = []
-    with Path(path).expanduser().open("rb") as fh:
-        for tok_type, tok_text, *_ in tokenize.tokenize(fh.readline):
-            if tok_type == tokenize.STRING:
-                try:
-                    value = ast.literal_eval(tok_text)
-                except Exception:
-                    value = tok_text.strip("\"'")
-                if isinstance(value, str):
-                    strings.append(value)
-    return strings
+def extract_python_strings(src: str) -> List[str]:
+    """Extract string literals from Python source code using tree-sitter.
+    This function uses the tree-sitter parser to extract string literals from Python source code.
+    It handles both single and double quoted strings, as well as multi-line strings.
+    """
+
+    parser = get_parser('python')
+
+    # Parse the source code
+    tree = parser.parse(src.encode('utf-8'))
+    root_node = tree.root_node
+
+    # Extract all string literals from the root node
+    return extract_all_strings(src, root_node)
 
 
 # ----------------------------------------------------------------------------
@@ -185,8 +239,7 @@ def extract_python_strings(path: str | Path) -> List[str]:
 # ----------------------------------------------------------------------------
 
 @extractor_for("js")
-def extract_js_strings(path: str | Path) -> List[str]:
-    src = Path(path).read_text("utf-8", errors="ignore")
+def extract_js_strings(src) -> List[str]:
 
     parser = get_parser('javascript')
 
@@ -197,12 +250,7 @@ def extract_js_strings(path: str | Path) -> List[str]:
 
 
 @extractor_for("c", "cpp")
-def extract_c_strings(path: str | Path) -> List[str]:
-    """Extract literal strings from a C/C++ source file.
-
-    Uses Tree‑sitter if it is available and configured.
-    """
-    src = Path(path).read_text("utf-8", errors="ignore")
+def extract_c_strings(src: str) -> List[str]:
 
     parser = get_parser('cpp')
 
@@ -214,9 +262,8 @@ def extract_c_strings(path: str | Path) -> List[str]:
 
 
 @extractor_for("java")
-def extract_java_strings(path: str | Path)-> list[str]:
+def extract_java_strings(src: str)-> list[str]:
 
-    src = Path(path).read_text("utf-8", errors="ignore")
 
     parser = get_parser('java')
 
@@ -229,10 +276,20 @@ def extract_java_strings(path: str | Path)-> list[str]:
 
 
 @extractor_for("go")
-def extract_go_strings(path: str | Path) -> List[str]:
-    src = Path(path).read_text("utf-8", errors="ignore")
+def extract_go_strings(src: str) -> List[str]:
 
     parser = get_parser('go')
+
+    tree = parser.parse(src.encode('utf-8'))
+    root_node = tree.root_node
+
+    return extract_all_strings(src, root_node)
+
+
+@extractor_for("csharp")
+def extract_csharp_strings(src: str) -> List[str]:
+
+    parser = get_parser('csharp')
 
     tree = parser.parse(src.encode('utf-8'))
     root_node = tree.root_node

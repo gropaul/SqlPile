@@ -5,7 +5,7 @@ from typing import Tuple, Optional, List
 import requests
 
 from config import REPO_DIR, logger
-from extract_sql import extract_sql_from_repo, SqlQuery, RepoAnalysisResult
+from extract_sql import extract_sql_from_repo, SqlQuery, RepoAnalysisResult, FileAnalysisResult
 
 
 def get_repo_name_and_url(repo_path) -> Tuple[str, str]:
@@ -59,7 +59,7 @@ def analyse_repo(repo_path) -> Optional[RepoAnalysisResult]:
     name, url = get_repo_name_and_url(repo_path)
 
     logger.info(f"Analysing {name}")
-    logger.debug(f"Repository URL: {url}")
+    logger.info(f"Repository URL: {url}")
 
     if not is_repo_active(url):
         logger.warning(f"Repository {name} is not active or does not exist.")
@@ -73,12 +73,14 @@ def analyse_repo(repo_path) -> Optional[RepoAnalysisResult]:
 
     logger.info(f"Repository {name} cloned successfully.")
 
-    queries: List[SqlQuery] = extract_sql_from_repo(repo_dir)
-    logger.info(f"Extracted {len(queries)} SQL queries from {name}.")
+    results: List[FileAnalysisResult] = extract_sql_from_repo(repo_dir, url)
+    queries_count = sum(len(file_result.queries) for file_result in results)
+    logger.info(f"Extracted {queries_count} SQL queries from {len(results)} files in from repository {name}.")
 
     return RepoAnalysisResult(
         repo_name=name,
-        queries=queries,
+        repo_url=url,
+        file_results=results,
     )
 
 

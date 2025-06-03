@@ -52,7 +52,6 @@ SOURCE_CODE_FILE_EXTENSIONS = [
 ]
 
 
-SOURCE_CODE_FILE_EXTENSIONS = ['java']
 # Configure logging
 def setup_logging():
     """Set up logging configuration."""
