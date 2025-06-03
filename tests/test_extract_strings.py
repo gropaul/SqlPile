@@ -1,12 +1,12 @@
 """test_string_extractors.py
 
 Pytest suite covering the multi‑language extractors implemented in
-*string_extractors.py* (v1.1).
+*string_extractors.py* (v1.2).
 
 Each parametrised test case writes a small source snippet to a temporary file,
 invokes `extract_strings`, and checks that the expected list of string literals
-is returned—multi‑line content, escape handling, and the optional `dedupe`
-behaviour included.
+is returned—multi‑line content, escape handling, concatenation logic, and the
+optional `dedupe` behaviour included.
 """
 
 from __future__ import annotations
@@ -18,6 +18,9 @@ import pytest
 
 from extract_strings import extract_strings
 
+# ---------------------------------------------------------------------------
+# Parametrised snippets
+# ---------------------------------------------------------------------------
 
 CASES = [
     # ---------------------------------------------------------------------
@@ -62,6 +65,54 @@ y = 'single'
         """const char* r = R"(hello\ncpp)";\nconst char* s = \"baz\";\n""",
         "cpp",
         ["hello\ncpp", "baz"],
+    ),
+    # ---------------------------------------------------------------------
+    # Java: Multiline string joined by +
+    # ---------------------------------------------------------------------
+    (
+        """String s = \"\"\"This is a\nmultiline string \"\"\" +\n\"and this is another part\";\n""",
+        "java",
+        ["This is a\nmultiline string and this is another part"],
+    ),
+    # ---------------------------------------------------------------------
+    # NEW 1: Python – raw strings with backslashes (no escape processing)
+    # ---------------------------------------------------------------------
+    (
+        r'''path = r"C:\\new\\test.txt"\ntext = r'raw\\nlines'\n''',
+        "py",
+        ["C:\\new\\test.txt", "raw\\nlines"],
+    ),
+    # ---------------------------------------------------------------------
+    # NEW 2: JavaScript – template literal with interpolation placeholder
+    # ---------------------------------------------------------------------
+    (
+        "const name = 'Bob';\nconst greet = `Hello, ${name}!`;\n",
+        "js",
+        ["Hello, ${name}!"] ,
+    ),
+    # ---------------------------------------------------------------------
+    # NEW 3: Java – chain of three concatenated literals
+    # ---------------------------------------------------------------------
+    (
+        """class T { String msg = \"\"\"Line1\nLine2\"\"\" + \" \" + \"Line3\"; }""",
+        "java",
+        ["Line1\nLine2 Line3"],
+    ),
+    # ---------------------------------------------------------------------
+    # NEW 4: Go – concatenation across raw and interpreted strings
+    # ---------------------------------------------------------------------
+    (
+        "package main\nvar q = `SELECT ` + \"id, name\" + ` FROM users`;\n",
+        "go",
+        ["SELECT id, name FROM users"],
+    ),
+    # ---------------------------------------------------------------------
+    # NEW 5: C++ – adjacent string literals concatenated implicitly
+    # ---------------------------------------------------------------------
+    (
+        "const char* w = \"wide\" \" string\";\n",
+        "cpp",
+        ["wide string"],
     ),
 ]
 

@@ -370,6 +370,86 @@ docs = ["sphinx (>=8.1,<9.0)", "sphinx-book-theme"]
 tests = ["tree-sitter-html (>=0.23.2)", "tree-sitter-javascript (>=0.23.1)", "tree-sitter-json (>=0.24.8)", "tree-sitter-python (>=0.23.6)", "tree-sitter-rust (>=0.23.2)"]
 
 [[package]]
+name = "tree-sitter-c-sharp"
+version = "0.23.1"
+description = "C# grammar for tree-sitter"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "tree_sitter_c_sharp-0.23.1-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:2b612a6e5bd17bb7fa2aab4bb6fc1fba45c94f09cb034ab332e45603b86e32fd"},
+    {file = "tree_sitter_c_sharp-0.23.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1a8b98f62bc53efcd4d971151950c9b9cd5cbe3bacdb0cd69fdccac63350d83e"},
+    {file = "tree_sitter_c_sharp-0.23.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:986e93d845a438ec3c4416401aa98e6a6f6631d644bbbc2e43fcb915c51d255d"},
+    {file = "tree_sitter_c_sharp-0.23.1-cp39-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a8024e466b2f5611c6dc90321f232d8584893c7fb88b75e4a831992f877616d2"},
+    {file = "tree_sitter_c_sharp-0.23.1-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:7f9bf876866835492281d336b9e1f9626ab668737f74e914c31d285261507da7"},
+    {file = "tree_sitter_c_sharp-0.23.1-cp39-abi3-win_amd64.whl", hash = "sha256:ae9a9e859e8f44e2b07578d44f9a220d3fa25b688966708af6aa55d42abeebb3"},
+    {file = "tree_sitter_c_sharp-0.23.1-cp39-abi3-win_arm64.whl", hash = "sha256:c81548347a93347be4f48cb63ec7d60ef4b0efa91313330e69641e49aa5a08c5"},
+    {file = "tree_sitter_c_sharp-0.23.1.tar.gz", hash = "sha256:322e2cfd3a547a840375276b2aea3335fa6458aeac082f6c60fec3f745c967eb"},
+]
+
+[package.extras]
+core = ["tree-sitter (>=0.22,<1.0)"]
+
+[[package]]
+name = "tree-sitter-embedded-template"
+version = "0.23.2"
+description = "Embedded Template (ERB, EJS) grammar for tree-sitter"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "tree_sitter_embedded_template-0.23.2-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:a505c2d2494464029d79db541cab52f6da5fb326bf3d355e69bf98b84eb89ae0"},
+    {file = "tree_sitter_embedded_template-0.23.2-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:28028b93b42cc3753261ae7ce066675d407f59de512417524f9c3ab7792b1d37"},
+    {file = "tree_sitter_embedded_template-0.23.2-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ec399d59ce93ffb60759a2d96053eed529f3c3f6a27128f261710d0d0de60e10"},
+    {file = "tree_sitter_embedded_template-0.23.2-cp39-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bcfa01f62b88d50dbcb736cc23baec8ddbfe08daacfdc613eee8c04ab65efd09"},
+    {file = "tree_sitter_embedded_template-0.23.2-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6debd24791466f887109a433c31aa4a5deeba2b217817521c745a4e748a944ed"},
+    {file = "tree_sitter_embedded_template-0.23.2-cp39-abi3-win_amd64.whl", hash = "sha256:158fecb38be5b15db0190ef7238e5248f24bf32ae3cab93bc1197e293a5641eb"},
+    {file = "tree_sitter_embedded_template-0.23.2-cp39-abi3-win_arm64.whl", hash = "sha256:9f1f3b79fe273f3d15a5b64c85fc6ebfb48decfbe8542accd05f5b7694860df0"},
+    {file = "tree_sitter_embedded_template-0.23.2.tar.gz", hash = "sha256:7b24dcf2e92497f54323e617564d36866230a8bfb719dbb7b45b461510dcddaa"},
+]
+
+[package.extras]
+core = ["tree-sitter (>=0.22,<1.0)"]
+
+[[package]]
+name = "tree-sitter-language-pack"
+version = "0.7.3"
+description = "Extensive Language Pack for Tree-Sitter"
+optional = false
+python-versions = ">=3.9.0"
+files = [
+    {file = "tree_sitter_language_pack-0.7.3-cp39-abi3-macosx_10_13_universal2.whl", hash = "sha256:6c4e1a48b83d8bab8d54f1d8012ae7d5a816b3972359e3fb4fe19477a6b18658"},
+    {file = "tree_sitter_language_pack-0.7.3-cp39-abi3-manylinux2014_aarch64.whl", hash = "sha256:0be05f63cd1da06bd277570bbb6cd37c9652ddd1d2ee63ff71da20a66ce36cd8"},
+    {file = "tree_sitter_language_pack-0.7.3-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:fd6481b0501ae3a957f673d235bdd68bc7095899f3d58882be7e31fa8e06bd66"},
+    {file = "tree_sitter_language_pack-0.7.3-cp39-abi3-win_amd64.whl", hash = "sha256:5c0078532d839d45af0477b1b2e5b1a168e88ca3544e94b27dcba6ddbadb6511"},
+    {file = "tree_sitter_language_pack-0.7.3.tar.gz", hash = "sha256:49139cb607d81352d33ad18e57520fc1057a009955c9ccced56607cc18e6a3fd"},
+]
+
+[package.dependencies]
+tree-sitter = ">=0.23.2"
+tree-sitter-c-sharp = ">=0.23.1"
+tree-sitter-embedded-template = ">=0.23.2"
+tree-sitter-yaml = ">=0.7.0"
+
+[[package]]
+name = "tree-sitter-yaml"
+version = "0.7.1"
+description = "YAML grammar for tree-sitter"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "tree_sitter_yaml-0.7.1-cp310-abi3-macosx_10_9_x86_64.whl", hash = "sha256:0256632914d6eb21819f21a85bab649505496ac01fac940eb08a410669346822"},
+    {file = "tree_sitter_yaml-0.7.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:bf9dd2649392e1f28a20f920f49acd9398cfb872876e338aa84562f8f868dc4d"},
+    {file = "tree_sitter_yaml-0.7.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:94eb8fcb1ac8e43f7da47e63880b6f283524460153f08420a167c1721e42b08a"},
+    {file = "tree_sitter_yaml-0.7.1-cp310-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:30410089828ebdece9abf3aa16b2e172b84cf2fd90a2b7d8022f6ed8cde90ecb"},
+    {file = "tree_sitter_yaml-0.7.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:219af34f4b35b5c16f25426cc3f90cf725fbba17c9592f78504086e67787be09"},
+    {file = "tree_sitter_yaml-0.7.1-cp310-abi3-win_amd64.whl", hash = "sha256:550645223d68b7d6b4cfedf4972754724e64d369ec321fa33f57d3ca54cafc7c"},
+    {file = "tree_sitter_yaml-0.7.1-cp310-abi3-win_arm64.whl", hash = "sha256:298ade69ad61f76bb3e50ced809650ec30521a51aa2708166b176419ccb0a6ba"},
+    {file = "tree_sitter_yaml-0.7.1.tar.gz", hash = "sha256:2cea5f8d4ca4d10439bd7d9e458c61b330cb33cf7a92e4ef1d428e10e1ab7e2c"},
+]
+
+[package.extras]
+core = ["tree-sitter (>=0.24,<1.0)"]
+
+[[package]]
 name = "typing-extensions"
 version = "4.14.0"
 description = "Backported and Experimental Type Hints for Python 3.9+"
@@ -400,4 +480,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "c1ddd5caa6df5aae7e5e9df8053f0a111ef76bdfac36dd458f94e805b04b32e9"
+content-hash = "c12d91697026ec8888792834744c86c9b53698cb7bec32974753a49286bb2e6a"

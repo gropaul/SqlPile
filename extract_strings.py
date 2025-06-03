@@ -1,25 +1,8 @@
-"""string_extractors.py – v1.2 (2025‑06‑03)
-=================================================
-
-Extract string literals from source‑code files in several mainstream languages
-(Python, JavaScript/TypeScript, C/C++, Java/Kotlin, and Go). The entry point is
-`extract_strings`, whose signature remains ::
-
-    extract_strings(path, language=None, *, dedupe=False) → list[str]
-
-**v1.2 highlights**
--------------------
-* **Go extractor now preserves the order** in which different string‑literal
-  forms (double‑quoted and back‑tick raw strings) appear. Previously it always
-  returned double‑quoted literals first, causing the test suite to fail.
-* Internal tidy‑ups: unused regexes removed, version banner updated.
-"""
-
 from __future__ import annotations
 
-from tree_sitter import Language, Parser  # type: ignore
 from pyjsparser import parse as js_parse
 import ast
+import codecs
 import importlib
 import re
 import tokenize
@@ -28,9 +11,7 @@ from pathlib import Path
 from typing import Callable, List, Dict, Tuple
 
 from config import logger
-# ----------------------------------------------------------------------------
-# Registry helpers
-# ----------------------------------------------------------------------------
+from tree_sitter_language_pack import get_parser
 
 _EXTRACTORS: Dict[str, Callable[[str | Path], List[str]]] = {}
 
@@ -78,6 +59,76 @@ _EXTENSION_MAP = {
     "go": "go",
 }
 
+import codecs
+import re
+
+def is_string_literal(node):
+    is_string = node.type == "string_literal" or node.type == "interpreted_string_literal" or node.type == "string" or node.type == "template_string" or node.type == "raw_string_literal"
+    if is_string:
+        # print the children of the node
+        # print(f"\nNode type: {node.type}, children types: {[child.type for child in node.children]}")
+        # print(f"Node text: {node.text.decode('utf-8') if hasattr(node, 'text') else 'N/A'}")
+        # print(f"Node child text: {[child.text.decode('utf-8') if hasattr(child, 'text') else 'N/A' for child in node.children]}")
+
+        return True
+    return False
+
+def get_string_content(node, source_code):
+    # find the string_fragment or multiline_string_fragment
+    for child in node.children:
+        content_types = (
+            "string_fragment", "multiline_string_fragment", "string_content", "raw_string_content",
+            'raw_string_literal_content', 'interpreted_string_literal_content')
+        if child.type in content_types:
+            return child.text.decode('utf-8') if hasattr(child, 'text') else ''
+
+    error_message = f"Node {node.type} does not have a string content child. Node text: {node.text.decode('utf-8') if hasattr(node, 'text') else 'N/A'};\n"
+    for (child_index, child) in enumerate(node.children):
+        error_message += f"child_index={child_index} type={child.type} content={child.text.decode('utf-8') if hasattr(child, 'text') else 'N/A'};\n"
+
+    start_byte = max(0, node.start_byte - 20)
+    end_byte = min(len(source_code), node.end_byte + 20)
+    error_message += f"Source code snippet: {source_code[start_byte:end_byte]!r}\n"
+
+    raise ValueError(error_message.strip())
+
+
+def extract_joined_string(node, source_code):
+    if is_string_literal(node):
+        return [get_string_content(node, source_code)]
+
+    if node.type == "binary_expression":
+        op_node = next((c for c in node.children if c.type == '+'), None)
+        if not op_node:
+            return []
+        left = extract_joined_string(node.children[0], source_code)
+        right = extract_joined_string(node.children[2], source_code)
+        return left + right
+
+    return []
+
+
+def extract_all_strings(source_code: str, root_node):
+    collected = []
+
+    def visit(node, parent=None):
+        if node.type == "binary_expression":
+            joined = extract_joined_string(node, source_code)
+            if joined:
+                collected.append("".join(joined))
+                return  # skip inner children, already processed
+
+        elif is_string_literal(node):
+            if not (parent and parent.type == "binary_expression"):
+                string = get_string_content(node, source_code)
+                collected.append(string)
+
+        for child in node.children:
+            visit(child, node)
+
+    visit(root_node)
+    return collected
+
 
 def extract_strings(
     path: str | Path,
@@ -97,9 +148,8 @@ def extract_strings(
     path = Path(path)
     lang = (language or _EXTENSION_MAP.get(path.suffix.lstrip(".").lower()))
     if lang is None:
-        raise ValueError(
-            "Cannot deduce language from extension – pass `language=` explicitly"
-        )
+        logger.info("Skipping %s: no language specified and no extension mapping found", path)
+        return []
 
     try:
         extractor = _EXTRACTORS[lang.lower()]
@@ -134,31 +184,17 @@ def extract_python_strings(path: str | Path) -> List[str]:
 # JavaScript / TypeScript – template & classic literals
 # ----------------------------------------------------------------------------
 
-
-
 @extractor_for("js")
 def extract_js_strings(path: str | Path) -> List[str]:
-
     src = Path(path).read_text("utf-8", errors="ignore")
 
-    tree = js_parse.parse(src, tolerant=True)
-    strings: list[str] = []
+    parser = get_parser('javascript')
 
-    def walk(node):
-        if isinstance(node, dict):
-            typ = node.get("type")
-            if typ == "Literal" and isinstance(node.get("value"), str):
-                strings.append(node["value"])
-            elif typ == "TemplateElement":
-                strings.append(node["value"].get("cooked", ""))
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
+    tree = parser.parse(src.encode('utf-8'))
+    root_node = tree.root_node
 
-    walk(tree)
-    return strings
+    return extract_all_strings(src, root_node)
+
 
 @extractor_for("c", "cpp")
 def extract_c_strings(path: str | Path) -> List[str]:
@@ -168,85 +204,44 @@ def extract_c_strings(path: str | Path) -> List[str]:
     """
     src = Path(path).read_text("utf-8", errors="ignore")
 
-    lib_path = Path(__file__).parent
-    cpp_language = Language(lib_path, "cpp")
-    parser = Parser()
-    parser.set_language(cpp_language)
+    parser = get_parser('cpp')
 
-    """Extract string literals via a Tree‑sitter parse (offset‑stable)."""
-    tree = parser.parse(src.encode())
-    root = tree.root_node
-    out: List[Tuple[int, str]] = []
+    tree = parser.parse(src.encode('utf-8'))
+    root_node = tree.root_node
 
-    def recurse(node):
-        if node.type in {"string_literal", "raw_string_literal"}:
-            text = src[node.start_byte: node.end_byte]
-            if node.type == "string_literal":
-                out.append((node.start_byte, text[1:-1]))  # drop quotes
-            else:  # raw string – strip R"delim( … )delim"
-                inner = re.sub(r'^R"[^ ()\\]{0,16}\(|\)[^ ()\\]{0,16}"$', "", text)
-                out.append((node.start_byte, inner))
-        for child in node.children:
-            recurse(child)
-
-    recurse(root)
-    out.sort(key=lambda t: t[0])
-    return [s for _, s in out]
+    return extract_all_strings(src, root_node)
 
 
-def _compute_line_offsets(text: str) -> List[int]:
-    """Return cumulative char count at the start of each 1‑based line."""
-    offsets = [0]
-    total = 0
-    for line in text.splitlines(True):  # keep linebreaks
-        total += len(line)
-        offsets.append(total)
-    return offsets
 
+@extractor_for("java")
+def extract_java_strings(path: str | Path)-> list[str]:
 
-def _load_javalang():
-    try:
-        return importlib.import_module("javalang")
-    except ModuleNotFoundError:
-        raise ValueError("javalang package not installed")
-
-
-def _java_tokens_with_offsets(src: str) -> List[Tuple[int, str]]:
-    """Return list of (offset, raw_literal) from javalang tokens."""
-    jl = _load_javalang()
-    if not jl:
-        return []
-
-    try:
-        tokens = list(jl.tokenizer.tokenize(src))
-    except jl.tokenizer.LexerError:
-        return []  # fall back if lexing fails (e.g., Kotlin file)
-
-    line_offsets = _compute_line_offsets(src)
-    result: list[Tuple[int, str]] = []
-    for tok in tokens:
-        if isinstance(tok, jl.tokenizer.String):
-            line, col = tok.position
-            # javalang columns are 0‑based; adjust to 0‑based offset
-            offset = line_offsets[line - 1] + col
-            result.append((offset, tok.value[1:-1]))  # strip surrounding quotes
-    return result
-
-
-@extractor_for("java", "kt")
-def extract_java_strings(path: str | Path) -> List[str]:
     src = Path(path).read_text("utf-8", errors="ignore")
-    src_no_comments = _JAVA_COMMENT_RE.sub("", src)
 
-    # 1. Collect tokens via javalang
-    token_strings = _java_tokens_with_offsets(src_no_comments)
+    parser = get_parser('java')
 
-    # 2. Collect triple‑quoted (Java text blocks / Kotlin raw strings)
-    triple_strings = [
-        (m.start(), m.group(0)[3:-3]) for m in _JAVA_TRIPLE_RE.finditer(src_no_comments)
-    ]
+    tree = parser.parse(src.encode('utf-8'))
+    root_node = tree.root_node
 
-    # Merge both lists preserving source order
-    combined = token_strings + triple_strings
-    combined.sort(key=lambda t: t[0])  # by offset
-    return [s for _, s in combined]
+
+    return extract_all_strings(src, root_node)
+
+
+
+@extractor_for("go")
+def extract_go_strings(path: str | Path) -> List[str]:
+    src = Path(path).read_text("utf-8", errors="ignore")
+
+    parser = get_parser('go')
+
+    tree = parser.parse(src.encode('utf-8'))
+    root_node = tree.root_node
+
+    return extract_all_strings(src, root_node)
+
+
+if __name__ == "__main__":
+    # Example usage
+    path = "main.py"  # Replace with your file path
+    strings = extract_strings(path, language="java", dedupe=True)
+    print(strings)

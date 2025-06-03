@@ -122,7 +122,7 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
     sql_functions = []
 
     # Unified pattern: capture anything between quotes that might contain SQL
-    strings = extract_strings(content)
+    strings = extract_strings(file_path)
 
     for cleaned_sql in strings:
 

@@ -9,7 +9,7 @@ from extract_sql import RepoAnalysisResult
 def read_data():
     """Read the JSON data from schemapile-perm.json file."""
     # read the json schemapile-perm.json file
-    with open('schemapile-perm.json', 'r') as file:
+    with open('.data/schemapile-perm.json', 'r') as file:
         data = json.load(file)
     return data
 
@@ -30,6 +30,8 @@ def main():
 
         if result is not None:
             total_queries += len(result.queries)
+            # save the result to a file
+            result.save()
 
         if total_queries > 50:
             logger.info(f"Total queries extracted: {total_queries}. Stopping further processing.")

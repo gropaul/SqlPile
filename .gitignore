@@ -1,4 +1,4 @@
-/tests/.data/
+.data/
 .idea
 
 # Ignore Python cache files
