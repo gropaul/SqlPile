@@ -1,19 +1,39 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Dict, Tuple
 
-from config import logger
+from src.config import logger, CHARACTERS_BEFORE_AND_AFTER_QUERY
 from tree_sitter_language_pack import get_parser
 
-_EXTRACTORS: Dict[str, Callable[[str | Path], List[str]]] = {}
+from src.sql_scraping.string_utils import tidy_up_string
+
+
+@dataclass
+class ExtractedString:
+    """A string extracted from source code with its context."""
+    string: str
+    before: str
+    after: str
+    line_number: int = None
+
+    def tidy_up(self):
+        self.string = tidy_up_string(self.string)
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.string == other
+        return super().__eq__(other)
+
+_EXTRACTORS: Dict[str, Callable[[str | Path], List[ExtractedString]]] = {}
 
 
 def extractor_for(*aliases: str):
     """Decorator to register a function under one or more *language* keys."""
 
-    def register(func: Callable[[str | Path], List[str]]):
+    def register(func: Callable[[str | Path], List[ExtractedString]]):
         for alias in aliases:
             _EXTRACTORS[alias.lower()] = func
         return func
@@ -148,6 +168,25 @@ def extract_joined_string(node, source_code):
     return []
 
 
+def parse_source_code(parser, src):
+    """Parse the source code and return the root node.
+
+    Parameters
+    ----------
+    parser : tree_sitter.Parser
+        The parser to use for parsing the source code.
+    src : str
+        The source code to parse.
+
+    Returns
+    -------
+    tree_sitter.Node
+        The root node of the parsed source code.
+    """
+    tree = parser.parse(src.encode('utf-8'))
+    return tree.root_node
+
+
 def extract_all_strings(source_code: str, root_node):
     collected = []
 
@@ -155,13 +194,38 @@ def extract_all_strings(source_code: str, root_node):
         if node.type == "binary_expression":
             joined = extract_joined_string(node, source_code)
             if joined:
-                collected.append("".join(joined))
+                # For binary expressions, we don't have a simple start/end byte
+                # so we just collect the string without context
+                collected.append(ExtractedString(
+                    string="".join(joined),
+                    before="",
+                    after="",
+                    line_number=node.start_point[0] + 1
+                ))
                 return  # skip inner children, already processed
 
         elif is_string_literal(node):
             if not (parent and parent.type == "binary_expression"):
                 string = get_string_content(node, source_code)
-                collected.append(string)
+
+                # Get 50 characters before and after the string
+                start_byte = node.start_byte
+                end_byte = node.end_byte
+
+                # Calculate the range for before context (up to 50 chars)
+                before_start = max(0, start_byte - CHARACTERS_BEFORE_AND_AFTER_QUERY)
+                before_context = source_code[before_start:start_byte]
+
+                # Calculate the range for after context (up to 50 chars)
+                after_end = min(len(source_code), end_byte + CHARACTERS_BEFORE_AND_AFTER_QUERY)
+                after_context = source_code[end_byte:after_end]
+
+                collected.append(ExtractedString(
+                    string=string,
+                    before=before_context,
+                    after=after_context,
+                    line_number=node.start_point[0] + 1
+                ))
 
         for child in node.children:
             visit(child, node)
@@ -176,14 +240,22 @@ def extract_strings(
     *,
     dedupe: bool = False,
     is_src: bool = False
-) -> List[str]:
-    """Return *all* string literals found in *path*.
+) -> List[ExtractedString]:
+    """Return *all* string literals found in *path* along with their context.
 
     Parameters
     ----------
     path      : file to analyse.
     language  : explicit language key (otherwise guessed from extension).
     dedupe    : if *True*, remove duplicates while keeping first‑occurrence order.
+
+    Returns
+    -------
+    List[ExtractedString]
+        A list of ExtractedString objects, where each object contains:
+        - string: The extracted string literal
+        - before: Up to 50 characters before the string in the source code
+        - after: Up to 50 characters after the string in the source code
     """
 
     if not is_src:
@@ -209,7 +281,19 @@ def extract_strings(
         raise ValueError(f"No extractor registered for language '{lang}'") from exc
 
     result = extractor(src)
-    return list(OrderedDict.fromkeys(result)) if dedupe else result
+
+    if dedupe:
+        # Deduplicate based on the string field while preserving the context of the first occurrence
+        seen = {}
+        deduplicated = []
+        for item in result:
+            string = item.string
+            if string not in seen:
+                seen[string] = True
+                deduplicated.append(item)
+        return deduplicated
+    else:
+        return result
 
 
 # ----------------------------------------------------------------------------
@@ -218,17 +302,24 @@ def extract_strings(
 
 
 @extractor_for("python")
-def extract_python_strings(src: str) -> List[str]:
+def extract_python_strings(src: str) -> List[ExtractedString]:
     """Extract string literals from Python source code using tree-sitter.
     This function uses the tree-sitter parser to extract string literals from Python source code.
     It handles both single and double quoted strings, as well as multi-line strings.
+
+    Returns
+    -------
+    List[ExtractedString]
+        A list of ExtractedString objects, where each object contains:
+        - string: The extracted string literal
+        - before: Up to 50 characters before the string in the source code
+        - after: Up to 50 characters after the string in the source code
     """
 
     parser = get_parser('python')
 
-    # Parse the source code
-    tree = parser.parse(src.encode('utf-8'))
-    root_node = tree.root_node
+    # Parse the source code and get the root node
+    root_node = parse_source_code(parser, src)
 
     # Extract all string literals from the root node
     return extract_all_strings(src, root_node)
@@ -239,36 +330,33 @@ def extract_python_strings(src: str) -> List[str]:
 # ----------------------------------------------------------------------------
 
 @extractor_for("js")
-def extract_js_strings(src) -> List[str]:
+def extract_js_strings(src) -> List[ExtractedString]:
 
     parser = get_parser('javascript')
 
-    tree = parser.parse(src.encode('utf-8'))
-    root_node = tree.root_node
+    root_node = parse_source_code(parser, src)
 
     return extract_all_strings(src, root_node)
 
 
 @extractor_for("c", "cpp")
-def extract_c_strings(src: str) -> List[str]:
+def extract_c_strings(src: str) -> List[ExtractedString]:
 
     parser = get_parser('cpp')
 
-    tree = parser.parse(src.encode('utf-8'))
-    root_node = tree.root_node
+    root_node = parse_source_code(parser, src)
 
     return extract_all_strings(src, root_node)
 
 
 
 @extractor_for("java")
-def extract_java_strings(src: str)-> list[str]:
+def extract_java_strings(src: str) -> List[ExtractedString]:
 
 
     parser = get_parser('java')
 
-    tree = parser.parse(src.encode('utf-8'))
-    root_node = tree.root_node
+    root_node = parse_source_code(parser, src)
 
 
     return extract_all_strings(src, root_node)
@@ -276,23 +364,21 @@ def extract_java_strings(src: str)-> list[str]:
 
 
 @extractor_for("go")
-def extract_go_strings(src: str) -> List[str]:
+def extract_go_strings(src: str) -> List[ExtractedString]:
 
     parser = get_parser('go')
 
-    tree = parser.parse(src.encode('utf-8'))
-    root_node = tree.root_node
+    root_node = parse_source_code(parser, src)
 
     return extract_all_strings(src, root_node)
 
 
 @extractor_for("csharp")
-def extract_csharp_strings(src: str) -> List[str]:
+def extract_csharp_strings(src: str) -> List[ExtractedString]:
 
     parser = get_parser('csharp')
 
-    tree = parser.parse(src.encode('utf-8'))
-    root_node = tree.root_node
+    root_node = parse_source_code(parser, src)
 
     return extract_all_strings(src, root_node)
 

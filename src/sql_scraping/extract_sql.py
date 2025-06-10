@@ -3,9 +3,11 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Dict
 
-from config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR
-from extract_strings import extract_strings
-from string_utils import tidy_up_string
+from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR, ONLY_SCRAPE_SELECT_QUERIES
+from src.sql_scraping.extract_strings import extract_strings, ExtractedString
+from src.sql_scraping.string_utils import tidy_up_string
+
+MAIN_SQL_START_WORDS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP']
 
 
 @dataclass
@@ -18,7 +20,7 @@ class SqlExtractionParams:
 class FileAnalysisResult:
     """Data class to represent the result of a file analysis."""
 
-    def __init__(self, repo_url: str, file_path: str, queries: List['SqlQuery']):
+    def __init__(self, repo_url: str, file_path: str, queries: List['ExtractedQuery']):
         self.repo_url = repo_url
         self.file_path = file_path
         self.queries = queries
@@ -40,12 +42,22 @@ class FileAnalysisResult:
 
 
 @dataclass
-class SqlQuery:
+class ExtractedQuery:
     """Data class to represent a SQL query."""
+    text_before: str
+    text_after: str
     name: str
     type: str
     sql: str
     line: int
+
+    def __init__(self, name: str, extracted_string: ExtractedString):
+        self.name = name
+        self.type = determine_query_type(extracted_string.string)
+        self.sql = extracted_string.string
+        self.text_before = extracted_string.before
+        self.text_after = extracted_string.after
+        self.line = extracted_string.line_number
 
     def to_dict(self) -> Dict[str, str]:
         """Convert the SqlQuery instance to a dictionary."""
@@ -53,7 +65,9 @@ class SqlQuery:
             'name': self.name,
             'type': self.type,
             'sql': self.sql,
-            'line': self.line
+            'line': self.line,
+            'text_before': self.text_before,
+            'text_after': self.text_after
         }
 
     def to_json(self) -> str:
@@ -61,6 +75,13 @@ class SqlQuery:
         import json
         return json.dumps(self.to_dict(), indent=4)
 
+
+def get_dir_for_url(repo_url: str) -> str:
+    url_without_protocol = repo_url.replace('https://', '').replace('http://', '')
+    url_without_protocol = url_without_protocol.replace('github.com/', '')
+    storage_dir_name = f"{url_without_protocol.replace('/', '_')}"
+    storage_dir_name = os.path.join(QUERIES_DIR, storage_dir_name)
+    return storage_dir_name
 
 class RepoAnalysisResult:
     """Data class to represent the result of a repository analysis."""
@@ -90,25 +111,31 @@ class RepoAnalysisResult:
     def save(self):
         # save queries to a file
         if not os.path.exists(QUERIES_DIR):
-            os.makedirs(QUERIES_DIR)
-        url_without_protocol = self.repo_url.replace('https://', '').replace('http://', '')
-        url_without_protocol = url_without_protocol.replace('github.com/', '')
-        storage_dir_name = f"{url_without_protocol.replace('/', '_')}"
-        storage_dir_name = os.path.join(QUERIES_DIR, storage_dir_name)
+            os.makedirs(QUERIES_DIR, exist_ok=True)
 
+        logger.info(f"Saving analysis result for {self.repo_name} to {QUERIES_DIR}.")
+
+        storage_dir_name = get_dir_for_url(self.repo_url)
         # create a dir if it does not exist
         if not os.path.exists(storage_dir_name):
             os.makedirs(storage_dir_name, exist_ok=True)
 
         # save the file results file by file in the directory
         for file_result in self.file_results:
-            if file_result.queries is None or len(file_result.queries) == 0:
+            if len(file_result.queries) == 0:
                 continue
             file_name = os.path.basename(file_result.file_path)
             file_name = file_name.split('.')[0] + '.json'  # Save as JSON file
             file_path = os.path.join(storage_dir_name, file_name)
+            logger.info(f"Saving file analysis result for {file_result.file_path} to {file_path}, containing {len(file_result.queries)} queries.")
+
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(file_result.to_json())
+
+
+    def save_to_duckdb(self, con):
+        pass
+
 
 
 
@@ -146,52 +173,55 @@ def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtra
     return FileAnalysisResult(repo_url, file_path, sql_queries)
 
 
-def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtractionParams) -> List[SqlQuery]:
+def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtractionParams) -> List[ExtractedQuery]:
     """Extract SQL statements from any source code file using a unified pattern."""
-    sql_functions = []
+    queries = []
 
     # if the file is a sql file, we can directly extract the SQL statements, split them by semicolon
     if file_path.endswith('.sql'):
-        strings = content.split(';')
+        plain_strings = content.split(';')
+        extracted_strings: List[ExtractedString] =  [
+            ExtractedString(
+                string=tidy_up_string(string.strip()),
+                before='',
+                after='',
+            ) for i, string in enumerate(plain_strings) if string.strip() and looks_like_sql(string.strip())
+        ]
+
     else:
         # Unified pattern: capture anything between quotes that might contain SQL
-        strings = extract_strings(file_path)
+        extracted_strings: List[ExtractedString] = extract_strings(file_path)
 
-    logger.debug(f"Extracted {len(strings)} potential SQL Queries from file {file_path}.")
+    logger.debug(f"Extracted {len(extracted_strings)} potential SQL Queries from file {file_path}.")
 
-    for string in strings:
+    for extracted_string in extracted_strings:
 
-        if not string or not looks_like_sql(string):
+        if not extracted_string or not looks_like_sql(extracted_string.string):
             continue
 
-        cleaned_string = tidy_up_string(string)
+        extracted_string.tidy_up()
 
-        if should_include_sql(cleaned_string, params):
-            query_type = determine_query_type(cleaned_string)
-            sql_functions.append(
-                SqlQuery(
-                    name=f"{query_type}_query_{len(sql_functions) + 1}",
-                    type=query_type,
-                    sql=cleaned_string,
-                    line=get_line_number(content, string)
+        if should_include_sql(extracted_string, params):
+            queries.append(
+                ExtractedQuery(
+                    name= f"query_{len(queries) + 1}",
+                    extracted_string=extracted_string,
                 )
             )
 
-    logger.debug(f"Extracted {len(sql_functions)} SQL queries from file {file_path}.")
-    return sql_functions
+    logger.debug(f"Extracted {len(queries)} SQL queries from file {file_path}.")
+    return queries
 
 
 # Need to Associate atleast one valueset to the code:
 def looks_like_sql(text: str) -> bool:
-    main_start_words = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP']
     # also with one whitespace behind
-    main_start_words = [word + ' ' for word in main_start_words]
+    main_start_words = [word + ' ' for word in MAIN_SQL_START_WORDS]
     # only allow the first word to be a main SQL command
     if not text.strip() or not any(text.strip().upper().startswith(word) for word in main_start_words):
         return False
 
-    enable_only_allow_select = True
-    if enable_only_allow_select and not text.strip().upper().startswith('SELECT'):
+    if ONLY_SCRAPE_SELECT_QUERIES and not text.strip().upper().startswith('SELECT'):
         return False
 
     sql_keywords = {
@@ -210,81 +240,24 @@ def looks_like_sql(text: str) -> bool:
     return keyword_count >= 2
 
 
-_FIRST_KEYWORD_RE = re.compile(
-    r"""
-    ^\s*                                         # leading whitespace
-    (?:
-        (?:--[^\n]*\n\s*)*                       #   →  any “-- …” single-line comments
-      | (?:/\*.*?\*/\s*)*                        #   →  any “/* … */” block comments
-    )*                                           # zero or more comment blocks
-    (?P<kw>[A-Z]+)                               # capture the first keyword
-    """,
-    re.IGNORECASE | re.DOTALL | re.VERBOSE,
-)
-
-# Map the first keyword (upper-case) to a logical query type
-_KEYWORD_MAP: Dict[str, str] = {
-    "SELECT":    "select",
-    "INSERT":    "insert",
-    "UPDATE":    "update",
-    "DELETE":    "delete",
-    "ALTER":     "alter",
-    "DROP":      "drop",
-    "TRUNCATE":  "truncate",
-    "GRANT":     "grant",
-    "REVOKE":    "revoke",
-    "EXPLAIN":   "explain",
-    "BEGIN":     "transaction",
-    "START":     "transaction",
-    "COMMIT":    "transaction",
-    "ROLLBACK":  "transaction",
-    "CALL":      "call",
-    "MERGE":     "merge",
-    "WITH":      "select",      # CTEs always resolve to a SELECT
-}
-
 def determine_query_type(sql_string: str) -> str:
-    """
-    Guess the *primary* type of an SQL statement by inspecting its first keyword.
+    # check which of the main SQL keywords is the first one in the string
+    for word in MAIN_SQL_START_WORDS:
+        if sql_string.upper().startswith(word):
+            return word.upper()
 
-    - Leading whitespace and both `--` and `/* … */` comments are skipped.
-    - Common statements are mapped explicitly via `_KEYWORD_MAP`.
-    - `CREATE …` is further split into `function`, `procedure`, or generic `create`.
-
-    Returns
-    -------
-    One of: 'select', 'insert', 'update', 'delete', 'function', 'procedure',
-    'create', 'alter', 'drop', … or 'unknown' if no match.
-    """
-    m = _FIRST_KEYWORD_RE.match(sql_string)
-    if not m:
-        return "unknown"
-
-    kw = m.group("kw").upper()
-
-    # Fast path: direct mapping
-    if kw in _KEYWORD_MAP:
-        return _KEYWORD_MAP[kw]
-
-    if kw == "CREATE":
-        up = sql_string.upper()
-        if " FUNCTION " in up or up.startswith("CREATE FUNCTION"):
-            return "function"
-        if " PROCEDURE " in up or up.startswith("CREATE PROCEDURE"):
-            return "procedure"
-        return "create"
-
-    return "unknown"
+    # If no keyword matches, return 'unknown'
+    return 'UNKNOWN'
 
 
-def should_include_sql(sql_string: str, params: SqlExtractionParams) -> bool:
+def should_include_sql(sql_string: ExtractedString, params: SqlExtractionParams) -> bool:
     """Check if a SQL string should be included based on the parameters."""
     # If no tables or columns are specified, include all SQL
     if not params.tables and not params.columns:
         return True
 
     # Convert to uppercase for case-insensitive comparison
-    sql_upper = sql_string.upper()
+    sql_upper = sql_string.string.upper()
 
     # Check if any of the specified tables are mentioned
     if params.tables:

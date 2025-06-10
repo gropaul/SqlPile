@@ -3,10 +3,20 @@ import os
 import sys
 
 # Data directories
-DATA_DIR = ".data"
+
+# traverse one up as this is in src/config.py
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_DIR = os.path.join(ROOT, ".data")
 REPO_DIR = os.path.join(DATA_DIR, "repos")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
-QUERIES_DIR = os.path.join(DATA_DIR, "queries")
+QUERIES_DIR = os.path.join(DATA_DIR, "queriesv2")
+DATABASE_PATH = os.path.join(DATA_DIR, 'schemapilev2.duckdb')
+
+# config
+ONLY_SCRAPE_SELECT_QUERIES = False
+CHARACTERS_BEFORE_AND_AFTER_QUERY = 150
+DELETE_REPOS_AFTER_ANALYSIS = False
+PROCESS_ZIPPED_REPOS = False
 
 # create all directories if they do not exist
 DIRS = [DATA_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR]
