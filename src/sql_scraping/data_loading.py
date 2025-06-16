@@ -18,7 +18,7 @@ def read_schemapile_data():
     return data
 
 
-def get_urls(filter_analysed: bool) -> List[str]:
+def get_urls(filter_analysed: bool, shuffle: bool = False) -> List[str]:
     data = read_schemapile_data()
 
     urls = []
@@ -56,4 +56,8 @@ def get_urls(filter_analysed: bool) -> List[str]:
         logger.info(f"Existing repositories: {len(existing_repos)}")
         logger.info(f"Total URLs to process: {len(urls)}")
 
+    if shuffle:
+        import random
+        random.shuffle(urls)
+        logger.info("Shuffled the URLs.")
     return urls

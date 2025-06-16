@@ -1,22 +1,29 @@
 import logging
 import os
 import sys
+from typing import Literal
 
 # Data directories
 
 # traverse one up as this is in src/config.py
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DATA_DIR = os.path.join(ROOT, ".data")
+DATA_DIR = os.path.join(ROOT, "data")
 REPO_DIR = os.path.join(DATA_DIR, "repos")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
 QUERIES_DIR = os.path.join(DATA_DIR, "queriesv2")
+COMBINED_QUERIES_PATH = os.path.join(DATA_DIR, "combined_queries.parquet")
 DATABASE_PATH = os.path.join(DATA_DIR, 'schemapilev2.duckdb')
 
 # config
 ONLY_SCRAPE_SELECT_QUERIES = False
 CHARACTERS_BEFORE_AND_AFTER_QUERY = 150
-DELETE_REPOS_AFTER_ANALYSIS = False
+
+type RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
+# How to handle repositories after processing
+REPO_HANDLING: RepoHandling = 'delete_after_processing'  # Options: 'delete_after_processing', 'compress_after_processing', 'keep_after_processing'
+
 PROCESS_ZIPPED_REPOS = False
+LOG_TO_FILE = False  # Whether to log to a file or not
 
 # create all directories if they do not exist
 DIRS = [DATA_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR]
@@ -68,21 +75,23 @@ def setup_logging():
     logger = logging.getLogger()
     logger.setLevel(LOG_LEVEL)
 
-    # Create file handler
-    file_handler = logging.FileHandler(LOG_FILE)
-    file_handler.setLevel(LOG_LEVEL)
-
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(LOG_LEVEL)
 
     # Create formatter and add it to the handlers
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
+
     console_handler.setFormatter(formatter)
 
-    # Add the handlers to the logger
-    logger.addHandler(file_handler)
+    if LOG_FILE:
+        # Create file handler
+        file_handler = logging.FileHandler(LOG_FILE)
+        file_handler.setLevel(LOG_LEVEL)
+        file_handler.setFormatter(formatter)
+        # Add the handlers to the logger
+        logger.addHandler(file_handler)
+
     logger.addHandler(console_handler)
 
     return logger

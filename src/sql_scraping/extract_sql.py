@@ -1,6 +1,10 @@
 import os
 import re
 from dataclasses import dataclass
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 from typing import List, Optional, Dict
 
 from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR, ONLY_SCRAPE_SELECT_QUERIES
@@ -8,6 +12,24 @@ from src.sql_scraping.extract_strings import extract_strings, ExtractedString
 from src.sql_scraping.string_utils import tidy_up_string
 
 MAIN_SQL_START_WORDS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP']
+
+# Define the schema for nested queries structure
+query_schema = pa.struct([
+    ('name', pa.string()),
+    ('type', pa.string()),
+    ('sql', pa.string()),
+    ('line', pa.int64()),
+    ('text_before', pa.string()),
+    ('text_after', pa.string())
+])
+
+# Define the main schema
+file_schema = pa.schema([
+    ('repo_url', pa.string()),
+    ('file_path', pa.string()),
+    ('queries', pa.list_(query_schema)),
+    ('language', pa.string())
+])
 
 
 @dataclass
@@ -125,18 +147,18 @@ class RepoAnalysisResult:
             if len(file_result.queries) == 0:
                 continue
             file_name = os.path.basename(file_result.file_path)
-            file_name = file_name.split('.')[0] + '.json'  # Save as JSON file
+            file_name = file_name.split('.')[0] + '.parquet'  # Save as JSON file
             file_path = os.path.join(storage_dir_name, file_name)
             logger.info(f"Saving file analysis result for {file_result.file_path} to {file_path}, containing {len(file_result.queries)} queries.")
+            data = [file_result.to_dict()]
 
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(file_result.to_json())
+            if not data:
+                logger.warning("No queries found to save.")
+                return
 
-
-    def save_to_duckdb(self, con):
-        pass
-
-
+            df = pd.DataFrame(data)
+            table = pa.Table.from_pandas(df, schema=file_schema)
+            pq.write_table(table, file_path)
 
 
 def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtractionParams] = None) -> FileAnalysisResult:

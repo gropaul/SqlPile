@@ -1,17 +1,17 @@
 import re
-from typing import Tuple
+from typing import Tuple, Literal
 
 _CANONICALS = (
     # (regex-pattern, signed result, unsigned result)
-    (r'\b(tinyint|unsignedtinyint|int1|uint8)\b',                    "Int8",  "UInt8"),
+    (r'\b(bit|tinyint|unsignedtinyint|int1|uint8)\b',                    "Int8",  "UInt8"),
     (r'\b(smallint|unsignedsmallint|int2|smallserial)\b',             "Int16", "UInt16"),
     (r'\b(mediumint|unsignedmediumint|int3|int24)\b',                  "Int24", "UInt24"),  # MySQL MEDIUMINT (24-bit)
-    (r'\b(bigint|unsignedbigint|int8|bigserial)\b',                 "Int64", "UInt64"),
+    (r'\b(bigint|unsignedbigint|int8|long|bigserial)\b',                 "Int64", "UInt64"),
     (r'\b(int|unsignedint|unsignedinteger|integer|serial|int4)\b',   "Int32", "UInt32"),  # keep this *after* tiny/small/big rules
 )
 
-_TEXT_VARYING  = re.compile(r'\b(char[ _]?varying|string|varchar|charactervarying|longtext|nvarchar|varchar2|nvarchar2|text|clob)\b')
-_TEXT_FIXED    = re.compile(r'\b(char|nchar|bpchar|tinytext)\b')
+_TEXT_VARYING  = re.compile(r'\b(char[ _]?varying|string|longvarchar|varchar|charactervarying|longtext|nvarchar|varchar2|nvarchar2|text|clob)\b')
+_TEXT_FIXED = re.compile(r'\b(char|nchar|bpchar|mediumtext|tinytext|character varying)\b')
 _FLOATING      = re.compile(r'\b(float|float4|float8|double|doubleprecision|double\s+precision|real|decimal|dec|numeric|number)\b')
 _BOOLEAN       = re.compile(r'\b(bool|boolean|boolean_char)\b')
 _DATE_TIME     = re.compile(r'\b(date|time|datetime|datetime2|time_stamp|timestamp|timestamptz|smalldatetime|timetz|interval)\b')
@@ -21,12 +21,46 @@ _UUID_TYPE     = re.compile(r'\b(uuid|uniqueidentifier)\b')
 _XML_TYPE      = re.compile(r'\b(xml)\b')
 _ENUM_TYPE     = re.compile(r'\b(enum|set)\b')
 
-def unify_type(raw_type: str) -> Tuple[str, str]:
+type BaseType = Literal[ "Int", "Float", "Text", "Boolean", "DateTime", "Binary", "JSON", "UUID", "XML", "Enum", "ARRAY", "OTHER" ]
+
+def base_type_to_duckdb_type(base_type: BaseType) -> str:
+    """
+    Converts a base type to a DuckDB type string.
+    """
+    if base_type == "Int":
+        return "INTEGER"
+    elif base_type == "Float":
+        return "DOUBLE"
+    elif base_type == "Text":
+        return "VARCHAR"
+    elif base_type == "Boolean":
+        return "BOOLEAN"
+    elif base_type == "DateTime":
+        return "TIMESTAMP"
+    elif base_type == "Binary":
+        return "BLOB"
+    elif base_type == "JSON":
+        return "JSON"
+    elif base_type == "UUID":
+        return "UUID"
+    elif base_type == "XML":
+        return "XML"
+    elif base_type == "Enum":
+        return "VARCHAR"  # Enums are often stored as strings
+    elif base_type == "ARRAY":
+        return "ARRAY"  # DuckDB supports array types
+    else:
+        return "OTHER"  # Fallback for unrecognized types
+
+def unify_type(raw_type: str) -> Tuple[str, BaseType]:
     """
     returns the canonical type name and a basic type category
     """
     if raw_type is None:
         return "OTHER", "OTHER"
+
+    if raw_type.lower().strip() == "array":
+        return "ARRAY", "ARRAY"
 
     t = raw_type.strip().lower()
     t = re.sub(r'\(.*\)', '', t)              # drop size/precision qualifiers

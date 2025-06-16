@@ -10,10 +10,6 @@ from src.config import logger, DATA_DIR, DATABASE_PATH
 from data_loading import get_urls
 from extract_sql import RepoAnalysisResult
 
-
-con = duckdb.connect(DATABASE_PATH)
-
-
 def process_url(url: str) -> Optional[int]:
     logger.info(f"Processing URL: {url}")
     result: Optional[RepoAnalysisResult] = analyse_repo(url)
@@ -28,7 +24,7 @@ def main():
     total_queries = 0
     n_threads = 10  # Number of threads to use for parallel processing
 
-    urls = get_urls(filter_analysed=True)
+    urls = get_urls(filter_analysed=True, shuffle=True)
 
     logger.info(f"Total URLs to process: {len(urls)}")
     if not urls:
@@ -39,9 +35,9 @@ def main():
         futures = {executor.submit(process_url, url): url for url in urls}
         for future in as_completed(futures):
             try:
-                queries = future.result()
-                total_queries += queries if queries is not None else 0
-                logger.info(f"Total queries found so far: {total_queries}")
+                n_queries = future.result()
+                total_queries += n_queries if n_queries is not None else 0
+                logger.info(f"Total queries found so far: {total_queries} (added {n_queries} from URL {futures[future]})")
             except Exception as e:
                 logger.error(f"Error processing URL {futures[future]}: {e}")
 

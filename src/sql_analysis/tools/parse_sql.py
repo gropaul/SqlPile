@@ -57,7 +57,7 @@ class QueryAnalysisResult:
         n_conditions: int,
         n_group_bys: int,
         n_order_bys: int,
-        column_usages: Dict[str, ColumnUsageInfo],
+        column_usages: List[ColumnUsageInfo],
     ) -> None:
         self.n_selects = n_selects
         self.n_joins = n_joins
@@ -71,7 +71,7 @@ class QueryAnalysisResult:
             "QueryAnalysisResult("  # noqa: E501
             f"n_selects={self.n_selects}, n_joins={self.n_joins}, n_conditions={self.n_conditions}, "
             f"n_group_bys={self.n_group_bys}, n_order_bys={self.n_order_bys}, "
-            f"column_usages={list(self.column_usages.values())})"
+            f"column_usages={list(self.column_usages)})"
         )
 
 
@@ -141,7 +141,7 @@ def analyse_node(root: Node) -> QueryAnalysisResult:
         "ORDER BY": 0,
     }
     n_conditions = 0
-    column_usages: Dict[str, ColumnUsageInfo] = {}
+    column_usages: List[ColumnUsageInfo] = []
 
     # ------------------------------------------------------------------
     # Helpers to attach expression info to ColumnUsageInfo
@@ -157,19 +157,15 @@ def analyse_node(root: Node) -> QueryAnalysisResult:
         usage_place = _nearest_operator(ancestors)
         key = _field_key(table_name, column_name)
 
-        # Default placeholder if not seen before
-        if key not in column_usages:
-            column_usages[key] = ColumnUsageInfo(table_name, column_name, usage_place or "SELECT")
-        elif usage_place and column_usages[key].operator_type == "SELECT":
-            # promote more specific (e.g. WHERE over SELECT)
-            column_usages[key].operator_type = usage_place
-
-        return column_usages[key]
+        info = ColumnUsageInfo(table_name, column_name, usage_place or "SELECT")
+        column_usages.append(info)
+        return info
 
     # ------------------------------------------------------------------
     # Depth‑first traversal
     # ------------------------------------------------------------------
     def traverse(node: Node, ancestors: List[Node]) -> None:  # noqa: D401
+
         nonlocal n_conditions
 
         # Operator occurrence counts (except WHERE)
@@ -189,13 +185,13 @@ def analyse_node(root: Node) -> QueryAnalysisResult:
                 operator_text = operator_token.text.decode("utf-8") if operator_token.text else ""
 
                 # If lhs is field, attach expression info
-                if lhs.type == "field":
+                if lhs.type == "field" or lhs.type == "column":
                     col_info = _register_field(lhs, ancestors)
                     other_operand_text = rhs.text.decode("utf-8") if rhs.text else rhs.type
                     col_info.expression = ColumnExpressionInfo(operator_text, other_operand_text)
 
                 # If rhs is a field, attach expression info (mirrored)
-                if rhs.type == "field":
+                if rhs.type == "field" or rhs.type == "column":
                     col_info = _register_field(rhs, ancestors)
                     other_operand_text = lhs.text.decode("utf-8") if lhs.text else lhs.type
                     # If expression already set, keep the first one
@@ -210,7 +206,7 @@ def analyse_node(root: Node) -> QueryAnalysisResult:
                         col_info.expression = ColumnExpressionInfo(mirrored_op, other_operand_text)
 
         # Capture field occurrences outside binary expressions
-        if node.type == "field":
+        if node.type == "field" or node.type == "column":
             _register_field(node, ancestors)
 
         # Recurse into children
@@ -218,6 +214,16 @@ def analyse_node(root: Node) -> QueryAnalysisResult:
             traverse(child, ancestors + [node])
 
     traverse(root, [])
+
+    # remove duplicates from column usages: same name, same table and same usage place
+    unique_column_usages = {}
+    for usage in column_usages:
+        key = _field_key(usage.table_name, usage.column_name) + usage.operator_type
+        if key not in unique_column_usages:
+            unique_column_usages[key] = usage
+
+
+    column_usages = list(unique_column_usages.values())
 
     return QueryAnalysisResult(
         n_selects=counts["SELECT"],
@@ -233,7 +239,7 @@ def analyse_node(root: Node) -> QueryAnalysisResult:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def analyse_sql_query(sql_query: str) -> QueryAnalysisResult:  # noqa: D401
+def analyse_sql_query(sql_query: str, print_tree: bool = False) -> QueryAnalysisResult:  # noqa: D401
     """Analyse *sql_query* and return a :class:`QueryAnalysisResult`."""
 
     parser = get_parser("sql")
@@ -241,7 +247,8 @@ def analyse_sql_query(sql_query: str) -> QueryAnalysisResult:  # noqa: D401
     root = tree.root_node
 
     # Uncomment to debug parse tree:
-    # print_recursive(root)
+    if print_tree:
+        print_recursive(root)
 
     return analyse_node(root)
 
@@ -254,6 +261,13 @@ if __name__ == "__main__":
 
     simple_like_query = """
         SELECT name FROM users WHERE name Like '%John%';
+    """
+
+    join_using_using = """
+        SELECT a.name, b.age
+        FROM users a
+        JOIN profiles b USING (user_id)
+        WHERE a.age > 30;
     """
 
     left_join_query = """
@@ -271,6 +285,10 @@ if __name__ == "__main__":
         WHERE a.age > 30;
     """
 
+    small_real_query = """
+    SELECT v FROM Vehicle v WHERE (v.active = true) AND v.user.m = :test
+                       """
+
     real_query = (
         "SELECT DISTINCT emp.first_name, emp.last_name, "
         "concat(mgr.first_name, ' ', mgr.last_name) AS manager_name, "
@@ -283,12 +301,14 @@ if __name__ == "__main__":
     )
 
     for label, q in [
-        ("Simple LIKE query", simple_like_query),
-        ("Sample JOIN query", sample_join_query),
-        ("Realistic complex query", real_query),
-        ("Left JOIN query", left_join_query),
+        # ("Simple LIKE query", simple_like_query),
+        # ("Sample JOIN query", sample_join_query),
+        # ("JOIN using USING", join_using_using),
+        ("Small real query", small_real_query),
+        # ("Realistic complex query", real_query),
+        # ("Left JOIN query", left_join_query),
     ]:
         print(f"--- {label} ---")
-        result = analyse_sql_query(q)
+        result = analyse_sql_query(q, print_tree=True)
         print(result)
         print()

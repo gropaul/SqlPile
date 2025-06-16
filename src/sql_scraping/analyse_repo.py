@@ -1,11 +1,12 @@
 import os
+import shutil
 import subprocess
+import zipfile
 from typing import Tuple, Optional, List
 
 import requests
-from tqdm import tqdm
 
-from src.config import REPO_DIR, logger, DELETE_REPOS_AFTER_ANALYSIS, PROCESS_ZIPPED_REPOS
+from src.config import REPO_DIR, logger, PROCESS_ZIPPED_REPOS, REPO_HANDLING
 from src.sql_scraping.extract_sql import RepoAnalysisResult, FileAnalysisResult, extract_sql_from_repo
 
 
@@ -49,8 +50,9 @@ def get_or_clone_repo(repo_url: str, repo_name: str) -> Optional[str]:
         if os.path.exists(zip_path):
             if PROCESS_ZIPPED_REPOS:
                 logger.info(f"Repository {repo_name} found as a zip file at {zip_path}. Unzipping...")
-                subprocess.run(["unzip", zip_path, "-d", REPO_DIR], check=True,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # Use zipfile module instead of subprocess
+                with zipfile.ZipFile(zip_path, 'r') as zipf:
+                    zipf.extractall(REPO_DIR)
                 os.remove(zip_path)
                 logger.info(f"Unzipped repository {repo_name} successfully. Deleting zip file {zip_path}.")
             else:
@@ -75,19 +77,12 @@ def delete_repo(repo_name: str) -> None:
     if os.path.exists(target_path):
         try:
             logger.info(f"Deleting repository {repo_name} at {target_path}...")
-            subprocess.run(["rm", "-rf", target_path], check=True)
+            shutil.rmtree(target_path)
             logger.info(f"Repository {repo_name} deleted successfully.")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error deleting repository: {e}")
         except Exception as e:
             logger.error(f"Unexpected error while deleting repository: {e}")
     else:
         logger.warning(f"Repository {repo_name} does not exist at {target_path}. No action taken.")
-
-
-import os
-import subprocess
-from typing import Optional
 
 def get_dir_size(path: str) -> int:
     """Returns the total size of all files in the given directory."""
@@ -116,8 +111,13 @@ def compress_repo(repo_name: str) -> Optional[str]:
         original_size = get_dir_size(target_path)
         logger.info(f"Original size of {repo_name}: {original_size / 1024:.2f} KB")
 
-        subprocess.run(["zip", "-r", zip_path, target_path], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Use zipfile module instead of subprocess
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(target_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, os.path.dirname(target_path))
+                    zipf.write(file_path, arcname)
 
         if os.path.exists(zip_path):
             zip_size = os.path.getsize(zip_path)
@@ -127,8 +127,6 @@ def compress_repo(repo_name: str) -> Optional[str]:
 
         delete_repo(repo_name)
         return zip_path
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error compressing repository: {e}")
     except Exception as e:
         logger.error(f"Unexpected error while compressing repository: {e}")
 
@@ -174,10 +172,16 @@ def analyse_repo(repo_path) -> Optional[RepoAnalysisResult]:
     queries_count = sum(len(file_result.queries) for file_result in results)
     logger.info(f"Extracted {queries_count} SQL queries from {len(results)} files in from repository {name}.")
 
-    if DELETE_REPOS_AFTER_ANALYSIS:
+    if REPO_HANDLING == 'delete_after_processing':
         delete_repo(name)
+    elif REPO_HANDLING == 'compress_after_processing':
+        zip_path = compress_repo(name)
+        if zip_path:
+            logger.info(f"Compressed repository {name} into {zip_path}.")
+        else:
+            logger.error(f"Failed to compress repository {name}.")
     else:
-        compress_repo(name)
+        logger.info(f"Keeping repository {name} at {repo_dir} for further analysis.")
 
     return RepoAnalysisResult(
         repo_name=name,
@@ -189,6 +193,5 @@ def analyse_repo(repo_path) -> Optional[RepoAnalysisResult]:
 
 if __name__ == "__main__":
     # Example usage
-    repos_dir = '/Users/paul/workspace/SqlPile/.data/repos'
+    repos_dir = '/Users/paul/workspace/SqlPile/data/repos'
     compress_all_repos_in_dir(repos_dir)
-
