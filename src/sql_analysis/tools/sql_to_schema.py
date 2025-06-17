@@ -215,7 +215,7 @@ def get_data_type(statement_col: dict) -> str:
 import re
 
 
-def rewrite_sql(sql: str) -> str:
+def rewrite_sql_for_parsing(sql: str) -> str:
     # Match variations like:
     # decimal(5,2) unsigned
     # decimal (5 , 2 ) unsigned
@@ -245,7 +245,7 @@ def parse_create_table(sql: str) -> TableSchema:
     Returns:
         TableSchema: A TableSchema object representing the table's structure.
     """
-    sql = rewrite_sql(sql)  # Rewrite the SQL to fix some parsing issues
+    sql = rewrite_sql_for_parsing(sql)  # Rewrite the SQL to fix some parsing issues
     output = parse_sql(sql=sql, dialect='generic')
     SEARCHED_OP = 'CreateTable'
 

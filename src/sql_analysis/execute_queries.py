@@ -1,10 +1,12 @@
-from typing import Tuple, List, Literal
+from typing import Tuple
 import os
 import pandas as pd
 import duckdb
+from tqdm import tqdm
 
 from src.config import DATABASE_PATH
-from src.sql_analysis.execution.mock_query import mock_parameters, try_to_mock_and_execute_query, MockQueryResult
+from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
+from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_for_duckdb
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, QUERIES_TABLE_NAME, \
     EXECUTABLE_QUERIES_TABLE_NAME
@@ -22,26 +24,7 @@ n_successful_table_creations = 0
 from typing import List, Literal
 from itertools import product
 
-class Column:
-    def __init__(self, column_id: int, column_name: str, column_base_type: str):
-        self.column_id = column_id
-        self.column_name = column_name
-        self.column_base_type = column_base_type
 
-    def __repr__(self):
-        return f"Column(id={self.column_id}, name='{self.column_name}', base_type='{self.column_base_type}')"
-
-class Table:
-    def __init__(self, table_id: int, table_name: str, columns: list):
-        self.table_id = table_id
-        self.table_name = table_name
-        self.columns = columns
-
-    def __repr__(self):
-        string = f"Table(id={self.table_id}, name='{self.table_name}', columns=["
-        string += ', '.join([repr(column) for column in self.columns])
-        string += '])'
-        return string
 
 def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
 
@@ -138,7 +121,7 @@ def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
 
     for query_id, sql in queries:
         sql_prepared = prepare_sql_for_duckdb(sql)
-        result: MockQueryResult = try_to_mock_and_execute_query(sql_prepared, sandbox_con)
+        result: MockQueryResult = try_to_mock_and_execute_query(sql_prepared, sandbox_con, tables)
 
         if result.was_successful():
             executable_id = n_sucessful_so_far + n_successful + 1
@@ -175,6 +158,7 @@ def iterate_through_repos():
         FROM repos
         JOIN queries ON repos.id = queries.repo_id
         WHERE queries.type IN ('SELECT')
+        --  AND repo_id = 6044
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
     """).fetchall()
@@ -191,7 +175,7 @@ def iterate_through_repos():
         )
     """)
 
-    for repo_id, repo_url, cnt in repos:
+    for repo_id, repo_url, cnt in tqdm(repos, desc="Processing repositories", unit="repo"):
         print(f"Processing repository {repo_id} - {repo_url}")
 
         sandbox_con = duckdb.connect()
