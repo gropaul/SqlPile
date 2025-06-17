@@ -5,13 +5,15 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Callable
+
+from anyio import sleep
 
 from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR, ONLY_SCRAPE_SELECT_QUERIES
 from src.sql_scraping.extract_strings import extract_strings, ExtractedString
-from src.sql_scraping.string_utils import tidy_up_string
+from src.sql_scraping.string_utils import tidy_up_query, split_sql_statements
 
-MAIN_SQL_START_WORDS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP']
+MAIN_SQL_START_WORDS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP', 'WITH']
 
 # Define the schema for nested queries structure
 query_schema = pa.struct([
@@ -19,17 +21,23 @@ query_schema = pa.struct([
     ('type', pa.string()),
     ('sql', pa.string()),
     ('line', pa.int64()),
-    ('text_before', pa.string()),
-    ('text_after', pa.string())
+    ('text_context', pa.string()),
+    ('text_context_offset', pa.int64()),
 ])
 
 # Define the main schema
-file_schema = pa.schema([
-    ('repo_url', pa.string()),
+file_result_schema = pa.struct([
     ('file_path', pa.string()),
-    ('queries', pa.list_(query_schema)),
-    ('language', pa.string())
+    ('language', pa.string()),
+    ('queries', pa.list_(query_schema))
 ])
+
+repo_result_schema = pa.schema([
+    ('repo_name', pa.string()),
+    ('repo_url', pa.string()),
+    ('file_results', pa.list_(file_result_schema))
+])
+
 
 
 @dataclass
@@ -37,13 +45,13 @@ class SqlExtractionParams:
     """Helper data class for SQL extraction parameters."""
     tables: Optional[List[str]] = None
     columns: Optional[List[str]] = None
+    file_filter: Optional[Callable[[str], bool]] = None
 
 
 class FileAnalysisResult:
     """Data class to represent the result of a file analysis."""
 
-    def __init__(self, repo_url: str, file_path: str, queries: List['ExtractedQuery']):
-        self.repo_url = repo_url
+    def __init__(self, file_path: str, queries: List['ExtractedQuery']):
         self.file_path = file_path
         self.queries = queries
         self.language = file_path.split('.')[-1] if '.' in file_path else 'unknown'
@@ -51,10 +59,9 @@ class FileAnalysisResult:
     def to_dict(self) -> Dict[str, List[Dict[str, str]]]:
         """Convert the FileAnalysisResult instance to a dictionary."""
         return {
-            'repo_url': self.repo_url,
             'file_path': self.file_path,
+            'language': self.language,
             'queries': [query.to_dict() for query in self.queries],
-            'language': self.language
         }
 
     def to_json(self) -> str:
@@ -66,8 +73,7 @@ class FileAnalysisResult:
 @dataclass
 class ExtractedQuery:
     """Data class to represent a SQL query."""
-    text_before: str
-    text_after: str
+    text_context: str
     name: str
     type: str
     sql: str
@@ -77,8 +83,8 @@ class ExtractedQuery:
         self.name = name
         self.type = determine_query_type(extracted_string.string)
         self.sql = extracted_string.string
-        self.text_before = extracted_string.before
-        self.text_after = extracted_string.after
+        self.text_context = extracted_string.text_context
+        self.text_text_context_offset = extracted_string.text_context_offset
         self.line = extracted_string.line_number
 
     def to_dict(self) -> Dict[str, str]:
@@ -88,8 +94,8 @@ class ExtractedQuery:
             'type': self.type,
             'sql': self.sql,
             'line': self.line,
-            'text_before': self.text_before,
-            'text_after': self.text_after
+            'text_context': self.text_context,
+            'text_context_offset': self.text_text_context_offset
         }
 
     def to_json(self) -> str:
@@ -130,45 +136,39 @@ class RepoAnalysisResult:
         import json
         return json.dumps(self.to_dict(), indent=4)
 
-    def save(self):
+    def save(self, storage_dir: Optional[str] = None) -> None:
         # save queries to a file
         if not os.path.exists(QUERIES_DIR):
             os.makedirs(QUERIES_DIR, exist_ok=True)
 
         logger.info(f"Saving analysis result for {self.repo_name} to {QUERIES_DIR}.")
 
-        storage_dir_name = get_dir_for_url(self.repo_url)
-        # create a dir if it does not exist
-        if not os.path.exists(storage_dir_name):
-            os.makedirs(storage_dir_name, exist_ok=True)
+        if storage_dir is not None:
+            storage_dir_name =  storage_dir
+        else:
+            storage_dir_name = get_dir_for_url(self.repo_url)
+            # create a dir if it does not exist
+            if not os.path.exists(storage_dir_name):
+                os.makedirs(storage_dir_name, exist_ok=True)
 
-        # save the file results file by file in the directory
-        for file_result in self.file_results:
-            if len(file_result.queries) == 0:
-                continue
-            file_name = os.path.basename(file_result.file_path)
-            file_name = file_name.split('.')[0] + '.parquet'  # Save as JSON file
-            file_path = os.path.join(storage_dir_name, file_name)
-            logger.info(f"Saving file analysis result for {file_result.file_path} to {file_path}, containing {len(file_result.queries)} queries.")
-            data = [file_result.to_dict()]
 
-            if not data:
-                logger.warning("No queries found to save.")
-                return
+        storage_path = os.path.join(storage_dir_name, f"{self.repo_name}_analysis.parquet")
 
-            df = pd.DataFrame(data)
-            table = pa.Table.from_pandas(df, schema=file_schema)
-            pq.write_table(table, file_path)
+        data = [self.to_dict()]
+
+        df = pd.DataFrame(data)
+        table = pa.Table.from_pandas(df, schema=repo_result_schema)
+        pq.write_table(table, storage_path)
 
 
 def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtractionParams] = None) -> FileAnalysisResult:
     if not os.path.exists(file_path):
         logger.error(f"File {file_path} does not exist.")
-        return FileAnalysisResult(file_path, repo_url, [])
+        return FileAnalysisResult(file_path, [])
 
     if not any(file_path.endswith(ext) for ext in SOURCE_CODE_FILE_EXTENSIONS):
         logger.warning(f"File {file_path} is not a recognized source code file.")
-        return FileAnalysisResult(file_path, repo_url,[])
+        return FileAnalysisResult(file_path, [])
 
     # Initialize parameters if not provided
     if params is None:
@@ -180,10 +180,9 @@ def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtra
             content = file.read()
     except Exception as e:
         logger.error(f"Error reading file {file_path}: {e}")
-        return FileAnalysisResult(file_path, repo_url, [])
+        return FileAnalysisResult(file_path,  [])
 
     # Extract SQL functions based on file extension
-    sql_queries = []
 
     # if file_path.endswith('.sql'):
     #     # For SQL files, extract entire SQL statements
@@ -192,7 +191,7 @@ def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtra
     # For other source code files, extract SQL strings
     sql_queries = extract_sql_from_source_code(content, file_path, params)
 
-    return FileAnalysisResult(repo_url, file_path, sql_queries)
+    return FileAnalysisResult(file_path, sql_queries)
 
 
 def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtractionParams) -> List[ExtractedQuery]:
@@ -201,13 +200,14 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
 
     # if the file is a sql file, we can directly extract the SQL statements, split them by semicolon
     if file_path.endswith('.sql'):
-        plain_strings = content.split(';')
+        splitted_statements = split_sql_statements(content)
         extracted_strings: List[ExtractedString] =  [
             ExtractedString(
-                string=tidy_up_string(string.strip()),
-                before='',
-                after='',
-            ) for i, string in enumerate(plain_strings) if string.strip() and looks_like_sql(string.strip())
+                string=statement,
+                text_context='',
+                line_number=get_line_number(content, statement),
+                node_content_length=len(statement)
+            ) for i, statement in enumerate(splitted_statements)
         ]
 
     else:
@@ -218,10 +218,15 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
 
     for extracted_string in extracted_strings:
 
-        if not extracted_string or not looks_like_sql(extracted_string.string):
-            continue
 
         extracted_string.tidy_up()
+
+        if len(extracted_string.string) == 0:
+            continue
+
+        if not looks_like_sql(extracted_string.string):
+            continue
+
 
         if should_include_sql(extracted_string, params):
             queries.append(
@@ -232,6 +237,7 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
             )
 
     logger.debug(f"Extracted {len(queries)} SQL queries from file {file_path}.")
+
     return queries
 
 
@@ -247,13 +253,16 @@ def looks_like_sql(text: str) -> bool:
         return False
 
     sql_keywords = {
-        'SELECT', 'FROM', 'WHERE', 'ALTER',
+        'SELECT', 'FROM', 'WHERE', 'ALTER', 'INSERT INTO', 'INSERT OR REPLACE INTO',
+        'VALUES',
         'JOIN', 'LEFT', 'RIGHT',
-        'INNER', 'OUTER', 'CREATE', 'TABLE', 'DROP',
+        'INNER', 'OUTER', 'CREATE', 'TABLE', 'DROP', 'CREATE TYPE'
         'UNION', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
     }
     # after these keywords, there is usually a space or a parenthesis
-    sql_keywords = {kw + ' ' for kw in sql_keywords} | {kw + '(' for kw in sql_keywords}
+    sql_keywords = ({kw + ' ' for kw in sql_keywords} |
+                    {kw + '(' for kw in sql_keywords} |
+                    {kw + ')' for kw in sql_keywords})
     text_upper = text.upper()
 
     # count how many SQL keywords are present in the text
@@ -326,6 +335,10 @@ def extract_sql_from_repo(repo_dir: str, repo_url: str, params: Optional[SqlExtr
     results = []
 
     code_files = get_repo_files(repo_dir)
+
+    if params and params.file_filter:
+        code_files = [file for file in code_files if params.file_filter(file)]
+
     for file_path in code_files:
         file_result = extract_sql_queries(file_path, repo_url, params)
         results.append(file_result)

@@ -5,22 +5,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Dict, Tuple
 
+from tree_sitter import Node
+
 from src.config import logger, CHARACTERS_BEFORE_AND_AFTER_QUERY
 from tree_sitter_language_pack import get_parser
 
-from src.sql_scraping.string_utils import tidy_up_string
+from src.sql_scraping.string_utils import tidy_up_query
 
 
 @dataclass
 class ExtractedString:
     """A string extracted from source code with its context."""
     string: str
-    before: str
-    after: str
-    line_number: int = None
+    # the text around the node including the node itself. This make sure that we catch things like
+    # "SELECT * FROM table WHERE column = " + value + ";"
+    text_context: str
+    line_number: int
+    node_content_length: int
+    
+    # the context offset is the number of chars before and after the node
+    text_context_offset: int = CHARACTERS_BEFORE_AND_AFTER_QUERY
 
     def tidy_up(self):
-        self.string = tidy_up_string(self.string)
+        self.string = tidy_up_query(self.string)
 
     def __eq__(self, other):
         if isinstance(other, str):
@@ -153,16 +160,16 @@ def get_string_content(node, source_code):
     raise ValueError(error_message.strip())
 
 
-def extract_joined_string(node, source_code):
+def extract_string_nodes(node, source_code) -> List[Node]:
     if is_string_literal(node):
-        return [get_string_content(node, source_code)]
+        return [node]
 
     if node.type == "binary_expression":
         op_node = next((c for c in node.children if c.type == '+'), None)
         if not op_node:
             return []
-        left = extract_joined_string(node.children[0], source_code)
-        right = extract_joined_string(node.children[2], source_code)
+        left = extract_string_nodes(node.children[0], source_code)
+        right = extract_string_nodes(node.children[2], source_code)
         return left + right
 
     return []
@@ -187,19 +194,41 @@ def parse_source_code(parser, src):
     return tree.root_node
 
 
+def get_text_context(node: Node, source_code: str) -> Tuple[str, int]:
+    # Get characters before and after the string
+    start_byte = node.start_byte
+    node_length = node.end_byte - node.start_byte
+
+    # Calculate the range for before context
+    start_range = max(0, start_byte - CHARACTERS_BEFORE_AND_AFTER_QUERY)
+    end_range = min(len(source_code), start_byte + node_length + CHARACTERS_BEFORE_AND_AFTER_QUERY)
+
+    # Calculate the range for after context (up to 50 chars)
+    text_context = source_code[start_range:end_range]
+
+    return text_context, node_length
+
+
 def extract_all_strings(source_code: str, root_node):
     collected = []
 
     def visit(node, parent=None):
         if node.type == "binary_expression":
-            joined = extract_joined_string(node, source_code)
+            joined = extract_string_nodes(node, source_code)
             if joined:
+
+                first_node = joined[0]
+                text_context, _node_length = get_text_context(first_node, source_code)
+
+                strings = [get_string_content(n, source_code) for n in joined]
+                string_joined = ''.join(strings)
+
                 # For binary expressions, we don't have a simple start/end byte
                 # so we just collect the string without context
                 collected.append(ExtractedString(
-                    string="".join(joined),
-                    before="",
-                    after="",
+                    string=string_joined,
+                    text_context=text_context,
+                    node_content_length=len(string_joined),
                     line_number=node.start_point[0] + 1
                 ))
                 return  # skip inner children, already processed
@@ -208,22 +237,12 @@ def extract_all_strings(source_code: str, root_node):
             if not (parent and parent.type == "binary_expression"):
                 string = get_string_content(node, source_code)
 
-                # Get 50 characters before and after the string
-                start_byte = node.start_byte
-                end_byte = node.end_byte
-
-                # Calculate the range for before context (up to 50 chars)
-                before_start = max(0, start_byte - CHARACTERS_BEFORE_AND_AFTER_QUERY)
-                before_context = source_code[before_start:start_byte]
-
-                # Calculate the range for after context (up to 50 chars)
-                after_end = min(len(source_code), end_byte + CHARACTERS_BEFORE_AND_AFTER_QUERY)
-                after_context = source_code[end_byte:after_end]
+                text_context, node_length = get_text_context(node, source_code)
 
                 collected.append(ExtractedString(
                     string=string,
-                    before=before_context,
-                    after=after_context,
+                    node_content_length=node_length,
+                    text_context=text_context,
                     line_number=node.start_point[0] + 1
                 ))
 
@@ -241,22 +260,6 @@ def extract_strings(
     dedupe: bool = False,
     is_src: bool = False
 ) -> List[ExtractedString]:
-    """Return *all* string literals found in *path* along with their context.
-
-    Parameters
-    ----------
-    path      : file to analyse.
-    language  : explicit language key (otherwise guessed from extension).
-    dedupe    : if *True*, remove duplicates while keeping first‑occurrence order.
-
-    Returns
-    -------
-    List[ExtractedString]
-        A list of ExtractedString objects, where each object contains:
-        - string: The extracted string literal
-        - before: Up to 50 characters before the string in the source code
-        - after: Up to 50 characters after the string in the source code
-    """
 
     if not is_src:
         path = Path(path)

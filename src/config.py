@@ -10,13 +10,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA_DIR = os.path.join(ROOT, "data")
 REPO_DIR = os.path.join(DATA_DIR, "repos")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
-QUERIES_DIR = os.path.join(DATA_DIR, "queriesv2")
-COMBINED_QUERIES_PATH = os.path.join(DATA_DIR, "combined_queries.parquet")
+QUERIES_DIR = os.path.join(DATA_DIR, "queries_v3")
 DATABASE_PATH = os.path.join(DATA_DIR, 'schemapilev2.duckdb')
 
 # config
 ONLY_SCRAPE_SELECT_QUERIES = False
-CHARACTERS_BEFORE_AND_AFTER_QUERY = 150
+CHARACTERS_BEFORE_AND_AFTER_QUERY = 200
 
 type RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing

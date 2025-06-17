@@ -5,91 +5,12 @@ import duckdb
 
 from src.config import DATABASE_PATH
 
-from dataclasses import dataclass
-from typing import List, Dict, Optional
-from tree_sitter import Node
-from tree_sitter_language_pack import get_parser
+from typing import Optional
 
 from src.sql_analysis.load_schemapile_json_to_ddb import TABLE_TABLE_NAME, COLUMNS_TABLE_NAME, QUERIES_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
+from src.sql_analysis.tools.sql_to_schema import parse_create_table
 from src.sql_analysis.tools.sql_types import unify_type
-
-
-@dataclass
-class ColumnInfo:
-    """Represents column metadata."""
-    name: str
-    type: str
-    is_primary_key: bool = False
-
-@dataclass
-class TableSchema:
-    """Represents the schema of a table."""
-    table_name: str
-    columns: List[ColumnInfo]
-
-def parse_create_table(create_table_query: str) -> TableSchema:
-    """
-    Parses a CREATE TABLE SQL statement to extract column metadata.
-
-    Args:
-        create_table_query (str): The CREATE TABLE statement.
-
-    Returns:
-        TableSchema: A TableSchema object representing the table's structure.
-    """
-    parser = get_parser("sql")
-    tree = parser.parse(create_table_query.encode("utf-8"))
-    root = tree.root_node
-
-    table_name = None
-    columns: List[ColumnInfo] = []
-
-    def traverse(node: Node):
-        nonlocal table_name
-
-        # Identify and set the table name
-        if node.type == 'object_reference':
-            table_name = node.text.decode("utf-8")
-
-        # Extract column definitions
-        if node.type == "column_definition":
-            column_name = None
-            column_type = None
-            is_primary_key = False
-
-            # Parse column name, type, and constraints
-            # first child is the column name
-            if node.child_count > 0 and node.children[0].type == "identifier":
-                column_name = node.children[0].text.decode("utf-8")
-
-            # second child is the column type
-            if node.child_count > 1:
-                column_type = node.children[1].text.decode("utf-8")
-
-            if column_name and column_type:
-                columns.append(ColumnInfo(name=column_name, type=column_type, is_primary_key=is_primary_key))
-
-        # Parse table-level primary key constraints
-        if node.type == "table_constraint" and "primary key" in node.text.decode("utf-8").lower():
-            for child in node.children:
-                if child.type == "column_name":
-                    primary_key_column = child.text.decode("utf-8")
-                    for column in columns:
-                        if column.name == primary_key_column:
-                            column.is_primary_key = True
-
-        # Recursively visit child nodes
-        for child in node.children:
-            traverse(child)
-
-    traverse(root)
-
-    if table_name is None:
-        raise ValueError("Table name not found in the provided CREATE TABLE query.")
-
-    return TableSchema(table_name=table_name, columns=columns)
-
 
 
 def udf_get_table_name(query: str) -> Optional[str]:
@@ -125,16 +46,16 @@ def get_schemas_from_create_query():
     con.create_function("get_table_name", udf_get_table_name, null_handling="special")
 
 
-    n_tables_currently = con.execute(f"""
-        SELECT COUNT(*) FROM {TABLE_TABLE_NAME}
+    max_tables_id = con.execute(f"""
+        SELECT MAX(id) FROM {TABLE_TABLE_NAME}
     """).fetchone()[0]
-    print(f"Currently {n_tables_currently} tables in the database.")
+    print(f"Max table id: {max_tables_id}")
 
-    n_columns_currently = con.execute(f"""
-        SELECT COUNT(*) FROM {COLUMNS_TABLE_NAME}
+    max_columns_id = con.execute(f"""
+        SELECT MAX(id) FROM {COLUMNS_TABLE_NAME}
     """).fetchone()[0]
 
-    print(f"Currently {n_columns_currently} columns in the database.")
+    print(f"Max column id: {max_columns_id}")
 
 
     create_queries = con.execute(f"""
@@ -143,11 +64,12 @@ def get_schemas_from_create_query():
         JOIN repos ON queries.repo_id = repos.id
         WHERE get_table_name(queries.sql) IS NOT NULL
           AND queries.type = 'CREATE'
+          AND (repos.id = 11781 OR true)
           AND query_table_name IS NOT NULL 
           AND NOT EXISTS (
             SELECT 1
             FROM tables 
-            WHERE lower(tables.table_name_clean) = query_table_name
+            WHERE lower(tables.table_name_clean) = query_table_name and tables.repo_id = repos.id
           );
     """).fetchall()
 
@@ -175,7 +97,7 @@ def get_schemas_from_create_query():
 
             # insert the table schema into the database
             # columns:    id, repo_id, table_name, table_name_clean, file_url
-            table_id = n_tables_currently + n_new_tables
+            table_id = max_tables_id + n_new_tables
             con.execute(f"""
                 INSERT INTO {TABLE_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
                 VALUES (?, ?, ?, ?, ?)
@@ -189,7 +111,7 @@ def get_schemas_from_create_query():
                 column_type, base_type = unify_type(column_type_original)
                 semantic_type = get_column_semantic_type(column_name, base_type)
 
-                column_id = n_columns_currently + n_new_columns
+                column_id = max_columns_id + n_new_columns
 
                 con.execute(f"""
                     INSERT INTO {COLUMNS_TABLE_NAME} (
@@ -204,6 +126,8 @@ def get_schemas_from_create_query():
                 ))
 
         except Exception as e:
+            print(sql)
+            print(f"Error parsing CREATE TABLE query in repo {repo_url} ({repo_id}): {e}")
             n_erros += 1
 
     print(f"Parsed {len(create_queries)} CREATE TABLE queries.")

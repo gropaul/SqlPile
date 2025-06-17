@@ -1,8 +1,9 @@
+import logging
 import os
 import tqdm
 import duckdb
 
-from src.config import DATA_DIR, DATABASE_PATH
+from src.config import DATA_DIR, DATABASE_PATH, logger
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_types import unify_type
 
@@ -97,6 +98,15 @@ def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConn
             is_primary_key = column_value.get('IS_PRIMARY', False)
 
             semantic_type = get_column_semantic_type(column_key, base_type)
+
+            # check if the column already exists
+            # existing_column = con.execute(f"""
+            #             SELECT id FROM {COLUMNS_TABLE_NAME}
+            #             WHERE table_id = ? AND column_name = ?
+            #         """, (table_id, column_key)).fetchone()
+            # if existing_column is not None:
+            #     logger.warn(f"Column {column_key} already exists in table {table_key}. Skipping.")
+            #     continue
 
             con.execute(f"""
                         INSERT INTO {COLUMNS_TABLE_NAME} (

@@ -9,11 +9,12 @@ import requests
 from src.config import REPO_DIR, logger, PROCESS_ZIPPED_REPOS, REPO_HANDLING
 from src.sql_scraping.extract_sql import RepoAnalysisResult, FileAnalysisResult, extract_sql_from_repo
 
+allowed_providers = ['https://github', 'https://gitlab']
 
 def get_repo_name_and_url(repo_path) -> Tuple[str, str]:
     # make sure the repo_path is a valid GitHub URL
-    if not repo_path.startswith("https://github.com"):
-        raise ValueError("Invalid GitHub repository URL")
+    if not any(provider in repo_path for provider in allowed_providers):
+        raise ValueError("Invalid repository URL. Must be a GitHub or GitLab URL: " + repo_path)
 
     # remove https
     repo_path = repo_path.replace("https://", "")
@@ -21,7 +22,15 @@ def get_repo_name_and_url(repo_path) -> Tuple[str, str]:
     parts = repo_path.split('/')
     username = parts[1]
     repo_name = parts[2]
-    repo_url = f"https://github.com/{username}/{repo_name}"
+
+    if 'github' in repo_path:
+        # GitHub URL
+        repo_url = f"https://github.com/{username}/{repo_name}"
+    elif 'gitlab' in repo_path:
+        # GitLab URL
+        repo_url = f"https://gitlab.com/{username}/{repo_name}"
+    else:
+        raise ValueError("Unsupported repository provider. Only GitHub and GitLab are supported.")
 
     return repo_name, repo_url
 
@@ -152,8 +161,8 @@ def compress_all_repos_in_dir(repo_dir: str) -> None:
         for _ in tqdm(pool.imap(compress_repo, dir_paths), total=len(dir_paths), desc="Compressing repositories"):
             pass
 
-def analyse_repo(repo_path) -> Optional[RepoAnalysisResult]:
-    name, url = get_repo_name_and_url(repo_path)
+def analyse_repo(repo_url) -> Optional[RepoAnalysisResult]:
+    name, url = get_repo_name_and_url(repo_url)
 
     logger.info(f"Analysing {name}")
     logger.info(f"Repository URL: {url}")

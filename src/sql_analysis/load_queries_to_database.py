@@ -4,7 +4,7 @@ from typing import List
 import duckdb
 import pandas as pd
 
-from src.config import DATA_DIR, QUERIES_DIR, DATABASE_PATH, logger, COMBINED_QUERIES_PATH
+from src.config import DATA_DIR, QUERIES_DIR, DATABASE_PATH
 from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_TABLE_NAME, REPO_TABLE_NAME
 
 
@@ -38,21 +38,7 @@ def read_and_concat_parquet_files(file_paths: List[str]) -> pd.DataFrame:
     return result_df
 
 
-def get_combined_parquet_file(root: str, result_file: str):
-    try:
-        paths = get_all_parquet_files(root)
-        combined_df = read_and_concat_parquet_files(paths)
-        # Save the combined DataFrame to a new parquet file
-        combined_file_path = os.path.join(result_file)
-        combined_df.to_parquet(combined_file_path, index=False)
-
-        logger.info(f"Successfully combined {len(paths)} parquet files.")
-        logger.info(f"Combined DataFrame shape: {combined_df.shape}")
-    except Exception as e:
-        logger.error(f"Error combining parquet files: {str(e)}")
-
 def load_queries_to_database(ask: bool = True):
-
     # Ask the user if they want to (re)import the data, as the old data will be removed
     if ask:
         confirm = input(
@@ -66,37 +52,42 @@ def load_queries_to_database(ask: bool = True):
     db_path = os.path.join(DATABASE_PATH)
     queries_path = os.path.join(DATA_DIR, QUERIES_DIR)
 
-    get_combined_parquet_file(queries_path, COMBINED_QUERIES_PATH)
-
     con = duckdb.connect(db_path)
 
-
     view_query = f"""
-        CREATE OR REPLACE VIEW json_queries_tmp AS 
-        SELECT
-            repo_url, file_path, language as file_language,
-            unnest(queries, recursive := True)
-        FROM '{COMBINED_QUERIES_PATH}'
+        CREATE OR REPLACE VIEW parquet_queries_tmp AS (
+            WITH 
+                t1 AS (SELECT repo_name, repo_url, unnest(file_results) as file_results FROM '{QUERIES_DIR}/*/*.parquet'),
+                t2 AS (SELECT repo_name, repo_url, file_results FROM t1 WHERE length(file_results.queries) > 1),
+                t3 as (SELECT repo_name, repo_url, unnest(file_results) FROM t2)
+            SELECT repo_name, repo_url, language as file_language, file_path,
+                unnest(queries).type as type, unnest(queries).sql as sql , unnest(queries).line as line ,unnest(queries).text_context as text_context, unnest(queries).text_context_offset as text_context_offset
+                FROM t3
+        )
         """
     print(view_query)
     con.execute(view_query)
 
     # get the number of queries
-    count = con.execute("SELECT COUNT(*) FROM json_queries_tmp").fetchone()[0]
+    count = con.execute("SELECT COUNT(*) FROM parquet_queries_tmp").fetchone()[0]
     print(f"Found {count} queries to import.")
 
     # positional join with range(count) to add an id column
-    con.execute(f"CREATE OR REPLACE VIEW json_queries AS SELECT * FROM json_queries_tmp POSITIONAL JOIN (SELECT range as id FROM range(0, {count}))")
+    con.execute(f"""
+        CREATE OR REPLACE VIEW parquet_queries AS 
+        SELECT * FROM parquet_queries_tmp POSITIONAL 
+        JOIN (SELECT range as id FROM range(0, (SELECT COUNT(*) FROM parquet_queries_tmp)))
+    """)
 
     con.execute(f"DROP TABLE IF EXISTS {QUERIES_TABLE_NAME}")
     query = f"""
         CREATE TABLE {QUERIES_TABLE_NAME} AS (
-            SELECT js.id as id, repo.id as repo_id, js.file_path as file_path, js.sql as sql, js.line as line, js.file_language as file_language,
-            js.text_after as text_after, js.text_before as text_before, js.type as type
-            FROM json_queries as js
+            SELECT pq.id as id, repo.id as repo_id, pq.file_path as file_path, pq.sql as sql, pq.line as line, pq.file_language as file_language,
+            pq.text_context as text_context, pq.text_context_offset as text_context_offset, pq.type as type
+            FROM parquet_queries as pq
         JOIN {REPO_TABLE_NAME} AS repo 
-        ON js.repo_url = repo.repo_url 
-        ORDER BY js.id
+        ON pq.repo_url = repo.repo_url 
+        ORDER BY pq.id
         )"""
     print(query)
     con.execute(query)

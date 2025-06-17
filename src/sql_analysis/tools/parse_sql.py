@@ -79,7 +79,7 @@ class QueryAnalysisResult:
 # Debug helper
 # ---------------------------------------------------------------------------
 
-def print_recursive(node: Node, indent: int = 0) -> None:
+def print_recursive(node: Node, indent: int = 0, with_text: bool = True) -> None:
     """Pretty‑print the Tree‑sitter parse tree for debugging purposes."""
 
     text = ""
@@ -89,10 +89,10 @@ def print_recursive(node: Node, indent: int = 0) -> None:
         except UnicodeDecodeError:
             text = str(node.text)
 
-    print(" " * indent + f"{node.type} ({node.start_point}, {node.end_point}) - {text}")
+    print(" " * indent + f"{node.type} ({node.start_point}, {node.end_point}) {text if with_text else ''}")
 
     for child in node.children:
-        print_recursive(child, indent + 2)
+        print_recursive(child, indent + 2, with_text=with_text)
 
 
 # ---------------------------------------------------------------------------
