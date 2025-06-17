@@ -4,10 +4,12 @@ import pandas as pd
 import duckdb
 
 from src.config import DATABASE_PATH
+from src.sql_analysis.execution.mock_query import mock_parameters, try_to_mock_and_execute_query, MockQueryResult
+from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_for_duckdb
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, QUERIES_TABLE_NAME, \
     EXECUTABLE_QUERIES_TABLE_NAME
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type
-from src.sql_analysis.tools.extra_functions import EXTRA_FUNCTIONS
+from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 
 import re
 
@@ -17,63 +19,8 @@ error_df = pd.DataFrame(columns=['error_type', 'repo_id', 'repo_url', 'query_id'
 n_failed_table_creations = 0
 n_successful_table_creations = 0
 
-def prepare_sql_for_duckdb(sql: str) -> str:
-    # ddb does not support `these` marks, replace them with "these"
-    sql = sql.replace('`', '"')
-    # ddb does not support "> =" and "< =", replace them with ">=" and "<="
-    sql = sql.replace('> =', '>=')
-    sql = sql.replace('< =', '<=')
-    sql = sql.replace('! =', '!=')
-
-    # ddb date format is called 'strftime'
-    sql = sql.replace('date_format', 'strftime')
-
-    # Replace MySQL-style LIMIT X, Y with LIMIT Y OFFSET X
-    def replace_limit(match):
-        offset = match.group(1).strip()
-        limit = match.group(2).strip()
-        return f'limit {limit} offset {offset}'
-
-    sql = re.sub(r'limit\s+(\d+)\s*,\s*(\d+)', replace_limit, sql, flags=re.IGNORECASE)
-
-    # Replace MySQL-style RAND() with RANDOM()
-    sql = re.sub(r'\brand\s*\(\s*\)', 'random()', sql, flags=re.IGNORECASE)
-
-    return sql
-
-
 from typing import List, Literal
 from itertools import product
-
-MockType = Literal['int', 'float', 'str']
-
-# Define mock values for each type
-mock_values = {
-    'int': '42',
-    'float': '3.14',
-    'str': "'example'",
-}
-# Returns all mock queries with parameters inserted
-def mock_parameters(sql: str) -> List[str]:
-    count = sql.count('?')
-
-    if count == 0:
-        return [sql]
-
-    # Generate all possible combinations of mock values
-    options_per_param = [list(mock_values.values())] * count
-    combinations = product(*options_per_param)
-
-    # Interpolate each combination into the SQL string
-    queries = []
-    for combo in combinations:
-        query = sql
-        for value in combo:
-            query = query.replace('?', value, 1)
-        queries.append(query)
-
-    return queries
-
 
 class Column:
     def __init__(self, column_id: int, column_name: str, column_base_type: str):
@@ -173,6 +120,10 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
     return tables
 
 
+def escape_sql(sql: str) -> str:
+    # Escape single quotes by replacing them with two single quotes
+    return sql.replace("'", "''")
+
 def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection, n_sucessful_so_far:int, tables: List[Table]) -> Tuple[int, int]:
 
     queries = con.execute(f"""
@@ -182,22 +133,22 @@ def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
         AND type IN ('SELECT')
     """, (repo_id,)).fetchall()
 
-    n_sucessful = 0
+    n_successful = 0
     n_failed = 0
 
     for query_id, sql in queries:
         sql_prepared = prepare_sql_for_duckdb(sql)
-        try:
-            sandbox_con.execute(sql_prepared)
-            executable_id = n_sucessful_so_far + n_sucessful + 1
-            insert_query = f"""
-                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id)
-                VALUES ({executable_id}, {query_id})
-            """
-            con.execute(insert_query, )
-            n_sucessful += 1
+        result: MockQueryResult = try_to_mock_and_execute_query(sql_prepared, sandbox_con)
 
-        except Exception as e:
+        if result.was_successful():
+            executable_id = n_sucessful_so_far + n_successful + 1
+            insert_query = f"""
+                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, runnable_sql)
+                VALUES ({executable_id}, {query_id}, '{escape_sql(result.query)}')
+            """
+            con.execute(insert_query)
+            n_successful += 1
+        else:
             global error_df
             error_df = pd.concat([error_df, pd.DataFrame([{
                 'error_type': 'query_execution',
@@ -205,13 +156,13 @@ def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
                 'repo_url': repo_url,
                 'query_id': query_id,
                 'table_name': None,
-                'error_message': str(e),
+                'error_message': str(result.error),
                 'sql': sql_prepared
             }])], ignore_index=True)
             n_failed += 1
             continue
 
-    return n_sucessful, n_failed
+    return n_successful, n_failed
 
 
 
@@ -224,7 +175,6 @@ def iterate_through_repos():
         FROM repos
         JOIN queries ON repos.id = queries.repo_id
         WHERE queries.type IN ('SELECT')
-        AND repo_id = 6044
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
     """).fetchall()
@@ -236,7 +186,8 @@ def iterate_through_repos():
     con.execute(f"""
         CREATE OR REPLACE TABLE {EXECUTABLE_QUERIES_TABLE_NAME} (
             id BIGINT {primary_key()},
-            query_id BIGINT {foreign_key(QUERIES_TABLE_NAME, 'id')}
+            query_id BIGINT {foreign_key(QUERIES_TABLE_NAME, 'id')},
+            runnable_sql VARCHAR
         )
     """)
 
