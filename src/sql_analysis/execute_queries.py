@@ -4,15 +4,16 @@ import pandas as pd
 import duckdb
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH
+from src.config import DATABASE_PATH, LOG_DIR
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_for_duckdb
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, QUERIES_TABLE_NAME, \
     EXECUTABLE_QUERIES_TABLE_NAME
-from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type
+from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 
+import json
 import re
 
 # Create a DataFrame to store errors
@@ -44,7 +45,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
 
     for table_id, table_name, columns in tables_with_columns:
 
-        def quote_name(column_name: str) -> str:
+        def quote(column_name: str) -> str:
             # if the column name has ` or ' in it, replace them with double quotes
             column_name = column_name.replace('`', '"').replace("'", '"')
 
@@ -59,21 +60,37 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
             # if it does, create the schema if it doesn't exist
             schema_name, name_without_schema = table_name.split('.', 1)
 
-            complete_quoted_table_name = f'{quote_name(schema_name)}.{quote_name(name_without_schema)}'
-            sandbox_con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_name(schema_name)}")
+            complete_quoted_table_name = f'{quote(schema_name)}.{quote(name_without_schema)}'
+            sandbox_con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote(schema_name)}")
 
         else:
-            complete_quoted_table_name = quote_name(table_name)
+            complete_quoted_table_name = quote(table_name)
 
         try:
-            sql_statement = f"""
+            create_statement = f"""
                  CREATE TABLE IF NOT EXISTS {complete_quoted_table_name} ({
             ',\n'.join(
-                f'{quote_name(column['column_name'])} {base_type_to_duckdb_type(column['column_base_type'])}'
+                f'{quote(column['column_name'])} {base_type_to_duckdb_type(column['column_base_type'])}'
                 for column in columns)
             })"""
-            sql_statement = prepare_sql_for_duckdb(sql_statement)
-            sandbox_con.execute(sql_statement)
+            create_statement = prepare_sql_for_duckdb(create_statement)
+            sandbox_con.execute(create_statement)
+
+            # insert one valid and one null value into each table to confuse the optimizer
+            # INSERT INTO table_name (column1, column2, column3, ...)
+            # VALUES (value1, value2, value3, ...);
+
+            columns_list = ', '.join(quote(column['column_name']) for column in columns)
+            values_list = ', '.join(base_type_to_example_value(column['column_base_type']) for column in columns)
+            null_list = ', '.join('NULL' for _ in columns)
+
+            insert_statement = f"""
+            INSERT INTO {complete_quoted_table_name} ({columns_list})
+            VALUES ({values_list}), ({null_list});
+            """
+
+            sandbox_con.execute(insert_statement)
+
             table = Table(table_id, complete_quoted_table_name,
                           [Column(column['id'], column['column_name'], column['column_base_type']) for column in
                            columns])
@@ -82,17 +99,17 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
             n_successful_table_creations += 1
         except Exception as e: #`trivia_user_cache`
             print(f"Error creating table {complete_quoted_table_name} in repository {repo_id} - {repo_url}: {e}")
-            print(f"SQL Statement: {sql_statement}")
+            print(f"SQL Statement: {create_statement}")
             # Add error to DataFrame
             global error_df
             error_df = pd.concat([error_df, pd.DataFrame([{
-                'error_type': 'table_creation',
+            'error_type': 'table_creation',
                 'repo_id': repo_id,
                 'repo_url': repo_url,
                 'query_id': None,
                 'table_name': complete_quoted_table_name,
                 'error_message': str(e),
-                'sql': sql_statement
+                'sql': create_statement
             }])], ignore_index=True)
 
             global n_failed_table_creations
@@ -103,7 +120,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
     return tables
 
 
-def escape_sql(sql: str) -> str:
+def escape_string(sql: str) -> str:
     # Escape single quotes by replacing them with two single quotes
     return sql.replace("'", "''")
 
@@ -126,8 +143,11 @@ def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
         if result.was_successful():
             executable_id = n_sucessful_so_far + n_successful + 1
             insert_query = f"""
-                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, runnable_sql)
-                VALUES ({executable_id}, {query_id}, '{escape_sql(result.query)}')
+                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, runnable_sql, logical_plan, logical_plan_optimized, physical_plan)
+                VALUES ({executable_id}, {query_id}, '{escape_string(result.query)}', 
+                '{escape_string(json.dumps(result.logical_plan))}', 
+                '{escape_string(json.dumps(result.logical_plan_optimized))}', 
+                '{escape_string(json.dumps(result.physical_plan))}')
             """
             con.execute(insert_query)
             n_successful += 1
@@ -171,7 +191,10 @@ def iterate_through_repos():
         CREATE OR REPLACE TABLE {EXECUTABLE_QUERIES_TABLE_NAME} (
             id BIGINT {primary_key()},
             query_id BIGINT {foreign_key(QUERIES_TABLE_NAME, 'id')},
-            runnable_sql VARCHAR
+            runnable_sql VARCHAR,
+            logical_plan JSON,
+            logical_plan_optimized JSON,
+            physical_plan JSON
         )
     """)
 
@@ -198,8 +221,7 @@ def iterate_through_repos():
     # Save error DataFrame to CSV
     if not error_df.empty:
         # Create directory if it doesn't exist
-        os.makedirs('logs', exist_ok=True)
-        csv_path = os.path.join('logs', 'sql_execution_errors.csv')
+        csv_path = os.path.join(LOG_DIR, 'sql_execution_errors.csv')
         error_df.to_csv(csv_path, index=False)
         print(f"Error log saved to {csv_path}")
     else:

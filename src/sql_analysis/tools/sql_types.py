@@ -67,6 +67,35 @@ def base_type_to_duckdb_type(base_type: BaseType) -> str:
     else:
         return "OTHER"  # Fallback for unrecognized types
 
+def base_type_to_example_value(base_type: BaseType) -> str:
+    """
+    Returns an example value for a given base type.
+    """
+    if base_type == "Int":
+        return "42"
+    elif base_type == "Float":
+        return "3.14"
+    elif base_type == "Text":
+        return "'example text'"
+    elif base_type == "Boolean":
+        return "TRUE"
+    elif base_type == "DateTime":
+        return "'2023-10-01 12:00:00'"
+    elif base_type == "Binary":
+        return "'\\xDEADBEEF'"  # Example binary data
+    elif base_type == "JSON":
+        return '{"key": "value"}'
+    elif base_type == "UUID":
+        return "'123e4567-e89b-12d3-a456-426614174000'"
+    elif base_type == "XML":
+        return "<root><element>value</element></root>"
+    elif base_type == "Enum":
+        return "'enum_value'"
+    elif base_type == "ARRAY":
+        return "[1, 2, 3]"
+    else:
+        return "NULL"  # Fallback for unrecognized types
+
 def unify_type(raw_type: str) -> Tuple[str, BaseType]:
     """
     returns the canonical type name and a basic type category

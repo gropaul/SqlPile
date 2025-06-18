@@ -1,5 +1,5 @@
 from itertools import product
-from typing import Literal, List, Optional
+from typing import Literal, List, Optional, Dict
 import json
 import duckdb
 from sqloxide import parse_sql, mutate_expressions
@@ -16,6 +16,7 @@ mock_values = {
     'str': "'example'",
 }
 
+
 class MockParameter:
     def __init__(self, start: int, end: int, type_order: List[MockType]):
         self.start = start
@@ -23,19 +24,24 @@ class MockParameter:
         self.type_order = type_order
         self.current_index = 0
 
+
 # Returns all mock queries with parameters inserted
 class MockQueryResult:
-    def __init__(self, query: Optional[str], error: Optional[Exception] = None):
+    def __init__(self, query: Optional[str], error: Optional[Exception] = None,
+                 logical_plan: Optional[Dict] = None,
+                 logical_plan_optimized: Optional[Dict] = None,
+                 physical_plan: Optional[Dict] = None):
         self.query = query
         self.error = error
+        self.logical_plan = logical_plan
+        self.logical_plan_optimized = logical_plan_optimized
+        self.physical_plan = physical_plan
 
     def __repr__(self):
         return f"MockQueryResult(query={self.query}, error={self.error})"
 
     def was_successful(self) -> bool:
         return self.query is not None
-
-
 
 
 def visit_placeholders_turn_null(expr):
@@ -52,34 +58,41 @@ def visit_placeholders_turn_null(expr):
 
 
 def try_to_mock_and_execute_query(sql: str, con: duckdb.DuckDBPyConnection, tables: List[Table]) -> MockQueryResult:
-
     successful_query = None
     last_error = None
+
+    logical_plan_json = None
+    logical_plan_optimized = None
+    physical_plan = None
 
     # we need to disable filter_pushdown, filter_pushdown as long as we mock values with null as this leads to
     # empty results opimization in duckdb
     explain_wrapper = """
         PRAGMA explain_output = 'all';
-        SET disabled_optimizers = 'empty_result_pullup,statistics_propagation,filter_pushdown,filter_pushdown';
+        SET disabled_optimizers = '';
+        SET disabled_optimizers = 'empty_result_pullup,statistics_propagation,filter_pushdown';
         EXPLAIN (FORMAT json) """
     try:
         ast = parse_sql(sql=sql, dialect='generic')
         nulled_sql = mutate_expressions(parsed_query=ast, func=visit_placeholders_turn_null)[0]
         explain_sql = explain_wrapper + nulled_sql
         result = con.execute(explain_sql).fetchall()
-        logical_plan_str = result[1][1]
+        logical_plan_str = result[0][1]
+        logical_plan_optimized_str = result[1][1]
+        physical_plan_str = result[2][1]
+
         logical_plan_json = json.loads(logical_plan_str)[0]
-        # print query and logical plan
-        logger.info(f"Executing query: {sql}")
-        logger.info(f"Logical plan: \n{json.dumps(logical_plan_json, indent=2)}")
-
-
+        logical_plan_optimized = json.loads(logical_plan_optimized_str)[0]
+        physical_plan = json.loads(physical_plan_str)[0]
         successful_query = sql
     except Exception as e:
         last_error = e
         logger.error(f"Error executing query: {e}")
 
-    return MockQueryResult(query=successful_query, error=last_error)
+    return MockQueryResult(query=successful_query, error=last_error,
+                           logical_plan=logical_plan_json,
+                           logical_plan_optimized=logical_plan_optimized,
+                           physical_plan=physical_plan)
 
 
 example_sql = "SELECT * FROM my_table WHERE name = :name"
