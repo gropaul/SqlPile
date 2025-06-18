@@ -15,8 +15,8 @@ TABLE_TABLE_NAME = 'tables'
 COLUMNS_TABLE_NAME = 'columns'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
 QUERIES_TABLE_NAME = 'queries'
-EXECUTABLE_QUERIES_TABLE_NAME = 'executable_queries'
-
+EXECUTABLE_QUERIES_TABLE_NAME = 'queries_executable'
+ERROR_TABLE_NAME = 'queries_error'
 repo_id_counter = 0
 table_id_counter = 0
 column_id_counter = 0

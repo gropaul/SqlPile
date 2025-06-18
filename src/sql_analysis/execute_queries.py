@@ -1,31 +1,28 @@
+import json
+from typing import List, Optional
 from typing import Tuple
-import os
-import pandas as pd
+
 import duckdb
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH, LOG_DIR
+from src.config import DATABASE_PATH
+from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
 from src.sql_analysis.execution.models import Table, Column
-from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_for_duckdb
+from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, QUERIES_TABLE_NAME, \
-    EXECUTABLE_QUERIES_TABLE_NAME
+    EXECUTABLE_QUERIES_TABLE_NAME, REPO_TABLE_NAME, ERROR_TABLE_NAME
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
-from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 
-import json
-import re
+# Define the error table name
 
-# Create a DataFrame to store errors
-error_df = pd.DataFrame(columns=['error_type', 'repo_id', 'repo_url', 'query_id', 'table_name', 'error_message', 'sql'])
+
+# Counter for error IDs
+error_id_counter = 0
+success_id_counter = 0
 
 n_failed_table_creations = 0
 n_successful_table_creations = 0
-
-from typing import List, Literal
-from itertools import product
-
-
 
 def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
 
@@ -73,7 +70,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
                 f'{quote(column['column_name'])} {base_type_to_duckdb_type(column['column_base_type'])}'
                 for column in columns)
             })"""
-            create_statement = prepare_sql_for_duckdb(create_statement)
+            create_statement = prepare_sql_statically(create_statement)
             sandbox_con.execute(create_statement)
 
             # insert one valid and one null value into each table to confuse the optimizer
@@ -98,33 +95,21 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
             global n_successful_table_creations
             n_successful_table_creations += 1
         except Exception as e: #`trivia_user_cache`
-            print(f"Error creating table {complete_quoted_table_name} in repository {repo_id} - {repo_url}: {e}")
-            print(f"SQL Statement: {create_statement}")
-            # Add error to DataFrame
-            global error_df
-            error_df = pd.concat([error_df, pd.DataFrame([{
-            'error_type': 'table_creation',
-                'repo_id': repo_id,
-                'repo_url': repo_url,
-                'query_id': None,
-                'table_name': complete_quoted_table_name,
-                'error_message': str(e),
-                'sql': create_statement
-            }])], ignore_index=True)
 
             global n_failed_table_creations
             n_failed_table_creations += 1
             continue
-
-    print(f"Created {len(tables)} tables in repository {repo_id} - {repo_url}")
     return tables
 
 
-def escape_string(sql: str) -> str:
+def escape_string(sql: Optional[str]) -> Optional[str]:
+
+    if sql is None:
+        return None
     # Escape single quotes by replacing them with two single quotes
     return sql.replace("'", "''")
 
-def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection, n_sucessful_so_far:int, tables: List[Table]) -> Tuple[int, int]:
+def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table]):
 
     queries = con.execute(f"""
         SELECT id, sql 
@@ -133,39 +118,33 @@ def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
         AND type IN ('SELECT')
     """, (repo_id,)).fetchall()
 
-    n_successful = 0
-    n_failed = 0
-
     for query_id, sql in queries:
-        sql_prepared = prepare_sql_for_duckdb(sql)
+        sql_prepared = prepare_sql_statically(sql)
         result: MockQueryResult = try_to_mock_and_execute_query(sql_prepared, sandbox_con, tables)
 
         if result.was_successful():
-            executable_id = n_sucessful_so_far + n_successful + 1
+            global success_id_counter
+            success_id_counter += 1
             insert_query = f"""
-                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, runnable_sql, logical_plan, logical_plan_optimized, physical_plan)
-                VALUES ({executable_id}, {query_id}, '{escape_string(result.query)}', 
+                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, physical_plan)
+                VALUES ({success_id_counter}, {query_id}, '{escape_string(result.original_query)}', '{escape_string(result.executable_sql)}', 
                 '{escape_string(json.dumps(result.logical_plan))}', 
                 '{escape_string(json.dumps(result.logical_plan_optimized))}', 
                 '{escape_string(json.dumps(result.physical_plan))}')
             """
             con.execute(insert_query)
-            n_successful += 1
         else:
-            global error_df
-            error_df = pd.concat([error_df, pd.DataFrame([{
-                'error_type': 'query_execution',
-                'repo_id': repo_id,
-                'repo_url': repo_url,
-                'query_id': query_id,
-                'table_name': None,
-                'error_message': str(result.error),
-                'sql': sql_prepared
-            }])], ignore_index=True)
-            n_failed += 1
+            global error_id_counter
+            error_id_counter += 1
+            con.execute(f"""
+                INSERT INTO {ERROR_TABLE_NAME} (
+                    id, repo_id, repo_url, query_id, error_message, original_sql, executable_sql
+                ) VALUES (
+                    {error_id_counter}, {repo_id}, '{escape_string(repo_url)}', {query_id}, 
+                    '{escape_string(str(result.error))}', '{escape_string(result.original_query)}', '{escape_string(result.executable_sql)}'
+                )
+            """)
             continue
-
-    return n_successful, n_failed
 
 
 
@@ -183,47 +162,67 @@ def iterate_through_repos():
         HAVING COUNT(queries.id) > 0
     """).fetchall()
 
-    n_sucessful = 0
-    n_failed = 0
-
     # create executable_queries table if it doesn't exist
     con.execute(f"""
         CREATE OR REPLACE TABLE {EXECUTABLE_QUERIES_TABLE_NAME} (
             id BIGINT {primary_key()},
             query_id BIGINT {foreign_key(QUERIES_TABLE_NAME, 'id')},
-            runnable_sql VARCHAR,
+            original_sql VARCHAR,
+            executable_sql VARCHAR,
             logical_plan JSON,
             logical_plan_optimized JSON,
             physical_plan JSON
         )
     """)
 
-    for repo_id, repo_url, cnt in tqdm(repos, desc="Processing repositories", unit="repo"):
-        print(f"Processing repository {repo_id} - {repo_url}")
+    # create error table if it doesn't exist
+    con.execute(f"""
+        CREATE OR REPLACE TABLE {ERROR_TABLE_NAME} (
+            id BIGINT {primary_key()},
+            repo_id BIGINT {foreign_key(REPO_TABLE_NAME, 'id')},
+            repo_url VARCHAR,
+            query_id BIGINT,
+            error_message VARCHAR,
+            original_sql VARCHAR,
+            executable_sql VARCHAR,
+        )
+    """)
 
-        sandbox_con = duckdb.connect()
+    error_count = 0
+    success_count = 0
 
-        # add all the macros from EXTRA_FUNCTIONS
-        for function in EXTRA_FUNCTIONS:
-            sandbox_con.execute(function)
+    with tqdm(repos, desc="Processing repositories", unit="repo") as pbar:
+        for repo_id, repo_url, cnt in pbar:
+            sandbox_con = duckdb.connect()
 
-        tables = create_tables(repo_id, repo_url, con, sandbox_con)
-        n_success_run, n_error_run = execute_queries(repo_id, repo_url, con, sandbox_con, n_sucessful, tables)
+            # Add all the macros from EXTRA_FUNCTIONS
+            for function in EXTRA_FUNCTIONS:
+                sandbox_con.execute(function)
 
-        n_sucessful += n_success_run
-        n_failed += n_error_run
+            tables = create_tables(repo_id, repo_url, con, sandbox_con)
+            execute_queries(repo_id, repo_url, con, sandbox_con, tables)
+            sandbox_con.close()
 
-        sandbox_con.close()
-        print(f"Executed {n_success_run}/{n_success_run+n_error_run} queries in repository {repo_id} - {repo_url}")
-        print(f"Total successful queries: {n_sucessful}, Total failed queries: {n_failed}")
-        print(f"Total successful table creations: {n_successful_table_creations}, Total failed table creations: {n_failed_table_creations}")
+            # Update counts
+            error_count = con.execute(f"SELECT COUNT(*) FROM {ERROR_TABLE_NAME}").fetchone()[0]
+            success_count = con.execute(f"SELECT COUNT(*) FROM {EXECUTABLE_QUERIES_TABLE_NAME}").fetchone()[0]
+            total = success_count + error_count
 
-    # Save error DataFrame to CSV
-    if not error_df.empty:
-        # Create directory if it doesn't exist
-        csv_path = os.path.join(LOG_DIR, 'sql_execution_errors.csv')
-        error_df.to_csv(csv_path, index=False)
-        print(f"Error log saved to {csv_path}")
+            # Dynamically update tqdm description
+            percent_success = (success_count / total * 100) if total > 0 else 0
+            pbar.set_postfix({
+                'Success Rate': f"{percent_success:.2f}%",
+                'Success Count': success_count,
+            })
+
+
+    # Print the failed table creation statistics
+    print(f"Failed to create {n_failed_table_creations} tables, successfully created {n_successful_table_creations} tables.")
+
+    # Check if any errors were recorded
+    print(f"Successfully executed {success_count} queries across all repositories")
+    if error_count > 0:
+        print(f"{error_count} errors were recorded in the {ERROR_TABLE_NAME} table")
     else:
         print("No errors occurred during execution")
 

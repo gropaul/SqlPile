@@ -60,7 +60,7 @@ def load_queries_to_database(ask: bool = True):
                 t1 AS (SELECT repo_name, repo_url, unnest(file_results) as file_results FROM '{QUERIES_DIR}/*/*.parquet'),
                 t2 AS (SELECT repo_name, repo_url, file_results FROM t1 WHERE length(file_results.queries) > 1),
                 t3 as (SELECT repo_name, repo_url, unnest(file_results) FROM t2)
-            SELECT repo_name, repo_url, language as file_language, file_path,
+            SELECT repo_name, repo_url, language as file_language, file_path, header,
                 unnest(queries).type as type, unnest(queries).sql as sql , unnest(queries).line as line ,unnest(queries).text_context as text_context, unnest(queries).text_context_offset as text_context_offset
                 FROM t3
         )
@@ -82,7 +82,7 @@ def load_queries_to_database(ask: bool = True):
     con.execute(f"DROP TABLE IF EXISTS {QUERIES_TABLE_NAME}")
     query = f"""
         CREATE TABLE {QUERIES_TABLE_NAME} AS (
-            SELECT pq.id as id, repo.id as repo_id, pq.file_path as file_path, pq.sql as sql, pq.line as line, pq.file_language as file_language,
+            SELECT pq.id as id, repo.id as repo_id, pq.file_path as file_path, pq.header as header, pq.sql as sql, pq.line as line, pq.file_language as file_language,
             pq.text_context as text_context, pq.text_context_offset as text_context_offset, pq.type as type
             FROM parquet_queries as pq
         JOIN {REPO_TABLE_NAME} AS repo 

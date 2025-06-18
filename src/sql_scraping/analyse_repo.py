@@ -7,7 +7,8 @@ from typing import Tuple, Optional, List
 import requests
 
 from src.config import REPO_DIR, logger, PROCESS_ZIPPED_REPOS, REPO_HANDLING
-from src.sql_scraping.extract_sql import RepoAnalysisResult, FileAnalysisResult, extract_sql_from_repo
+from src.sql_scraping.extract_sql import RepoAnalysisResult, FileAnalysisResult, extract_sql_from_repo, MetaDataFile, \
+    META_DATA_FILE_ENDINGS, MAX_METADATA_FILE_SIZE
 
 allowed_providers = ['https://github', 'https://gitlab']
 
@@ -161,6 +162,33 @@ def compress_all_repos_in_dir(repo_dir: str) -> None:
         for _ in tqdm(pool.imap(compress_repo, dir_paths), total=len(dir_paths), desc="Compressing repositories"):
             pass
 
+
+def get_metadata_from_repo(repo_path: str) -> List[MetaDataFile]:
+
+    # get all metadata files in the repository root directory that have the metadata extensions, only take them
+    # if they are below MAX_METADATA_FILE_SIZE
+
+    files_in_repo = os.listdir(repo_path)
+    endings = META_DATA_FILE_ENDINGS
+    metadata_files = [f for f in files_in_repo if any(f.endswith(ending) for ending in endings)]
+
+    metadata_files = [os.path.join(repo_path, f) for f in metadata_files]
+    metadata_files = [f for f in metadata_files if os.path.getsize(f) < MAX_METADATA_FILE_SIZE]
+    metadata: List[MetaDataFile] = []
+    for metadata_file in metadata_files:
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            file_type = os.path.splitext(metadata_file)[1].lower()
+            metadata.append(MetaDataFile(file_path=metadata_file, content=content, file_type=file_type))
+        except Exception as e:
+            logger.error(f"Error reading metadata file {metadata_file}: {e}")
+
+    return metadata
+
+
+
 def analyse_repo(repo_url) -> Optional[RepoAnalysisResult]:
     name, url = get_repo_name_and_url(repo_url)
 
@@ -181,6 +209,12 @@ def analyse_repo(repo_url) -> Optional[RepoAnalysisResult]:
     queries_count = sum(len(file_result.queries) for file_result in results)
     logger.info(f"Extracted {queries_count} SQL queries from {len(results)} files in from repository {name}.")
 
+    if queries_count > 0:
+        meta_data = get_metadata_from_repo(repo_dir)
+    else:
+        meta_data = []
+
+
     if REPO_HANDLING == 'delete_after_processing':
         delete_repo(name)
     elif REPO_HANDLING == 'compress_after_processing':
@@ -192,10 +226,12 @@ def analyse_repo(repo_url) -> Optional[RepoAnalysisResult]:
     else:
         logger.info(f"Keeping repository {name} at {repo_dir} for further analysis.")
 
+
     return RepoAnalysisResult(
         repo_name=name,
         repo_url=url,
         file_results=results,
+        metadata_files=meta_data
     )
 
 

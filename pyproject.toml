@@ -20,6 +20,10 @@ pandas = "^2.3.0"
 pyarrow = "^20.0.0"
 notebook = "^7.4.3"
 sqloxide = "^0.1.56"
+langchain = "^0.3.25"
+langchain-community = "^0.3.25"
+langchain-ollama = "^0.3.3"
+langchain-openai = "^0.3.24"
 
 
 [build-system]

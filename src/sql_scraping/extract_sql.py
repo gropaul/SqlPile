@@ -5,11 +5,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from typing import List, Optional, Dict, Callable
+from typing import List, Optional, Dict, Callable, Literal
 
-from anyio import sleep
-
-from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR, ONLY_SCRAPE_SELECT_QUERIES
+from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR, ONLY_SCRAPE_SELECT_QUERIES, HEADER_N_LINES
 from src.sql_scraping.extract_strings import extract_strings, ExtractedString
 from src.sql_scraping.string_utils import tidy_up_query, split_sql_statements
 
@@ -29,15 +27,22 @@ query_schema = pa.struct([
 file_result_schema = pa.struct([
     ('file_path', pa.string()),
     ('language', pa.string()),
+    ('header', pa.string()),
     ('queries', pa.list_(query_schema))
+])
+
+meta_data_file_schema = pa.struct([
+    ('file_path', pa.string()),
+    ('file_type', pa.string()),
+    ('content', pa.string())
 ])
 
 repo_result_schema = pa.schema([
     ('repo_name', pa.string()),
     ('repo_url', pa.string()),
-    ('file_results', pa.list_(file_result_schema))
+    ('file_results', pa.list_(file_result_schema)),
+    ('metadata_files', pa.list_(meta_data_file_schema))
 ])
-
 
 
 @dataclass
@@ -45,22 +50,25 @@ class SqlExtractionParams:
     """Helper data class for SQL extraction parameters."""
     tables: Optional[List[str]] = None
     columns: Optional[List[str]] = None
+    header: Optional[str] = None
     file_filter: Optional[Callable[[str], bool]] = None
 
 
 class FileAnalysisResult:
     """Data class to represent the result of a file analysis."""
 
-    def __init__(self, file_path: str, queries: List['ExtractedQuery']):
+    def __init__(self, file_path: str, queries: List['ExtractedQuery'], header: Optional[str]):
         self.file_path = file_path
         self.queries = queries
         self.language = file_path.split('.')[-1] if '.' in file_path else 'unknown'
+        self.header = header if header else ''
 
     def to_dict(self) -> Dict[str, List[Dict[str, str]]]:
         """Convert the FileAnalysisResult instance to a dictionary."""
         return {
             'file_path': self.file_path,
             'language': self.language,
+            'header': self.header,
             'queries': [query.to_dict() for query in self.queries],
         }
 
@@ -111,13 +119,38 @@ def get_dir_for_url(repo_url: str) -> str:
     storage_dir_name = os.path.join(QUERIES_DIR, storage_dir_name)
     return storage_dir_name
 
+
+META_DATA_FILE_ENDINGS = ['.json', '.yaml', '.yml', '.txt', '.md']
+MetaDataFileEnding = Literal[tuple(META_DATA_FILE_ENDINGS)]  # type: ignore
+
+MAX_METADATA_FILE_SIZE = 1 * 1024 * 1024  # 1 MB
+
+class MetaDataFile:
+    """Class to handle metadata files in a repository."""
+
+    def __init__(self, file_path: str, file_type: MetaDataFileEnding, content: str):
+        self.file_path = file_path
+        self.file_type = file_type
+        self.content = content
+
+    def to_dict(self) -> Dict[str, str]:
+        """Convert the MetaDataFile instance to a dictionary."""
+        return {
+            'file_path': self.file_path,
+            'file_type': self.file_type,
+            'content': self.content
+        }
+
+
 class RepoAnalysisResult:
     """Data class to represent the result of a repository analysis."""
 
-    def __init__(self, repo_name: str, repo_url: str, file_results: List[FileAnalysisResult]):
+    def __init__(self, repo_name: str, repo_url: str, file_results: List[FileAnalysisResult],
+                 metadata_files: List[MetaDataFile]):
         self.repo_name = repo_name
         self.repo_url = repo_url
         self.file_results = file_results
+        self.metadata_files = metadata_files
 
     def get_number_of_queries(self) -> int:
         """Get the total number of SQL queries extracted from the repository."""
@@ -128,7 +161,8 @@ class RepoAnalysisResult:
         return {
             'repo_name': self.repo_name,
             'repo_url': self.repo_url,
-            'file_results': [file_result.to_dict() for file_result in self.file_results]
+            'file_results': [file_result.to_dict() for file_result in self.file_results],
+            'metadata_files': [metadata_file.to_dict() for metadata_file in self.metadata_files]
         }
 
     def to_json(self) -> str:
@@ -144,13 +178,12 @@ class RepoAnalysisResult:
         logger.info(f"Saving analysis result for {self.repo_name} to {QUERIES_DIR}.")
 
         if storage_dir is not None:
-            storage_dir_name =  storage_dir
+            storage_dir_name = storage_dir
         else:
             storage_dir_name = get_dir_for_url(self.repo_url)
             # create a dir if it does not exist
             if not os.path.exists(storage_dir_name):
                 os.makedirs(storage_dir_name, exist_ok=True)
-
 
         storage_path = os.path.join(storage_dir_name, f"{self.repo_name}_analysis.parquet")
 
@@ -161,14 +194,15 @@ class RepoAnalysisResult:
         pq.write_table(table, storage_path)
 
 
-def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtractionParams] = None) -> FileAnalysisResult:
+def extract_sql_queries(file_path: str, repo_url: str,
+                        params: Optional[SqlExtractionParams] = None) -> FileAnalysisResult:
     if not os.path.exists(file_path):
         logger.error(f"File {file_path} does not exist.")
-        return FileAnalysisResult(file_path, [])
+        return FileAnalysisResult(file_path, [], header=None)
 
     if not any(file_path.endswith(ext) for ext in SOURCE_CODE_FILE_EXTENSIONS):
         logger.warning(f"File {file_path} is not a recognized source code file.")
-        return FileAnalysisResult(file_path, [])
+        return FileAnalysisResult(file_path, [], header=None)
 
     # Initialize parameters if not provided
     if params is None:
@@ -180,7 +214,7 @@ def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtra
             content = file.read()
     except Exception as e:
         logger.error(f"Error reading file {file_path}: {e}")
-        return FileAnalysisResult(file_path,  [])
+        return FileAnalysisResult(file_path, [], header=None)
 
     # Extract SQL functions based on file extension
 
@@ -190,8 +224,14 @@ def extract_sql_queries(file_path: str, repo_url: str, params: Optional[SqlExtra
     # else:
     # For other source code files, extract SQL strings
     sql_queries = extract_sql_from_source_code(content, file_path, params)
+    header = None
 
-    return FileAnalysisResult(file_path, sql_queries)
+    if len(sql_queries) > 0:
+        content_lines = content.split('\n')
+        n_lines = min(len(content_lines), HEADER_N_LINES)
+        header = '\n'.join(content_lines[:n_lines])  # Get the first 10 lines as header
+
+    return FileAnalysisResult(file_path, sql_queries, header=header)
 
 
 def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtractionParams) -> List[ExtractedQuery]:
@@ -201,7 +241,7 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
     # if the file is a sql file, we can directly extract the SQL statements, split them by semicolon
     if file_path.endswith('.sql'):
         splitted_statements = split_sql_statements(content)
-        extracted_strings: List[ExtractedString] =  [
+        extracted_strings: List[ExtractedString] = [
             ExtractedString(
                 string=statement,
                 text_context='',
@@ -218,7 +258,6 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
 
     for extracted_string in extracted_strings:
 
-
         extracted_string.tidy_up()
 
         if len(extracted_string.string) == 0:
@@ -227,11 +266,10 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
         if not looks_like_sql(extracted_string.string):
             continue
 
-
         if should_include_sql(extracted_string, params):
             queries.append(
                 ExtractedQuery(
-                    name= f"query_{len(queries) + 1}",
+                    name=f"query_{len(queries) + 1}",
                     extracted_string=extracted_string,
                 )
             )
@@ -257,7 +295,7 @@ def looks_like_sql(text: str) -> bool:
         'VALUES',
         'JOIN', 'LEFT', 'RIGHT',
         'INNER', 'OUTER', 'CREATE', 'TABLE', 'DROP', 'CREATE TYPE'
-        'UNION', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
+                                                     'UNION', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
     }
     # after these keywords, there is usually a space or a parenthesis
     sql_keywords = ({kw + ' ' for kw in sql_keywords} |
@@ -331,7 +369,8 @@ def get_repo_files(repo_dir: str) -> List[str]:
     return code_files
 
 
-def extract_sql_from_repo(repo_dir: str, repo_url: str, params: Optional[SqlExtractionParams] = None) -> List[FileAnalysisResult]:
+def extract_sql_from_repo(repo_dir: str, repo_url: str, params: Optional[SqlExtractionParams] = None) -> List[
+    FileAnalysisResult]:
     results = []
 
     code_files = get_repo_files(repo_dir)
