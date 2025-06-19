@@ -73,11 +73,12 @@ def get_or_clone_repo(repo_url: str, repo_name: str) -> Optional[str]:
         # Clone the repository
         logger.info(f"Cloning repository {repo_name} from {repo_url}...")
         subprocess.run(
-            ["git", "-c", "credential.interactive=false", "clone", repo_url, target_path],
+            ["git","clone", repo_url, target_path],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}
         )
         logger.info(f"Repository {repo_name} cloned successfully.")
         return target_path

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import tqdm
@@ -8,7 +9,6 @@ from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_types import unify_type
 
 from src.sql_scraping.analyse_repo import get_repo_name_and_url
-from src.sql_scraping.data_loading import read_schemapile_data
 
 REPO_TABLE_NAME = 'repos'
 TABLE_TABLE_NAME = 'tables'
@@ -120,6 +120,14 @@ def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConn
                 is_indexed, is_primary_key
             ))
 
+
+def read_schemapile_data():
+    """Read the JSON data from schemapile-perm.json file."""
+    # read the json schemapile-perm.json file
+    path = os.path.join(DATA_DIR, 'schemapile-perm.json')
+    with open(path, 'r') as file:
+        data = json.load(file)
+    return data
 
 def load_schemapile_json_to_database(ask: bool = True) -> None:
     data = read_schemapile_data()

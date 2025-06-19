@@ -85,12 +85,16 @@ def load_queries_to_database(ask: bool = True):
             SELECT pq.id as id, repo.id as repo_id, pq.file_path as file_path, pq.header as header, pq.sql as sql, pq.line as line, pq.file_language as file_language,
             pq.text_context as text_context, pq.text_context_offset as text_context_offset, pq.type as type
             FROM parquet_queries as pq
-        JOIN {REPO_TABLE_NAME} AS repo 
+        LEFT JOIN {REPO_TABLE_NAME} AS repo 
         ON pq.repo_url = repo.repo_url 
         ORDER BY pq.id
         )"""
     print(query)
     con.execute(query)
+
+    # get teh count of queries imported
+    count = con.execute(f"SELECT COUNT(*) FROM {QUERIES_TABLE_NAME}").fetchone()[0]
+    print(f"Imported {count} queries into the database.")
 
     # print first 10 queries
     rows = con.execute(f"SELECT * FROM {QUERIES_TABLE_NAME} LIMIT 10").fetchall()
@@ -99,4 +103,4 @@ def load_queries_to_database(ask: bool = True):
 
 
 if __name__ == "__main__":
-    load_queries_to_database()
+    load_queries_to_database(ask=False)

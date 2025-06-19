@@ -4,11 +4,6 @@ from typing import List
 import duckdb
 from src.config import DATA_DIR, logger, QUERIES_DIR, INPUT_DATA_DIR
 
-from src.config import ROOT
-from src.sql_scraping.analyse_repo import get_repo_name_and_url
-from src.sql_scraping.extract_sql import get_dir_for_url
-
-
 def get_processed_urls() -> List[str]:
 
     try:
