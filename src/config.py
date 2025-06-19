@@ -18,7 +18,7 @@ ONLY_SCRAPE_SELECT_QUERIES = False
 CHARACTERS_BEFORE_AND_AFTER_QUERY = 400
 HEADER_N_LINES = 30  # Number of header lines to keep for each file that contains SQL queries
 
-type RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
+RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing
 REPO_HANDLING: RepoHandling = 'delete_after_processing'  # Options: 'delete_after_processing', 'compress_after_processing', 'keep_after_processing'
 

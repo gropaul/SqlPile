@@ -3,7 +3,7 @@ name = "sqlpile"
 version = "0.1.0"
 description = ""
 authors = ["PGross <paul.riedlingen@gmail.com>"]
-readme = "README.md"
+readme = "ReadMe.md"
 packages = [{ include = "src" }]
 
 [tool.poetry.dependencies]

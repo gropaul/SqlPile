@@ -22,8 +22,9 @@ def process_url(url: str) -> Optional[int]:
 
 def main():
     total_queries = 0
-    n_threads = 1  # Number of threads to use for parallel processing
+    n_threads = 10  # Number of threads to use for parallel processing
 
+    logger.info(f"Starting SQL scraping and analysis with {n_threads} threads...")
     urls = get_urls(filter_analysed=True, shuffle=True)
 
     logger.info(f"Total URLs to process: {len(urls)}")
