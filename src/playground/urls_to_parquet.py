@@ -82,7 +82,7 @@ def urls_to_parquet():
     # Save to Parquet file, use compression for smaller file size
     import pandas as pd
     df = pd.DataFrame([repo.to_dict() for repo in repos.values()])
-    parquet_path = "/Users/paul/workspace/SqlPile/data/repos.parquet"
+    parquet_path = "/Users/paul/workspace/SqlPile/input_data/repos.parquet"
 
 
     # Compress the file as it will be committed to the repository

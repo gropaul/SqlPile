@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 from typing import Optional, List
@@ -21,8 +22,16 @@ def process_url(url: str) -> Optional[int]:
 
 
 def main():
-    total_queries = 0
-    n_threads = 10  # Number of threads to use for parallel processing
+    parser = argparse.ArgumentParser(description="Run SQL scraping and analysis.")
+    parser.add_argument(
+        "-t", "--threads",
+        type=int,
+        default=10,
+        help="Number of threads to use for parallel processing (default: 10)"
+    )
+
+    args = parser.parse_args()
+    n_threads = args.threads
 
     logger.info(f"Starting SQL scraping and analysis with {n_threads} threads...")
     urls = get_urls(filter_analysed=True, shuffle=True)
@@ -31,6 +40,9 @@ def main():
     if not urls:
         logger.error("No URLs found to process. Exiting.")
         return
+
+
+    total_queries = 0
 
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         futures = {executor.submit(process_url, url): url for url in urls}
