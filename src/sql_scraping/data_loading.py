@@ -2,62 +2,56 @@ import json
 import os
 from typing import List
 import duckdb
-from src.config import DATA_DIR, logger, QUERIES_DIR
+from src.config import DATA_DIR, logger, QUERIES_DIR, INPUT_DATA_DIR
 
 from src.config import ROOT
 from src.sql_scraping.analyse_repo import get_repo_name_and_url
 from src.sql_scraping.extract_sql import get_dir_for_url
 
 
-def read_schemapile_data():
-    """Read the JSON data from schemapile-perm.json file."""
-    # read the json schemapile-perm.json file
-    path = os.path.join(DATA_DIR, 'schemapile-perm.json')
-    with open(path, 'r') as file:
-        data = json.load(file)
-    return data
+def get_processed_urls() -> List[str]:
+
+    try:
+        result = duckdb.sql(f" SELECT repo_url FROM '{QUERIES_DIR}/*/*.parquet'").fetchall()
+
+        urls = [row[0] for row in result]
+        logger.info(f"Found {len(urls)} processed URLs in the database.")
+        return urls
+
+    except Exception as e:
+        logger.error(f"Error fetching URLs from the database: {e}")
+        return []
+
+
+def get_all_urls() -> List[str]:
+
+    parquet_path = os.path.join(INPUT_DATA_DIR, "repos.parquet")
+    result = duckdb.sql(f"SELECT url FROM '{parquet_path}'").fetchall()
+    urls = [row[0] for row in result]
+    logger.info(f"Found {len(urls)} total URLs in the database.")
+    return urls
 
 
 def get_urls(filter_analysed: bool, shuffle: bool = False) -> List[str]:
-    data = read_schemapile_data()
 
-    urls = []
-    url_storage_dirs = []
-    for item in data:
-        value = data[item]
-        # Get the repository URL
-        file_path = value['INFO']['URL']
-        file_path = file_path.strip()  # Clean up the URL
-        name, url = get_repo_name_and_url(file_path)
-        storage_dir_path = get_dir_for_url(url)
-        dir_name = os.path.basename(storage_dir_path)
-
-        # only add the URL if it is not already in the list
-        if url not in urls:
-            urls.append(url)
-            url_storage_dirs.append(dir_name)
+    processed_urls = get_processed_urls()
+    all_urls = get_all_urls()
 
     if filter_analysed:
-        print('Filtering out already analysed URLs...')
-        n_removed = 0
-        # list folder names in the queries directory
+        urls = [url for url in all_urls if url not in processed_urls]
+        logger.info(f"Filtered URLs: {len(urls)} remaining after excluding processed URLs.")
+    else:
+        urls = all_urls
+        logger.info(f"Total URLs without filtering: {len(urls)}")
 
-        queries_dir = os.path.join(DATA_DIR, QUERIES_DIR)
-        existing_repos = os.listdir(queries_dir)
-        existing_repos = [repo.replace('.zip', '') for repo in existing_repos]
+    if not urls:
+        logger.warning("No URLs found to process. Please check the database or the filtering criteria.")
+        return []
 
-        for (url, url_dir_name) in zip(urls, url_storage_dirs):
-
-            if url_dir_name in existing_repos:
-                urls.remove(url)
-                n_removed += 1
-
-        logger.info(f"Removed {n_removed} URLs that were already analysed.")
-        logger.info(f"Existing repositories: {len(existing_repos)}")
-        logger.info(f"Total URLs to process: {len(urls)}")
-
+    # Shuffle the URLs if requested
     if shuffle:
         import random
         random.shuffle(urls)
         logger.info("Shuffled the URLs.")
+
     return urls
