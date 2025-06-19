@@ -47,6 +47,7 @@ def is_repo_active(repo_url: str) -> bool:
     except requests.RequestException as e:
         return False
 
+
 def get_or_clone_repo(repo_url: str, repo_name: str) -> Optional[str]:
     """Clone the repository if it doesn't already exist locally."""
     target_path = os.path.join(REPO_DIR, repo_name)
@@ -55,31 +56,42 @@ def get_or_clone_repo(repo_url: str, repo_name: str) -> Optional[str]:
             logger.info(f"Repository {repo_name} already exists at {target_path}.")
             return target_path
 
-        # check if the repository exists as a zip file
+        # Check for zipped repo
         zip_path = os.path.join(REPO_DIR, f"{repo_name}.zip")
         if os.path.exists(zip_path):
             if PROCESS_ZIPPED_REPOS:
                 logger.info(f"Repository {repo_name} found as a zip file at {zip_path}. Unzipping...")
-                # Use zipfile module instead of subprocess
                 with zipfile.ZipFile(zip_path, 'r') as zipf:
                     zipf.extractall(REPO_DIR)
                 os.remove(zip_path)
-                logger.info(f"Unzipped repository {repo_name} successfully. Deleting zip file {zip_path}.")
+                logger.info(f"Unzipped repository {repo_name} successfully. Deleted zip file {zip_path}.")
+                return target_path
             else:
-                logger.info(f"Repository {repo_name} found as a zip file but will be skipped due to PROCESS_ZIPPED_REPOS being False.")
+                logger.info(f"Repository {repo_name} found as a zip file but will be skipped (PROCESS_ZIPPED_REPOS=False).")
                 return None
 
+        # Clone the repository
         logger.info(f"Cloning repository {repo_name} from {repo_url}...")
-        subprocess.run(["git", "clone", repo_url, target_path], check=True)
-
-        logger.info(f"Repository {repo_name} retrieved successfully.")
+        subprocess.run(
+            ["git", "-c", "credential.interactive=false", "clone", repo_url, target_path],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        logger.info(f"Repository {repo_name} cloned successfully.")
         return target_path
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error cloning repository: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error while cloning repository: {e}")
 
-    return None
+    except subprocess.CalledProcessError as e:
+        if "Authentication failed" in e.stderr or "fatal: could not read" in e.stderr:
+            logger.warning(f"Authentication failed or permission denied for {repo_url}. Skipping.")
+        else:
+            logger.error(f"Error cloning repository: {e.stderr.strip()}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error while cloning repository {repo_name}: {e}")
+        return None
+
 
 def delete_repo(repo_name: str) -> None:
     """Delete the cloned repository directory. This is useful for cleanup after analysis."""
