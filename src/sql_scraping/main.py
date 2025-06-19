@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import time
 from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -20,6 +21,11 @@ def process_url(url: str) -> Optional[int]:
         return result.get_number_of_queries()
     return 0
 
+def get_queries_per_minute(start_time: float, total_queries: int) -> float:
+    elapsed_time = time.time() - start_time
+    if elapsed_time == 0:
+        return 0.0
+    return total_queries / (elapsed_time / 60)  # Queries per minute
 
 def main():
     parser = argparse.ArgumentParser(description="Run SQL scraping and analysis.")
@@ -43,6 +49,7 @@ def main():
 
 
     total_queries = 0
+    start_time = time.time()
 
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         futures = {executor.submit(process_url, url): url for url in urls}
@@ -50,7 +57,11 @@ def main():
             try:
                 n_queries = future.result()
                 total_queries += n_queries if n_queries is not None else 0
-                logger.info(f"Total queries found so far: {total_queries} (added {n_queries} from URL {futures[future]})")
+                queries_per_minute = get_queries_per_minute(start_time, total_queries)
+                queries_per_minute_str = f"{queries_per_minute:.2f}" if queries_per_minute > 0 else "N/A"
+                logger.info(f"Finished processing URL {futures[future]}: {n_queries} queries found. "
+                            f"Total queries so far: {total_queries}. "
+                            f"Queries per minute: {queries_per_minute_str}")
             except Exception as e:
                 logger.error(f"Error processing URL {futures[future]}: {e}")
 
