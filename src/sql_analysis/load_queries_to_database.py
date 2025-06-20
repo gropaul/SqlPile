@@ -101,6 +101,18 @@ def load_queries_to_database(ask: bool = True):
     for row in rows:
         print(row)
 
+    # print the types of the queries and the number of queries per type
+    query_types = con.execute(f"""
+        SELECT type, COUNT(*) as count 
+        FROM {QUERIES_TABLE_NAME} 
+        GROUP BY type 
+        ORDER BY count DESC
+    """).fetchall()
+
+    print("Query types and counts:")
+    for query_type, count in query_types:
+        print(f"{query_type}: {count} queries")
+
 
 if __name__ == "__main__":
     load_queries_to_database(ask=False)

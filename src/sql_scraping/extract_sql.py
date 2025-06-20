@@ -274,8 +274,6 @@ def extract_sql_from_source_code(content: str, file_path: str, params: SqlExtrac
                 )
             )
 
-    logger.debug(f"Extracted {len(queries)} SQL queries from file {file_path}.")
-
     return queries
 
 

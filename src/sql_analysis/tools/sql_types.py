@@ -36,7 +36,7 @@ _UUID_TYPE     = re.compile(r'\b(uuid|uniqueidentifier)\b')
 _XML_TYPE      = re.compile(r'\b(xml)\b')
 _ENUM_TYPE     = re.compile(r'\b(enum|set)\b')
 
-type BaseType = Literal[ "Int", "Float", "Text", "Boolean", "DateTime", "Binary", "JSON", "UUID", "XML", "Enum", "ARRAY", "OTHER" ]
+BaseType = Literal[ "Int", "Float", "Text", "Boolean", "DateTime", "Binary", "JSON", "UUID", "XML", "Enum", "ARRAY", "OTHER" ]
 
 def base_type_to_duckdb_type(base_type: BaseType) -> str:
     """
