@@ -11,6 +11,8 @@ from src.sql_analysis.tools.sql_types import unify_type
 from src.sql_scraping.analyse_repo import get_repo_name_and_url
 
 REPO_TABLE_NAME = 'repos'
+REPO_META_DATA_FILES_NAME = 'repos_meta_data'
+FILES_META_DATA_NAME = 'files_meta_data'
 TABLE_TABLE_NAME = 'tables'
 COLUMNS_TABLE_NAME = 'columns'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
@@ -21,12 +23,17 @@ repo_id_counter = 0
 table_id_counter = 0
 column_id_counter = 0
 
-use_keys = False  # Use keys for primary keys and foreign keys
+use_keys = True  # Use keys for primary keys and foreign keys
 
 def primary_key() -> str:
     if not use_keys:
         return ''
     return 'PRIMARY KEY'
+
+def unique_key() -> str:
+    if not use_keys:
+        return ''
+    return 'UNIQUE'
 
 
 def foreign_key(table_name: str, column_name: str) -> str:
@@ -147,7 +154,7 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
         CREATE OR REPLACE TABLE {REPO_TABLE_NAME} (
             id BIGINT {primary_key()},
             repo_name VARCHAR,
-            repo_url VARCHAR,
+            repo_url VARCHAR {unique_key()}
         )
     """)
     con.execute(f"""
