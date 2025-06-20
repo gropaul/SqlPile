@@ -3,7 +3,7 @@ import logging
 import os
 import tqdm
 import duckdb
-import pandas as pd
+
 from src.config import DATA_DIR, DATABASE_PATH, logger
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_types import unify_type
@@ -11,8 +11,9 @@ from src.sql_analysis.tools.sql_types import unify_type
 from src.sql_scraping.analyse_repo import get_repo_name_and_url
 
 REPO_TABLE_NAME = 'repos'
-REPO_META_DATA_FILES_NAME = 'repos_meta_data'
-FILES_META_DATA_NAME = 'files_meta_data'
+REPO_META_DATA_FILES_TABLE_NAME = 'repos_meta_data'
+FILES_TABLE_NAME = 'files'
+FILES_META_DATA_TABLE_NAME = 'repo_meta_data_files'
 TABLE_TABLE_NAME = 'tables'
 COLUMNS_TABLE_NAME = 'columns'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
@@ -59,97 +60,73 @@ def get_id(table_name: str) -> int:
 
 from typing import List, Dict, Tuple
 
-def extract_repositories_data(data: Dict[str, Dict]) -> pd.DataFrame:
-    """Extract repository data from the JSON and return as a DataFrame."""
-    repos = []
-    for key in tqdm.tqdm(data.keys(), desc="Extracting repositories"):
-        value = data[key]
-        file_url = value['INFO']['URL'].strip()
-        name, url = get_repo_name_and_url(file_url)
+def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConnection) -> None:
+    value = data[key]
+    file_url = value['INFO']['URL']
+    file_url = file_url.strip()  # Clean up the URL
+    name, url = get_repo_name_and_url(file_url)
+    # check if the repo already exists
+    repo_id = con.execute(f"""
+                SELECT id FROM {REPO_TABLE_NAME} WHERE repo_url = ?
+            """, (url,)).fetchone()
+    if repo_id is None:
         repo_id = get_id(REPO_TABLE_NAME)
-        repos.append({
-            'id': repo_id,
-            'repo_name': name,
-            'repo_url': url
-        })
-    return pd.DataFrame(repos).drop_duplicates(subset=['repo_url'])
+        con.execute(f"""
+                    INSERT INTO {REPO_TABLE_NAME} (id, repo_name, repo_url) VALUES (?, ?, ?)
+                """, (repo_id, name, url))
+    else:
+        repo_id = repo_id[0]
 
-def extract_tables_data(data: Dict[str, Dict], repos_df: pd.DataFrame) -> pd.DataFrame:
-    """Extract table data from the JSON and return as a DataFrame."""
-    tables = []
-    for key in tqdm.tqdm(data.keys(), desc="Extracting tables"):
-        value = data[key]
-        file_url = value['INFO']['URL'].strip()
-        _, url = get_repo_name_and_url(file_url)
+    tables = value.get('TABLES', [])
+    for table_key in tables:
+        table_value = tables[table_key]
+        table_name_clean = table_key.split('.')[-1]  # Get the table name from the key
+        table_id = get_id(TABLE_TABLE_NAME)
 
-        # Find the repo_id from repos_df
-        repo_row = repos_df[repos_df['repo_url'] == url]
-        if repo_row.empty:
+        # check if the table already exists
+        existing_table = con.execute(f"""
+                    SELECT id FROM {TABLE_TABLE_NAME} WHERE repo_id = ? AND table_name = ?
+                """, (repo_id, table_key)).fetchone()
+
+        if existing_table is not None:
             continue
-        repo_id = repo_row.iloc[0]['id']
 
-        tables_data = value.get('TABLES', {})
-        for table_key in tables_data:
-            table_name_clean = table_key.split('.')[-1]
-            table_id = get_id(TABLE_TABLE_NAME)
-            tables.append({
-                'id': table_id,
-                'repo_id': repo_id,
-                'table_name': table_key,
-                'table_name_clean': table_name_clean,
-                'file_url': file_url
-            })
-    return pd.DataFrame(tables).drop_duplicates(subset=['repo_id', 'table_name'])
+        con.execute(f"""
+                    INSERT INTO {TABLE_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (table_id, repo_id, table_key, table_name_clean, file_url))
 
-def extract_columns_data(data: Dict[str, Dict], tables_df: pd.DataFrame) -> pd.DataFrame:
-    """Extract column data from the JSON and return as a DataFrame."""
-    columns = []
-    for key in tqdm.tqdm(data.keys(), desc="Extracting columns"):
-        value = data[key]
-        tables_data = value.get('TABLES', {})
+        for column_key, column_value in table_value['COLUMNS'].items():
+            column_id = get_id(COLUMNS_TABLE_NAME)
+            column_type_original = column_value.get('TYPE', 'unknown')
+            column_type, base_type = unify_type(column_type_original)
+            is_unique = column_value.get('UNIQUE', False)
+            is_nullable = column_value.get('NULLABLE', True)
+            is_indexed = column_value.get('IS_INDEX', False)
+            is_primary_key = column_value.get('IS_PRIMARY', False)
 
-        for table_key in tables_data:
-            table_value = tables_data[table_key]
+            semantic_type = get_column_semantic_type(column_key, base_type)
 
-            # Find the table_id from tables_df
-            table_row = tables_df[tables_df['table_name'] == table_key]
-            if table_row.empty:
-                continue
-            table_id = table_row.iloc[0]['id']
+            # check if the column already exists
+            # existing_column = con.execute(f"""
+            #             SELECT id FROM {COLUMNS_TABLE_NAME}
+            #             WHERE table_id = ? AND column_name = ?
+            #         """, (table_id, column_key)).fetchone()
+            # if existing_column is not None:
+            #     logger.warn(f"Column {column_key} already exists in table {table_key}. Skipping.")
+            #     continue
 
-            for column_key, column_value in table_value.get('COLUMNS', {}).items():
-                column_id = get_id(COLUMNS_TABLE_NAME)
-                column_type_original = column_value.get('TYPE', 'unknown')
-                column_type, base_type = unify_type(column_type_original)
-                is_unique = column_value.get('UNIQUE', False)
-                is_nullable = column_value.get('NULLABLE', True)
-                is_indexed = column_value.get('IS_INDEX', False)
-                is_primary_key = column_value.get('IS_PRIMARY', False)
-
-                semantic_type = get_column_semantic_type(column_key, base_type)
-
-                columns.append({
-                    'id': column_id,
-                    'table_id': table_id,
-                    'column_name': column_key,
-                    'column_type': column_type,
-                    'column_base_type': base_type,
-                    'column_type_original': column_type_original,
-                    'semantic_type': semantic_type,
-                    'is_unique': is_unique,
-                    'is_nullable': is_nullable,
-                    'is_indexed': is_indexed,
-                    'is_primary_key': is_primary_key
-                })
-    # Create DataFrame with all columns
-    column_names = [
-        'id', 'table_id', 'column_name', 'column_type', 'column_base_type',
-        'column_type_original', 'semantic_type', 'is_unique', 'is_nullable',
-        'is_indexed', 'is_primary_key'
-    ]
-    if not columns:
-        return pd.DataFrame(columns=column_names)
-    return pd.DataFrame(columns, columns=column_names)
+            con.execute(f"""
+                        INSERT INTO {COLUMNS_TABLE_NAME} (
+                            id, table_id, column_name, column_type, column_base_type,
+                            column_type_original, semantic_type, is_unique, is_nullable,
+                            is_indexed, is_primary_key
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                column_id, table_id, column_key, column_type, base_type,
+                column_type_original, semantic_type, is_unique, is_nullable,
+                is_indexed, is_primary_key
+            ))
 
 
 def read_schemapile_data():
@@ -163,7 +140,7 @@ def read_schemapile_data():
 def load_schemapile_json_to_database(ask: bool = True) -> None:
     data = read_schemapile_data()
 
-    # ask the user if they really want to (re)import the data, as the old data will be removed
+    # ask the user if the realy want to (re)inport the data, as the old data will be removed
     if ask:
         confirm = input(
             "This will remove the old database and import the new data. Do you want to continue? (yes/no): ")
@@ -171,23 +148,9 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
             print("Aborting the import.")
             return
 
-    # First, extract all data into pandas DataFrames
-    print("Extracting data into DataFrames...")
-    repos_df = extract_repositories_data(data)
-    print(f"Extracted {len(repos_df)} repositories")
-
-    tables_df = extract_tables_data(data, repos_df)
-    print(f"Extracted {len(tables_df)} tables")
-
-    columns_df = extract_columns_data(data, tables_df)
-    print(f"Extracted {len(columns_df)} columns")
-
-    # Connect to the database
+    # remove the old database if it exists
     db_path = os.path.join(DATABASE_PATH)
     con = duckdb.connect(db_path)
-
-    # Create tables in DuckDB
-    print("Creating tables in DuckDB...")
     con.execute(f"""
         CREATE OR REPLACE TABLE {REPO_TABLE_NAME} (
             id BIGINT {primary_key()},
@@ -196,7 +159,7 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
         )
     """)
     con.execute(f"""
-        CREATE OR REPLACE TABLE {TABLE_TABLE_NAME} (
+        CREATE OR REPLACE TABLE  {TABLE_TABLE_NAME} (
             id BIGINT {primary_key()},
             repo_id BIGINT {foreign_key(REPO_TABLE_NAME, 'id')},
             table_name VARCHAR,
@@ -220,18 +183,11 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
         )
     """)
 
-    # Load DataFrames into DuckDB tables
-    print("Loading DataFrames into DuckDB tables...")
-    con.register('repos_df', repos_df)
-    con.execute(f"INSERT INTO {REPO_TABLE_NAME} SELECT * FROM repos_df")
 
-    con.register('tables_df', tables_df)
-    con.execute(f"INSERT INTO {TABLE_TABLE_NAME} SELECT * FROM tables_df")
+    con = duckdb.connect(db_path)
 
-    con.register('columns_df', columns_df)
-    con.execute(f"INSERT INTO {COLUMNS_TABLE_NAME} SELECT * FROM columns_df")
-
-    print("Data loading complete!")
+    for key in tqdm.tqdm(data.keys(), desc="Loading data into DuckDB"):
+        process_repository(key, data, con)
 
 
 if __name__ == "__main__":

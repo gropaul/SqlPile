@@ -58,7 +58,11 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
             schema_name, name_without_schema = table_name.split('.', 1)
 
             complete_quoted_table_name = f'{quote(schema_name)}.{quote(name_without_schema)}'
-            sandbox_con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote(schema_name)}")
+            try:
+                sandbox_con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote(schema_name)}")
+            except Exception as e:
+                print(f"Failed to create schema {schema_name} for table {table_name}: {e}")
+                continue
 
         else:
             complete_quoted_table_name = quote(table_name)
@@ -166,7 +170,7 @@ def iterate_through_repos():
     con.execute(f"""
         CREATE OR REPLACE TABLE {EXECUTABLE_QUERIES_TABLE_NAME} (
             id BIGINT {primary_key()},
-            query_id BIGINT {foreign_key(QUERIES_TABLE_NAME, 'id')},
+            query_id BIGINT,
             original_sql VARCHAR,
             executable_sql VARCHAR,
             logical_plan JSON,

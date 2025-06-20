@@ -2,6 +2,7 @@ import re
 from typing import Optional
 
 import duckdb
+from tqdm import tqdm
 
 from src.config import DATABASE_PATH
 
@@ -59,7 +60,7 @@ def get_schemas_from_create_query():
 
 
     create_queries = con.execute(f"""
-        SELECT sql, get_table_name(sql) AS query_table_name, queries.id, repos.repo_url, repos.id AS repo_id, file_path
+        SELECT sql, get_table_name(sql) AS query_table_name, queries.id, repos.repo_url, repos.id AS repo_id
         FROM {QUERIES_TABLE_NAME} AS queries
         JOIN repos ON queries.repo_id = repos.id
         WHERE get_table_name(queries.sql) IS NOT NULL
@@ -78,7 +79,7 @@ def get_schemas_from_create_query():
     n_erros = 0
     n_new_tables = 0
     n_new_columns = 0
-    for sql, table_name, query_id, repo_url, repo_id, file_path in create_queries:
+    for sql, table_name, query_id, repo_url, repo_id in tqdm(create_queries, desc="Processing CREATE TABLE queries", unit="query"):
         try:
             table_schema = parse_create_table(sql)
 
@@ -101,7 +102,7 @@ def get_schemas_from_create_query():
             con.execute(f"""
                 INSERT INTO {TABLE_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
                 VALUES (?, ?, ?, ?, ?)
-            """, (table_id, repo_id, table_schema.table_name, table_schema.table_name.lower(), file_path))
+            """, (table_id, repo_id, table_schema.table_name, table_schema.table_name.lower(), None))
 
             for column in table_schema.columns:
                 # columns: id,table_id,column_name,column_type,column_base_type,column_type_original,semantic_type,is_unique,is_nullable,is_indexed,is_primary_key
@@ -126,8 +127,8 @@ def get_schemas_from_create_query():
                 ))
 
         except Exception as e:
-            print(sql)
-            print(f"Error parsing CREATE TABLE query in repo {repo_url} ({repo_id}): {e}")
+            # print(sql)
+            # print(f"Error parsing CREATE TABLE query in repo {repo_url} ({repo_id}): {e}")
             n_erros += 1
 
     print(f"Parsed {len(create_queries)} CREATE TABLE queries.")
