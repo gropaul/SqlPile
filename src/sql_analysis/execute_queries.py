@@ -115,14 +115,15 @@ def escape_string(sql: Optional[str]) -> Optional[str]:
 
 def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table]):
 
-    queries = con.execute(f"""
-        SELECT id, sql 
-        FROM queries 
+    queries_deduped = con.execute(f"""
+        SELECT MIN(id), sql, 
+        FROM queries
         WHERE repo_id = ?
         AND type IN ('SELECT')
+        GROUP BY sql
     """, (repo_id,)).fetchall()
 
-    for query_id, sql in queries:
+    for query_id, sql in queries_deduped:
         sql_prepared = prepare_sql_statically(sql)
         result: MockQueryResult = try_to_mock_and_execute_query(sql_prepared, sandbox_con, tables)
 
@@ -130,8 +131,8 @@ def execute_queries(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             global success_id_counter
             success_id_counter += 1
             insert_query = f"""
-                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, physical_plan)
-                VALUES ({success_id_counter}, {query_id}, '{escape_string(result.original_query)}', '{escape_string(result.executable_sql)}', 
+                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, repo_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, physical_plan)
+                VALUES ({success_id_counter}, {query_id}, {repo_id}, '{escape_string(result.original_query)}', '{escape_string(result.executable_sql)}', 
                 '{escape_string(json.dumps(result.logical_plan))}', 
                 '{escape_string(json.dumps(result.logical_plan_optimized))}', 
                 '{escape_string(json.dumps(result.physical_plan))}')
@@ -171,6 +172,7 @@ def iterate_through_repos():
         CREATE OR REPLACE TABLE {EXECUTABLE_QUERIES_TABLE_NAME} (
             id BIGINT {primary_key()},
             query_id BIGINT,
+            repo_id BIGINT,
             original_sql VARCHAR,
             executable_sql VARCHAR,
             logical_plan JSON,

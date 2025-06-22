@@ -292,8 +292,8 @@ def looks_like_sql(text: str) -> bool:
         'SELECT', 'FROM', 'WHERE', 'ALTER', 'INSERT INTO', 'INSERT OR REPLACE INTO',
         'VALUES',
         'JOIN', 'LEFT', 'RIGHT',
-        'INNER', 'OUTER', 'CREATE', 'TABLE', 'DROP', 'CREATE TYPE'
-                                                     'UNION', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
+        'INNER', 'OUTER', 'CREATE', 'TABLE', 'DROP', 'CREATE TYPE',
+        'UNION', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
     }
     # after these keywords, there is usually a space or a parenthesis
     sql_keywords = ({kw + ' ' for kw in sql_keywords} |

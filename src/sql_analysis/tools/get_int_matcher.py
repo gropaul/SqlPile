@@ -8,11 +8,12 @@ def matcher():
     suffixes = ['unsigned', 'signed', 'u']
 
     size_types = {
-        'Int8': ['int1', 'int8', 'tinyint', 'bit'],
-        'Int16': ['int2', 'int16', 'smallint', 'smallserial'],
-        'Int24': ['int3', 'int24', 'mediumint'],
+        'Int8': ['int1', 'int8', 'tinyint', 'bit', 'tinyinteger', 'tinyserial'],
+        'Int16': ['int2', 'int16', 'smallint', 'smallinterger', 'smallserial'],
+        'Int24': ['int3', 'int24', 'mediumint', 'mediuminterger'],
         'Int32': ['int', 'int4', 'int32', 'integer', 'serial'],
-        'Int64': ['int8', 'int64', 'bigint', 'bigserial', 'long'],
+        'Int64': ['int8', 'int64', 'bigint', 'biginteger', 'bigserial', 'long'],
+        'Int128': ['int128', 'bigint128', 'hugeint', 'hugeinteger'],
     }
 
     def generate_aliases(base):

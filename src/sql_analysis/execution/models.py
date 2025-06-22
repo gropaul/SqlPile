@@ -1,14 +1,17 @@
 from typing import List
 
+from src.sql_analysis.tools.sql_types import BaseType
+
 
 class Column:
-    def __init__(self, column_id: int, column_name: str, column_base_type: str):
-        self.column_id = column_id
-        self.column_name = column_name
-        self.column_base_type = column_base_type
+    def __init__(self, column_id: int, column_name: str, column_base_type: BaseType):
+        self.column_id: int = column_id
+        self.column_name: str = column_name
+        self.column_base_type: BaseType = column_base_type
 
     def __repr__(self):
         return f"Column(id={self.column_id}, name='{self.column_name}', base_type='{self.column_base_type}')"
+
 
 class Table:
     def __init__(self, table_id: int, table_name: str, columns: List[Column]):
