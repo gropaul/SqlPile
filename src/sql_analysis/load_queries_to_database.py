@@ -7,7 +7,6 @@ import pandas as pd
 from src.config import DATA_DIR, QUERIES_DIR, DATABASE_PATH
 from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_TABLE_NAME, REPO_TABLE_NAME, \
     FILES_META_DATA_TABLE_NAME, FILES_TABLE_NAME
-from src.sql_scraping.extract_sql import META_DATA_FILE_ENDINGS
 
 
 def get_all_parquet_files(root: str) -> List[str]:
@@ -44,6 +43,7 @@ def load_meta_data_files_to_database(con: duckdb.DuckDBPyConnection):
     # get all the meta data files saved in the DATA_DIR
     create_files_meta_data = f"""
         CREATE OR REPLACE TABLE {FILES_META_DATA_TABLE_NAME} AS (
+            
             WITH files AS (
                 SELECT repos.id AS repo_id, repo_url, *
                 FROM (
@@ -72,7 +72,7 @@ def create_missing_repos_from_queries(con: duckdb.DuckDBPyConnection):
     insert_new_repos = f"""
         WITH new_repos AS (
             SELECT DISTINCT repo_url, split(repo_url, '/')[-1] AS repo_name
-            FROM parquet_queries
+            FROM parquet_queries_with_id
             WHERE repo_url NOT IN (SELECT repo_url FROM {REPO_TABLE_NAME})
         ),
         existing_cnt AS (
@@ -118,12 +118,31 @@ def load_queries_to_database(ask: bool = True):
     con.execute('SET preserve_insertion_order=false')
     con.execute('SET threads=8')
 
+    # create first a non-duplicated repo table becaus of out of memory issues with the parquet files
+    create_parquet_queries_with_dups = f"""
+            CREATE OR REPLACE TEMP TABLE parquet_queries_tmp_table_with_dups AS (FROM '{QUERIES_DIR}/*/*.parquet')
+        """
+    con.execute(create_parquet_queries_with_dups)
+
+    # *** CREATE A DEDUPLICATED TEMPORARY TABLE WITH ALL QUERIES ***
+    create_parquet_queries = f"""
+        CREATE OR REPLACE TEMP TABLE parquet_queries_tmp_table AS (
+            SELECT repo_url, repo_name, MIN(file_results) as file_results , MIN(metadata_files) as metadata_files
+            FROM parquet_queries_tmp_table_with_dups
+            GROUP BY repo_url, repo_name
+        )
+    """
+    con.execute(create_parquet_queries)
+
+    # Drop the temporary table with duplicates to free up memory
+    con.execute("DROP TABLE IF EXISTS parquet_queries_tmp_table_with_dups")
+
     # *** CREATE PARQUET VIEW ***
     # positional join with range(count) to add an id column
     con.execute(f"""
-          CREATE OR REPLACE TEMP TABLE parquet_queries AS 
-          SELECT * FROM parquet_queries_tmp POSITIONAL 
-          JOIN (SELECT range as id FROM range(0, (SELECT COUNT(*) FROM parquet_queries_tmp)))
+          CREATE OR REPLACE TEMP TABLE parquet_queries_with_id AS 
+          SELECT * FROM parquet_queries_tmp_table POSITIONAL 
+          JOIN (SELECT range as id FROM range(0, (SELECT COUNT(*) FROM parquet_queries_tmp_table)))
       """)
 
     create_missing_repos_from_queries(con)
@@ -138,7 +157,7 @@ def load_queries_to_database(ask: bool = True):
             WITH 
                 repo_results as (
                     SELECT id as repo_id, p.repo_name, p.repo_url, p.file_results as file_results, 
-                    FROM '{QUERIES_DIR}/*/*.parquet' as p
+                    FROM parquet_queries_tmp_table as p
                     LEFT JOIN {REPO_TABLE_NAME} as r USING (repo_url)
                 ),
                 file_results AS (

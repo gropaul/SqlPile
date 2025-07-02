@@ -45,7 +45,7 @@ def analyse_plans():
             t.repo_id,
             list({
                 id: q.id,
-                plan: q.physical_plan, 
+                plan: q.logical_plan_optimized_detailed, 
                 sql: q.executable_sql
             }) AS queries,
             list({
@@ -65,13 +65,12 @@ def analyse_plans():
         JOIN tables_dedup t ON q.repo_id = t.repo_id
         GROUP BY t.repo_id -- Group by table_name to avoid duplicates
     """
-    plans = con.execute(plans_query)
+    plans = con.execute(plans_query).fetchall()
 
     for (repo_id, queries, tables) in plans:
         for query in queries:
             id = query['id']
             plan = json.loads(query['plan'])
-
             analyze_node(id, plan, initialize_tables(tables))
 
 if __name__ == "__main__":

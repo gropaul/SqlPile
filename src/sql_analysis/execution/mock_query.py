@@ -5,6 +5,7 @@ import duckdb
 from sqloxide import parse_sql, mutate_expressions
 
 from src.config import logger
+from src.sql_analysis.execution.get_plans import get_extended_explain
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically
 
@@ -32,6 +33,7 @@ class MockQueryResult:
                  error: Optional[Exception] = None,
                  logical_plan: Optional[Dict] = None,
                  logical_plan_optimized: Optional[Dict] = None,
+                 logical_plan_optimized_detailed: Optional[Dict] = None,
                  physical_plan: Optional[Dict] = None,
                  successful: bool = True
                  ):
@@ -40,6 +42,7 @@ class MockQueryResult:
         self.error = error
         self.logical_plan = logical_plan
         self.logical_plan_optimized = logical_plan_optimized
+        self.logical_plan_optimized_detailed = logical_plan_optimized_detailed
         self.physical_plan = physical_plan
         self.successful = successful
 
@@ -59,41 +62,36 @@ def visit_placeholders_turn_null(expr):
 
     return expr
 
-def try_to_mock_and_execute_query(sql: str, con: duckdb.DuckDBPyConnection, tables: List[Table]) -> MockQueryResult:
+def try_to_mock_and_execute_query(database_path: str, sql: str, tables: List[Table]) -> MockQueryResult:
     original_successful_query = None
     executed_query = None
     last_error = None
 
     logical_plan_json = None
     logical_plan_optimized = None
+    logical_plan_optimized_detailed = None
     physical_plan = None
 
     successful = True
     # we need to disable filter_pushdown, filter_pushdown as long as we mock values with null as this leads to
     # empty results opimization in duckdb
-    explain_wrapper = """
+    setting_queries = """
         PRAGMA explain_output = 'all';
         SET disabled_optimizers = '';
-        SET disabled_optimizers = 'empty_result_pullup,statistics_propagation,filter_pushdown';
-        EXPLAIN (FORMAT json) """
+        SET disabled_optimizers = 'compressed_materialization,empty_result_pullup,statistics_propagation,filter_pushdown';
+    """
     try:
-
         original_successful_query = sql
         rewritten_sql = prepare_sql_statically(sql)
         ast = parse_sql(sql=rewritten_sql, dialect='generic')
         nulled_sql = mutate_expressions(parsed_query=ast, func=visit_placeholders_turn_null)[0]
         executed_query = nulled_sql
-
-        explain_sql = explain_wrapper + nulled_sql
-        result = con.execute(explain_sql).fetchall()
-
-        logical_plan_str = result[0][1]
-        logical_plan_optimized_str = result[1][1]
-        physical_plan_str = result[2][1]
-        logical_plan_json = json.loads(logical_plan_str)[0]
-        logical_plan_optimized = json.loads(logical_plan_optimized_str)[0]
-        physical_plan = json.loads(physical_plan_str)[0]
-
+        plans = get_extended_explain(setting_queries, executed_query, database=database_path)
+        # dict_keys(['logical_plan', 'logical_opt', 'logical_opt_detailed', 'physical_plan'])
+        logical_plan_json = plans['logical_plan'][0]
+        logical_plan_optimized = plans['logical_opt'][0]
+        logical_plan_optimized_detailed = plans['logical_opt_detailed'][0]
+        physical_plan = plans['physical_plan'][0]
 
     except Exception as e:
         successful = False
@@ -103,6 +101,7 @@ def try_to_mock_and_execute_query(sql: str, con: duckdb.DuckDBPyConnection, tabl
                            error=last_error,
                            logical_plan=logical_plan_json,
                            logical_plan_optimized=logical_plan_optimized,
+                           logical_plan_optimized_detailed=logical_plan_optimized_detailed,
                            physical_plan=physical_plan, successful=successful)
 
 
