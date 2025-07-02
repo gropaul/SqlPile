@@ -10,7 +10,9 @@ BINARY_PATH = "/Users/paul/workspace/duckdb/build/release/duckdb"
 def repo_url_to_database_path(gh_url: str) -> str:
     root_dir = DATABASE_TMP_DIR
 
-    hash_url = hash(gh_url)
+    # Normalize the URL by removing the protocol and replacing slashes with underscores
+    hash_url = gh_url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_")
+
 
     return os.path.join(root_dir, f"{hash_url}.duckdb")
 

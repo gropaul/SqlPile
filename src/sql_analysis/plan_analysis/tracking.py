@@ -20,11 +20,9 @@ def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTr
     expression_column_bindings = get_column_bindings(expression)
     bound_tracks = []
 
-    for track in tracks:
-        for binding in expression_column_bindings:
-            if binding.binding == track.binding:
-                bound_tracks.append(track)
-                break
+
+    for binding in expression_column_bindings:
+        bound_tracks.append(tracks[binding.binding.column_id])
 
     return ColumnTrackExpressionMatch(
         matched_tracks=bound_tracks,
@@ -38,7 +36,7 @@ def track_and_find_usage(expression: ExpressionInfo, query_id: int, children_tra
     _, projection_base_type = unify_type(expression.return_type)
 
     track = ColumnTrack(
-        involved_columns=[],
+        scanned_columns=[],
         parents=match.matched_tracks,
         expression=expression,
         base_type=projection_base_type,

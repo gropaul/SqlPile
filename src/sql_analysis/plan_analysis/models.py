@@ -9,7 +9,7 @@ OperatorType = Literal['PROJECTION', 'FILTER', 'COMPARISON_JOIN', 'AGGREGATE', '
 ColumnUsageType = Literal[
     'PROJECTION', 'FILTER', 'JOIN_KEY', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP']  # type: ignore
 
-BOUND_COLUMN_REF_NAME = 'BOUND_COLUMN_REF'
+BOUND_COLUMN_REF_NAME = 'BOUND_REF'
 
 
 class ExpressionInfo:
@@ -25,18 +25,17 @@ class ExpressionInfo:
     def __repr__(self):
         return f"ExpressionInfo(expression='{self.expression}', expression_type='{self.expression_type}', " \
                f"expression_class='{self.expression_class}', return_type='{self.return_type}', " \
-                f"binding={self.binding}, " \
+               f"binding={self.binding}, " \
                f"children={self.children})"
 
     @staticmethod
     def from_dict(data: dict) -> 'ExpressionInfo':
-
         binding = None
 
-        if 'table_index' in data and 'column_index' in data:
+        if 'table_index' in data or 'column_index' in data:
             binding = TableColumnBinding(
-                table_id=data['table_index'],
-                column_id=data['column_index']
+                table_id=data['table_index'] if 'table_index' in data else -1,
+                column_id=data['column_index'] if 'column_index' in data else -1
             )
 
         return ExpressionInfo(
@@ -107,18 +106,30 @@ class ColumnWithBinding(Column):
 
 
 class ColumnTrack:
-    def __init__(self, involved_columns: List[Column], expression: ExpressionInfo, parents: List['ColumnTrack'],
+    def __init__(self, scanned_columns: List[Column], expression: ExpressionInfo, parents: List['ColumnTrack'],
                  base_type: BaseType, binding: TableColumnBinding):
-        self.involved_columns = involved_columns
+        self.scanned_columns = scanned_columns
         self.expression = expression
         self.parents = parents
         self.base_type: BaseType = base_type
         self.binding: TableColumnBinding = binding
 
     def __repr__(self):
-        return f"ColumnTrack(involved_columns={[column.column_name for column in self.involved_columns]}, " \
+        return f"ColumnTrack(involved_columns={[column.column_name for column in self.scanned_columns]}, " \
                f"expression='{self.expression}', base_type='{self.base_type}', " \
-                f"binding={self.binding})"
+               f"binding={self.binding})"
+
+    def get_all_involved_column_ids(self) -> List[int]:
+        """
+        Returns a list of all column IDs involved in this track.
+        """
+        # get all columns from parents and scanned columns
+        involved_columns = set()
+        for parent in self.parents:
+            involved_columns.update(parent.get_all_involved_column_ids())
+        for column in self.scanned_columns:
+            involved_columns.add(column.column_id)
+        return sorted(list(involved_columns))
 
 
 def get_column_indices_references(expression: str) -> List[int]:
@@ -157,8 +168,8 @@ class ColumnUsage:
     ) -> 'ColumnUsage':
         return ColumnUsage(
             query_id=query_id,
-            column_ids=[c.column_id for c in match.involved_columns],
-            expression=match.expression,
+            column_ids=match.get_all_involved_column_ids(),
+            expression=match.expression.expression,
             expression_result_type=match.base_type,
             usage_type=usage_type,
         )

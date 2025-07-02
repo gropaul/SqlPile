@@ -3,7 +3,7 @@ from typing import List, Dict, Literal
 
 import duckdb
 
-from src.config import DATABASE_PATH
+from src.config import DATABASE_PATH, logger
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.plan_analysis.analyze_nodes import analyze_node
 
@@ -27,6 +27,10 @@ def initialize_tables(table_structs: List[Dict]) -> List[Table]:
         table = Table(**table_struct)
 
         tables.append(table)
+
+    # if the length of the table structs is larger then the length of the tables, it means some tables were not initialized
+    if len(table_structs) > len(tables):
+        logger.error(f"Some tables were not initialized: {len(table_structs) - len(tables)}")
 
     return tables
 
@@ -68,10 +72,19 @@ def analyse_plans():
     plans = con.execute(plans_query).fetchall()
 
     for (repo_id, queries, tables) in plans:
+        tables_parsed = initialize_tables(tables)
+
         for query in queries:
             id = query['id']
             plan = json.loads(query['plan'])
-            analyze_node(id, plan, initialize_tables(tables))
+            logger.info(f"Analyzing query ID: {id}, Repo ID: {repo_id}, SQL: {query['sql']}")
+            results, tracks = analyze_node(id, plan, tables_parsed)
+
+            # print the plan nicely formatted
+            # logger.info(f"Plan for query ID {id}: {json.dumps(plan, indent=2)}")
+
+            for results in results:
+                logger.info(f"Query ID: {id}, Operator: {results.usage_type}, Expression: {results.expression}, Columns: {results.column_ids}")
 
 if __name__ == "__main__":
     analyse_plans()

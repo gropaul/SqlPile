@@ -58,7 +58,7 @@ def visit_placeholders_turn_null(expr):
             if "value" in val:
                 val = val.get("value")
             if "Placeholder" in val:
-                val["Placeholder"] = "null"
+                val["Placeholder"] = "1"
 
     return expr
 
@@ -78,11 +78,12 @@ def try_to_mock_and_execute_query(database_path: str, sql: str, tables: List[Tab
     setting_queries = """
         PRAGMA explain_output = 'all';
         SET disabled_optimizers = '';
-        SET disabled_optimizers = 'compressed_materialization,empty_result_pullup,statistics_propagation,filter_pushdown';
+        SET disabled_optimizers = 'compressed_materialization,statistics_propagation,filter_pushdown';
     """
     try:
         original_successful_query = sql
         rewritten_sql = prepare_sql_statically(sql)
+
         ast = parse_sql(sql=rewritten_sql, dialect='generic')
         nulled_sql = mutate_expressions(parsed_query=ast, func=visit_placeholders_turn_null)[0]
         executed_query = nulled_sql
