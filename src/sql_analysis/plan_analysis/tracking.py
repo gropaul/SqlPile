@@ -22,6 +22,9 @@ def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTr
 
 
     for binding in expression_column_bindings:
+        # check if the binding id exists in the tracks
+        if len(tracks) <= binding.binding.column_id:
+            continue
         bound_tracks.append(tracks[binding.binding.column_id])
 
     return ColumnTrackExpressionMatch(
@@ -31,7 +34,7 @@ def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTr
 
 
 def track_and_find_usage(expression: ExpressionInfo, query_id: int, children_tracks: List[ColumnTrack],
-                         usage: ColumnUsageType, binding: TableColumnBinding) -> Tuple[ColumnTrack, ColumnUsage]:
+                         usage: ColumnUsageType, binding: TableColumnBinding = TableColumnBinding.empty()) -> Tuple[ColumnTrack, ColumnUsage]:
     match: ColumnTrackExpressionMatch = match_tracks_to_expression(expression, children_tracks)
     _, projection_base_type = unify_type(expression.return_type)
 

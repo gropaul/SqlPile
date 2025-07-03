@@ -11,6 +11,28 @@ ColumnUsageType = Literal[
 
 BOUND_COLUMN_REF_NAME = 'BOUND_REF'
 
+class JoinConditionInfo:
+
+    def __init__(self, left: 'ExpressionInfo', right: 'ExpressionInfo', comparison: str):
+        self.left = left
+        self.right = right
+        self.comparison = comparison
+
+    def __repr__(self):
+        return f"JoinConditionInfo(left={self.left}, right={self.right}, comparison='{self.comparison}')"
+
+
+    @staticmethod
+    def from_dict(data: dict) -> 'JoinConditionInfo':
+        left = ExpressionInfo.from_dict(data['left']) if 'left' in data else None
+        right = ExpressionInfo.from_dict(data['right']) if 'right' in data else None
+        comparison = data.get('comparison', '')
+
+        return JoinConditionInfo(
+            left=left,
+            right=right,
+            comparison=comparison
+        )
 
 class ExpressionInfo:
     def __init__(self, expression: str, expression_type: str, expression_class: str, return_type: str,
@@ -54,6 +76,14 @@ class TableColumnBinding:
     def __init__(self, table_id: int, column_id: int):
         self.table_id: int = table_id
         self.column_id: int = column_id
+
+    @staticmethod
+    def empty() -> 'TableColumnBinding':
+        """
+        Returns an empty TableColumnBinding with table_id and column_id set to -1.
+        This is useful for cases where no binding is available.
+        """
+        return TableColumnBinding(table_id=-1, column_id=-1)
 
     def __eq__(self, other):
         if not isinstance(other, TableColumnBinding):

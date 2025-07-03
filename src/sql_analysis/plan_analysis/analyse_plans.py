@@ -39,35 +39,41 @@ def initialize_tables(table_structs: List[Dict]) -> List[Table]:
 def analyse_plans():
     con = duckdb.connect(DATABASE_PATH)
     plans_query = """
-        WITH 
-            tables_dedup AS (
-                SELECT MIN(t.id) as id, t.table_name, t.repo_id
-                FROM tables t 
-                GROUP BY t.table_name, t.repo_id
-            )
         SELECT 
-            t.repo_id,
-            list({
-                id: q.id,
-                plan: q.logical_plan_optimized_detailed, 
-                sql: q.executable_sql
-            }) AS queries,
-            list({
-                table_id: t.id,
-                table_name: t.table_name,
-                columns: (
-                    SELECT list({ 
-                        column_id: c.id,
-                        column_name: c.column_name,
-                        column_base_type: c.column_base_type,
-                    })
-                    FROM columns c
-                    WHERE c.table_id = t.id
-                )
-            }) AS tables
-        FROM (FROM queries_executable) as q
-        JOIN tables_dedup t ON q.repo_id = t.repo_id
-        GROUP BY t.repo_id -- Group by table_name to avoid duplicates
+            r.id AS repo_id,
+            -- Subquery for queries
+            (
+                SELECT list({
+                    id: q.id,
+                    sql: q.executable_sql,
+                    plan: q.logical_plan_optimized_detailed
+                })
+                FROM queries_executable q
+                WHERE q.repo_id = r.id
+            ) AS queries,
+            -- Subquery for tables and their columns
+            (
+                SELECT list({
+                    table_id: t.id,
+                    table_name: t.table_name,
+                    columns: (
+                        SELECT list({
+                            column_id: c.id,
+                            column_name: c.column_name,
+                            column_base_type: c.column_base_type
+                        })
+                        FROM columns c
+                        WHERE c.table_id = t.id
+                    )
+                })
+                FROM tables t
+                WHERE t.repo_id = r.id
+            ) AS tables
+        FROM repos r 
+        WHERE EXISTS (
+            FROM queries_executable q
+            WHERE q.repo_id = r.id 
+        );
     """
     plans = con.execute(plans_query).fetchall()
 

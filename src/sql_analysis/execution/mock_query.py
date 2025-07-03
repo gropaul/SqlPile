@@ -5,7 +5,6 @@ import duckdb
 from sqloxide import parse_sql, mutate_expressions
 
 from src.config import logger
-from src.sql_analysis.execution.get_plans import get_extended_explain
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically
 
@@ -62,7 +61,7 @@ def visit_placeholders_turn_null(expr):
 
     return expr
 
-def try_to_mock_and_execute_query(database_path: str, sql: str, tables: List[Table]) -> MockQueryResult:
+def try_to_mock_and_execute_query( sandbox_con: duckdb.DuckDBPyConnection, sql: str, tables: List[Table]) -> MockQueryResult:
     original_successful_query = None
     executed_query = None
     last_error = None
@@ -87,12 +86,15 @@ def try_to_mock_and_execute_query(database_path: str, sql: str, tables: List[Tab
         ast = parse_sql(sql=rewritten_sql, dialect='generic')
         nulled_sql = mutate_expressions(parsed_query=ast, func=visit_placeholders_turn_null)[0]
         executed_query = nulled_sql
-        plans = get_extended_explain(setting_queries, executed_query, database=database_path)
+
+        sql = f"{setting_queries}; EXPLAIN (FORMAT JSON) {executed_query};"
+        plans = sandbox_con.execute(sql).fetchall()
+
         # dict_keys(['logical_plan', 'logical_opt', 'logical_opt_detailed', 'physical_plan'])
-        logical_plan_json = plans['logical_plan'][0]
-        logical_plan_optimized = plans['logical_opt'][0]
-        logical_plan_optimized_detailed = plans['logical_opt_detailed'][0]
-        physical_plan = plans['physical_plan'][0]
+        logical_plan_json = json.loads(plans[0][1])[0]
+        logical_plan_optimized = json.loads(plans[1][1])[0]
+        logical_plan_optimized_detailed = json.loads(plans[2][1])[0]
+        physical_plan = json.loads(plans[3][1])[0]
 
     except Exception as e:
         successful = False
@@ -104,19 +106,3 @@ def try_to_mock_and_execute_query(database_path: str, sql: str, tables: List[Tab
                            logical_plan_optimized=logical_plan_optimized,
                            logical_plan_optimized_detailed=logical_plan_optimized_detailed,
                            physical_plan=physical_plan, successful=successful)
-
-
-example_sql = "SELECT * FROM my_table WHERE name = :name"
-example_columns = [
-    Column(column_id=1, column_name="id", column_base_type="int"),
-    Column(column_id=2, column_name="name", column_base_type="str")
-]
-example_tables = [Table(table_id=1, table_name="my_table", columns=example_columns)]
-
-if __name__ == "__main__":
-    # Example usage
-    con = duckdb.connect()
-    con.execute("CREATE TABLE my_table (id INTEGER, name VARCHAR)")
-    result = try_to_mock_and_execute_query(example_sql, con, example_tables)
-    print(result)
-    con.close()

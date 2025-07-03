@@ -1,19 +1,42 @@
+import json
 from typing import List, Dict, Tuple
 
 from src.config import logger
 from src.sql_analysis.execution.models import Table
 from src.sql_analysis.plan_analysis.models import ColumnUsage, OperatorType, \
-    ColumnTrack, ExpressionInfo, TableColumnBinding
+    ColumnTrack, ExpressionInfo, TableColumnBinding, ColumnUsageType, JoinConditionInfo
 from src.sql_analysis.plan_analysis.tracking import track_and_find_usage
-from src.sql_analysis.plan_analysis.utils import to_list, to_expressions
+from src.sql_analysis.plan_analysis.utils import to_list, to_expressions, to_conditions
+
+
+def get_one_child_tracks(children_tracks: List[List[ColumnTrack]]) -> List[ColumnTrack]:
+    # expect tracks from one children node
+    if len(children_tracks) != 1:
+        logger.error(f"Expected exactly one set of children tracks, got {len(children_tracks)}.")
+        return []
+
+    children_tracks = children_tracks[0]
+    return children_tracks
+
+def get_two_child_tracks(children_tracks: List[List[ColumnTrack]]) -> Tuple[List[ColumnTrack], List[ColumnTrack]]:
+    # expect tracks from two children nodes
+    if len(children_tracks) != 2:
+        logger.error(f"Expected exactly two sets of children tracks, got {len(children_tracks)}.")
+        return [], []
+
+    child1_tracks = children_tracks[0]
+    child2_tracks = children_tracks[1]
+    return child1_tracks, child2_tracks
+
 
 # query_id: int, plan: Dict, tables: List[Table], children_tracks: List[ColumnTrack]
 class Params:
-    def __init__(self, query_id: int, plan: any, tables: List[Table], children_tracks: List[ColumnTrack]):
+    def __init__(self, query_id: int, plan: any, tables: List[Table], children_tracks: List[List[ColumnTrack]]):
         self.query_id = query_id
         self.plan = plan
         self.tables = tables
         self.children_tracks = children_tracks
+
 
 def analyze_node(query_id: int, plan: Dict, tables: List[Table]) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     """
@@ -21,31 +44,33 @@ def analyze_node(query_id: int, plan: Dict, tables: List[Table]) -> Tuple[List[C
     """
     node_operator: OperatorType = plan['operator_type'].strip().upper()
 
-    tracks: List[ColumnTrack] = []
+    children_tracks: List[List[ColumnTrack]] = []
     results: List[ColumnUsage] = []
 
     for child in plan.get('children', []):
         child_results, child_tracks = analyze_node(query_id, child, tables)
         results.extend(child_results)
-        tracks.extend(child_tracks)
+        children_tracks.append(child_tracks)
 
-    params = Params(query_id, plan, tables, tracks)
-    if node_operator == 'GET':
-        node_results, tracks = analyze_get(params)
+    analyze_map = {
+        'GET': analyze_get,
+        'PROJECTION': analyze_projection,
+        'ORDER_BY': analyze_order_by,
+        'FILTER': analyze_filter,
+        'AGGREGATE': analyze_aggregate,
+        'COMPARISON_JOIN': analyze_join,
+    }
+
+    analyze_fn = analyze_map.get(node_operator)
+
+    if analyze_fn:
+        params = Params(query_id, plan, tables, children_tracks)
+        node_results, node_tracks = analyze_fn(params)
         results.extend(node_results)
-    elif node_operator == 'PROJECTION':
-        node_results, tracks = analyze_projection(params)
-        results.extend(node_results)
-    elif node_operator == 'ORDER_BY':
-        node_results, tracks = analyze_order_by(params)
-        results.extend(node_results)
-    elif node_operator == 'FILTER':
-        node_results, tracks = analyze_filter(params)  # Filter is treated like a projection
-        results.extend(node_results)
+        return results, node_tracks
     else:
         logger.warning(f"Unknown operator type: {node_operator}, skipping analysis.")
-
-    return results, tracks
+        return results, []
 
 
 def analyze_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
@@ -53,6 +78,12 @@ def analyze_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     extra_info = plan.get('extra_info', {})
     filter_expressions: List[str] = to_list(extra_info.get('Filters', []))
     projections: List[ExpressionInfo] = to_expressions(plan.get('expressions', []))
+
+    # if the table is e.g. a schema table, we won't find Table
+    if 'Table' not in extra_info or not extra_info['Table']:
+        logger.error("No table name found in extra_info. Cannot analyze GET node.")
+        return [], []
+
     scan_table_name = extra_info['Table']
 
     scan_table: Table = None
@@ -96,10 +127,12 @@ def analyze_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     return usages, my_tracks
 
 
-def analyze_projection(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
+def analyze_projection(params: Params, usage_type: ColumnUsageType = 'PROJECTION') -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
     extra_info = plan.get('extra_info', {})
     projections: List[ExpressionInfo] = to_expressions(plan.get('expressions', []))
+
+    children_tracks = get_one_child_tracks(children_tracks)
 
     usages = []
     my_tracks = []
@@ -108,7 +141,7 @@ def analyze_projection(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTr
     for (column_index, projection) in enumerate(projections):
         # check if there are any children tracks that match the projection
         binding = TableColumnBinding(table_id=table_id, column_id=column_index)
-        track, usage = track_and_find_usage(projection, query_id, children_tracks, 'PROJECTION', binding=binding)
+        track, usage = track_and_find_usage(projection, query_id, children_tracks, usage_type, binding=binding)
         my_tracks.append(track)
         usages.append(usage)
 
@@ -121,8 +154,9 @@ def analyze_projection(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTr
 
 
 def analyze_order_by(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
-
     query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
+
+    children_tracks = get_one_child_tracks(children_tracks)
 
     usages = []
     orders = to_expressions(plan.get('orders', []))
@@ -131,7 +165,8 @@ def analyze_order_by(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrac
         track, usage = track_and_find_usage(order, query_id, children_tracks, 'ORDER_KEY', binding=binding)
         usages.append(usage)
 
-    return usages, params.children_tracks
+    return usages, children_tracks
+
 
 def analyze_filter(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     """
@@ -139,6 +174,8 @@ def analyze_filter(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]
     """
     query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
     filter_expressions: List[ExpressionInfo] = to_expressions(plan.get('expressions', []))
+
+    children_tracks = get_one_child_tracks(children_tracks)
 
     usages = []
 
@@ -149,3 +186,93 @@ def analyze_filter(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]
         usages.append(usage)
 
     return usages, children_tracks
+
+
+def analyze_aggregate(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
+    """
+    Analyze an aggregate node in the execution plan.
+
+    Column ordering in DuckDB's aggregate nodes:
+    Example: SELECT id, COUNT(*), MIN(id) FROM my_table GROUP BY id
+
+    1. groups → Columns used for grouping (e.g., `id`)
+    2. expressions → Aggregation expressions (e.g., `COUNT(*)`, `MIN(id)`)
+    3. grouping_functions → (Unknown usage — see DuckDB source)
+
+    For reference, see the DuckDB source code:
+    [DuckDB logical_aggregate.cpp (lines 15–24)](https://github.com/duckdb/duckdb/blob/1fe72eca288f726f90103616fa6f23c057caf22a/src/planner/operator/logical_aggregate.cpp#L15-L24)
+    """
+
+    query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
+
+    children_tracks = get_one_child_tracks(children_tracks)
+
+    usages = []
+    my_tracks = []
+
+    groups = to_expressions(plan.get('groups', []))
+
+    for (column_index, group_expression) in enumerate(groups):
+        binding = TableColumnBinding(table_id=-1, column_id=column_index)
+        track, usage = track_and_find_usage(group_expression, query_id, children_tracks,
+                                            'GROUP_KEY', binding=binding)
+        usages.append(usage)
+        my_tracks.append(track)
+
+    expression_usages, expression_tracks = analyze_projection(params, usage_type='AGGREGATE')
+    usages.extend(expression_usages)
+    my_tracks.extend(expression_tracks)
+
+    return usages, children_tracks
+
+
+def get_join_projections(plan: Dict) -> Tuple[List[int], List[int]]:
+    left_p_string = plan['extra_info'].get('left_projection_map', '')
+    left_p = json.loads(left_p_string) if left_p_string else []
+    right_p_string = plan['extra_info'].get('right_projection_map', '')
+    right_p = json.loads(right_p_string) if right_p_string else []
+    return left_p, right_p
+
+def analyze_join(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
+    """
+    Analyze a join node in the execution plan.
+    """
+    query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
+
+    left_tracks, right_tracks = get_two_child_tracks(children_tracks)
+
+    usages = []
+
+    # Join keys are usually in the 'expressions' field
+    conditions: List[JoinConditionInfo] = to_conditions(plan.get('join_conditions', []))
+
+    for condition in conditions:
+        left_expression = condition.left
+        right_expression = condition.right
+
+        _, left_usage = track_and_find_usage(left_expression, query_id, left_tracks,
+                                                      'JOIN_KEY')
+        _, right_usage = track_and_find_usage(right_expression, query_id, right_tracks,
+                                                        'JOIN_KEY')
+
+        # self, query_id: int, column_ids: List[int], expression: str, expression_result_type: str,
+        # usage_type: ColumnUsageTyp
+        combined_usage = ColumnUsage(
+            query_id=query_id,
+            column_ids=[*left_usage.column_ids, *right_usage.column_ids],
+            expression=f"{left_expression.expression} {condition.comparison} {right_expression.expression}",
+            expression_result_type=left_expression.return_type,  # Assuming both sides have the same type
+            usage_type='JOIN_KEY'
+        )
+
+        usages.append(combined_usage)
+
+    left_projections, right_projections = get_join_projections(plan)
+    if left_projections:
+        left_tracks = [left_tracks[index] for index in left_projections]
+    if right_projections:
+        right_tracks = [right_tracks[index] for index in right_projections]
+
+    my_tracks = [*left_tracks, *right_tracks]
+
+    return usages, my_tracks

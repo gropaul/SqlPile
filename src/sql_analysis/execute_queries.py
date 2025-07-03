@@ -8,7 +8,6 @@ from tqdm import tqdm
 
 from src.config import DATABASE_PATH
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
-from src.sql_analysis.execution.get_plans import repo_url_to_database_path
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically
@@ -115,19 +114,18 @@ def escape_string(sql: Optional[str]) -> Optional[str]:
     # Escape single quotes by replacing them with two single quotes
     return sql.replace("'", "''")
 
-def execute_queries(repo_id: int, repo_url: str, database_path: str, con: duckdb.DuckDBPyConnection, tables: List[Table]):
+def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection, tables: List[Table]):
 
     queries_deduped = con.execute(f"""
         SELECT MIN(id), sql, 
         FROM queries
-        WHERE repo_id = ?
-        AND type IN ('SELECT')
+        WHERE repo_id = ? AND type IN ('SELECT')
         GROUP BY sql
     """, (repo_id,)).fetchall()
 
     for query_id, sql in queries_deduped:
         sql_prepared = prepare_sql_statically(sql)
-        result: MockQueryResult = try_to_mock_and_execute_query(database_path, sql_prepared, tables)
+        result: MockQueryResult = try_to_mock_and_execute_query(sandbox_con, sql_prepared, tables)
 
         if result.was_successful():
             global success_id_counter
@@ -165,7 +163,7 @@ def iterate_through_repos():
         FROM repos
         JOIN queries ON repos.id = queries.repo_id
         WHERE queries.type IN ('SELECT')
-        AND repo_id = 27409
+        AND repo_id = 20465 OR True 
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
     """).fetchall()
@@ -204,28 +202,16 @@ def iterate_through_repos():
     with tqdm(repos, desc="Processing repositories", unit="repo") as pbar:
         for repo_id, repo_url, cnt in pbar:
 
-            database_path = repo_url_to_database_path(repo_url)
-
-            # if it already exists, delete it
-            if os.path.exists(database_path):
-                os.remove(database_path)
-
-            sandbox_con = duckdb.connect(database_path)
+            sandbox_con = duckdb.connect(':memory:', read_only=False)
 
             # Add all the macros from EXTRA_FUNCTIONS
             for function in EXTRA_FUNCTIONS:
                 sandbox_con.execute(function)
 
             tables = create_tables(repo_id, repo_url, con, sandbox_con)
+            execute_queries(repo_id, repo_url, sandbox_con, con, tables)
 
-            for table in tables:
-                print(table)
-
-            # close sandbox connection to avoid locking issues as we use different ddb version for getting
-            # extended explain
             sandbox_con.close()
-
-            execute_queries(repo_id, repo_url, database_path, con, tables)
 
             # Update counts
             error_count = con.execute(f"SELECT COUNT(*) FROM {ERROR_TABLE_NAME}").fetchone()[0]
