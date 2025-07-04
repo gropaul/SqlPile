@@ -268,9 +268,16 @@ def analyze_join(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
         usages.append(combined_usage)
 
     left_projections, right_projections = get_join_projections(plan)
+    # if the max projection index is larger then the number of tracks, log an error
     if left_projections:
+        if max(left_projections) >= len(left_tracks):
+            logger.error(f"Left projections {left_projections} exceed the number of left tracks {len(left_tracks)}.")
+            left_projections = [index for index in left_projections if index < len(left_tracks)]
         left_tracks = [left_tracks[index] for index in left_projections]
     if right_projections:
+        if max(right_projections) >= len(right_tracks):
+            logger.error(f"Right projections {right_projections} exceed the number of right tracks {len(right_tracks)}.")
+            right_projections = [index for index in right_projections if index < len(right_tracks)]
         right_tracks = [right_tracks[index] for index in right_projections]
 
     my_tracks = [*left_tracks, *right_tracks]

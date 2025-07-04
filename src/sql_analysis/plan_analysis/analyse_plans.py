@@ -2,15 +2,23 @@ import json
 from typing import List, Dict, Literal
 
 import duckdb
+from tqdm import tqdm
 
 from src.config import DATABASE_PATH, logger
+from src.sql_analysis.execute_queries import escape_string
 from src.sql_analysis.execution.models import Table, Column
+from src.sql_analysis.load_schemapile_json_to_ddb import COLUMN_USAGES_TABLE_NAME
 from src.sql_analysis.plan_analysis.analyze_nodes import analyze_node
 
 
 def initialize_tables(table_structs: List[Dict]) -> List[Table]:
 
     tables = []
+
+    if table_structs is None:
+        logger.warning("No table structures provided, returning empty list.")
+        return tables
+
     for table_struct in table_structs:
         if 'columns' not in table_struct:
             table_struct['columns'] = []
@@ -38,6 +46,20 @@ def initialize_tables(table_structs: List[Dict]) -> List[Table]:
 
 def analyse_plans():
     con = duckdb.connect(DATABASE_PATH)
+
+    create_usages_table_query = f"""
+        CREATE OR REPLACE TABLE {COLUMN_USAGES_TABLE_NAME} (
+            id INTEGER,
+            query_id INTEGER,
+            column_ids INTEGER[],
+            expression VARCHAR,
+            expression_result_type VARCHAR,
+            usage_type VARCHAR)
+    """
+    con.execute(create_usages_table_query)
+
+    n_added = 0
+
     plans_query = """
         SELECT 
             r.id AS repo_id,
@@ -77,7 +99,7 @@ def analyse_plans():
     """
     plans = con.execute(plans_query).fetchall()
 
-    for (repo_id, queries, tables) in plans:
+    for (repo_id, queries, tables) in tqdm(plans, desc="Analyzing plans", unit="repo"):
         tables_parsed = initialize_tables(tables)
 
         for query in queries:
@@ -86,11 +108,19 @@ def analyse_plans():
             logger.info(f"Analyzing query ID: {id}, Repo ID: {repo_id}, SQL: {query['sql']}")
             results, tracks = analyze_node(id, plan, tables_parsed)
 
-            # print the plan nicely formatted
-            # logger.info(f"Plan for query ID {id}: {json.dumps(plan, indent=2)}")
+            # Insert results into the COLUMN_USAGES_TABLE_NAME
+            for result in results:
+                # logger.info(f"Query ID: {id}, Operator: {result.usage_type}, Expression: {result.expression}, Columns: {result.column_ids}")
+                insert_query = f"""
+                    INSERT INTO {COLUMN_USAGES_TABLE_NAME} ( id, query_id, column_ids, expression, expression_result_type, usage_type)
+                    VALUES ({n_added}, {id}, {json.dumps(result.column_ids)}, '{escape_string(result.expression)}', '{result.expression_result_type}', '{result.usage_type}')
+                """
+                con.execute(insert_query)
+                n_added += 1
 
-            for results in results:
-                logger.info(f"Query ID: {id}, Operator: {results.usage_type}, Expression: {results.expression}, Columns: {results.column_ids}")
+
+
+
 
 if __name__ == "__main__":
     analyse_plans()

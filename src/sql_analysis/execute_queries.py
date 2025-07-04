@@ -119,7 +119,7 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
     queries_deduped = con.execute(f"""
         SELECT MIN(id), sql, 
         FROM queries
-        WHERE repo_id = ? AND type IN ('SELECT')
+        WHERE repo_id = ? AND type IN ('SELECT', 'WITH')
         GROUP BY sql
     """, (repo_id,)).fetchall()
 
@@ -162,8 +162,7 @@ def iterate_through_repos():
         SELECT repos.id, repos.repo_url, COUNT(queries.id) AS query_count
         FROM repos
         JOIN queries ON repos.id = queries.repo_id
-        WHERE queries.type IN ('SELECT')
-        AND repo_id = 20465 OR True 
+        WHERE queries.type IN ('SELECT', 'WITH')
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
     """).fetchall()

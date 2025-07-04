@@ -25,6 +25,7 @@ langchain-community = "^0.3.25"
 langchain-ollama = "^0.3.3"
 langchain-openai = "^0.3.24"
 duckdb = {path = "/Users/paul/workspace/duckdb/tools/pythonpkg", develop = true}
+matplotlib = "^3.10.3"
 
 
 [build-system]
