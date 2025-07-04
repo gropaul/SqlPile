@@ -91,8 +91,13 @@ class ExtractedQuery:
         self.name = name
         self.type = determine_query_type(extracted_string.string)
         self.sql = extracted_string.string
-        self.text_context = extracted_string.text_context
-        self.text_text_context_offset = extracted_string.text_context_offset
+
+        if self.type == 'SELECT' or self.type == 'WITH':
+            self.text_context = extracted_string.text_context
+            self.text_text_context_offset = extracted_string.text_context_offset
+        else:
+            self.text_context = ''
+            self.text_text_context_offset = 0
         self.line = extracted_string.line_number
 
     def to_dict(self) -> Dict[str, str]:
