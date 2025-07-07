@@ -16,7 +16,7 @@ from sqloxide import parse_sql
 
 from src.config import DATABASE_PATH, logger
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically
-from src.sql_analysis.load_schemapile_json_to_ddb import ERROR_TABLE_NAME
+from src.sql_analysis.load_schemapile_json_to_ddb import ERRORS_QUERIES_TABLE_NAME
 
 SYSTEM_PROMPT = """
 Construct a valid sql query from this code. If there are parameters (e.g. $1, %s, :param, etc.), replace them with example values.
@@ -136,7 +136,7 @@ def fix_queries():
             sql, 
             text_context[text_context_offset-{code_context_window_start}:-text_context_offset+{code_context_window_end}] as context,
             queries.rowid as rowid
-        FROM {ERROR_TABLE_NAME} 
+        FROM {ERRORS_QUERIES_TABLE_NAME} 
         JOIN queries ON queries.id = queries_error.query_id
         WHERE 'Query parsing' in error_message AND
              len(queries.text_context) != 0

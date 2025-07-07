@@ -14,12 +14,14 @@ REPO_TABLE_NAME = 'repos'
 REPO_META_DATA_FILES_TABLE_NAME = 'repos_meta_data'
 FILES_TABLE_NAME = 'files'
 FILES_META_DATA_TABLE_NAME = 'repo_meta_data_files'
-TABLE_TABLE_NAME = 'tables'
+TABLES_TABLE_NAME = 'tables'
 COLUMNS_TABLE_NAME = 'columns'
+COLUMN_VALUES_TABLE_NAME = 'column_values'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
 QUERIES_TABLE_NAME = 'queries'
 EXECUTABLE_QUERIES_TABLE_NAME = 'queries_executable'
-ERROR_TABLE_NAME = 'queries_error'
+ERRORS_QUERIES_TABLE_NAME = 'queries_error'
+ERRORS_TABLES_TABLE_NAME = 'tables_error'
 repo_id_counter = 0
 table_id_counter = 0
 column_id_counter = 0
@@ -48,7 +50,7 @@ def get_id(table_name: str) -> int:
     if table_name == REPO_TABLE_NAME:
         repo_id_counter += 1
         return repo_id_counter
-    elif table_name == TABLE_TABLE_NAME:
+    elif table_name == TABLES_TABLE_NAME:
         table_id_counter += 1
         return table_id_counter
     elif table_name == COLUMNS_TABLE_NAME:
@@ -81,22 +83,22 @@ def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConn
     for table_key in tables:
         table_value = tables[table_key]
         table_name_clean = table_key.split('.')[-1]  # Get the table name from the key
-        table_id = get_id(TABLE_TABLE_NAME)
+        table_id = get_id(TABLES_TABLE_NAME)
 
         # check if the table already exists
         existing_table = con.execute(f"""
-                    SELECT id FROM {TABLE_TABLE_NAME} WHERE repo_id = ? AND table_name = ?
+                    SELECT id FROM {TABLES_TABLE_NAME} WHERE repo_id = ? AND table_name = ?
                 """, (repo_id, table_key)).fetchone()
 
         if existing_table is not None:
             continue
 
         con.execute(f"""
-                    INSERT INTO {TABLE_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
+                    INSERT INTO {TABLES_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
                     VALUES (?, ?, ?, ?, ?)
                 """, (table_id, repo_id, table_key, table_name_clean, file_url))
 
-        for column_key, column_value in table_value['COLUMNS'].items():
+        for (index, (column_key, column_value)) in enumerate(table_value.get('COLUMNS', {}).items()):
             column_id = get_id(COLUMNS_TABLE_NAME)
             column_type_original = column_value.get('TYPE', 'unknown')
             column_type, base_type = unify_type(column_type_original)
@@ -118,12 +120,12 @@ def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConn
 
             con.execute(f"""
                         INSERT INTO {COLUMNS_TABLE_NAME} (
-                            id, table_id, column_name, column_type, column_base_type,
+                            id, table_id, column_name, column_table_index, column_type, column_base_type,
                             column_type_original, semantic_type, is_unique, is_nullable,
                             is_indexed, is_primary_key
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                column_id, table_id, column_key, column_type, base_type,
+                column_id, table_id, column_key, index, column_type, base_type,
                 column_type_original, semantic_type, is_unique, is_nullable,
                 is_indexed, is_primary_key
             ))
@@ -159,7 +161,7 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
         )
     """)
     con.execute(f"""
-        CREATE OR REPLACE TABLE  {TABLE_TABLE_NAME} (
+        CREATE OR REPLACE TABLE  {TABLES_TABLE_NAME} (
             id BIGINT {primary_key()},
             repo_id BIGINT {foreign_key(REPO_TABLE_NAME, 'id')},
             table_name VARCHAR,
@@ -170,8 +172,9 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
     con.execute(f"""
         CREATE OR REPLACE TABLE {COLUMNS_TABLE_NAME} (
             id BIGINT {primary_key()},
-            table_id BIGINT {foreign_key(TABLE_TABLE_NAME, 'id')},
+            table_id BIGINT {foreign_key(TABLES_TABLE_NAME, 'id')},
             column_name VARCHAR,
+            column_table_index INTEGER,
             column_type VARCHAR,
             column_base_type VARCHAR,
             column_type_original VARCHAR,
@@ -191,4 +194,4 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    load_schemapile_json_to_database()
+    load_schemapile_json_to_database(ask=False)

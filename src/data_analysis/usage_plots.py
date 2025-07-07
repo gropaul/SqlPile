@@ -134,6 +134,9 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
             count = result[count_index]  # The count value
             data[column_type][i] = count
 
+    # Create a copy of the original absolute counts before converting to percentages
+    original_counts = {column_type: data[column_type].copy() for column_type in all_column_types}
+
     # Calculate total counts for each usage type
     totals = [0] * len(usage_types)
     for i in range(len(usage_types)):
@@ -148,6 +151,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
 
     # Group column types with percentages < 3% into "Other" category
     other_data = [0] * len(usage_types)
+    other_original_counts = [0] * len(usage_types)
     small_column_types = []
 
     for column_type in all_column_types:
@@ -161,14 +165,17 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
             small_column_types.append(column_type)
             for i in range(len(usage_types)):
                 other_data[i] += data[column_type][i]
+                other_original_counts[i] += original_counts[column_type][i]
 
-    # Remove small column types from the data dictionary
+    # Remove small column types from the data dictionary and original_counts
     for column_type in small_column_types:
         del data[column_type]
+        del original_counts[column_type]
 
     # Add "Other" category if there are any small column types
     if small_column_types:
         data["Other"] = other_data
+        original_counts["Other"] = other_original_counts
 
     # Create the stacked bar plot
     plt.figure(figsize=(12, 8))
@@ -195,10 +202,32 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
         # Use modulo to cycle through hatches if there are more column types than hatch patterns
         hatch = '' if column_type == "Other" else hatches[i % len(hatches)]
         hatch_color = darken_color(color, 1.3) if hatch else color
-        plt.bar(usage_types, data[column_type], bottom=bottom, label=column_type,
+
+        # Create the bar segment
+        bars = plt.bar(usage_types, data[column_type], bottom=bottom, label=column_type,
                 color=color, hatch=hatch, edgecolor=hatch_color, linewidth=0.3)
         plt.bar(usage_types, data[column_type], bottom=bottom,
                 color='none', edgecolor='black', linewidth=0.5)
+
+        # Add text labels with absolute counts in the middle of each segment
+        for j, rect in enumerate(bars):
+            # Calculate the vertical position for the text (middle of the segment)
+            height = rect.get_height()
+            y_pos = rect.get_y() + height / 2
+
+            # Get the absolute count for this segment
+            count = original_counts[column_type][j]
+
+            # Only add label if count is significant (to avoid cluttering)
+            if count > 0:
+                # Format the count as an integer
+                count_text = f"{int(count)}"
+
+                # Add the text label
+                plt.text(j, y_pos, count_text, ha='center', va='center', 
+                         fontsize=15, color='black', fontweight='bold')
+
+        # Update the bottom position for the next segment
         bottom = [bottom[j] + data[column_type][j] for j in range(len(usage_types))]
 
     # Add labels and title

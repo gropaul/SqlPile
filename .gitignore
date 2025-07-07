@@ -1,5 +1,6 @@
 .data/
 data/
+plots/
 .idea
 
 # Ignore Python cache files

@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 
 def prepare_sql_statically(sql: str) -> str:
@@ -37,3 +38,11 @@ def prepare_sql_statically(sql: str) -> str:
     sql = re.sub(r'\{\s*(\w+)\s*\}', r':\1', sql)
 
     return sql
+
+
+def escape_for_insert(sql: Optional[str]) -> Optional[str]:
+
+    if sql is None:
+        return None
+    # Escape single quotes by replacing them with two single quotes
+    return sql.replace("'", "''")

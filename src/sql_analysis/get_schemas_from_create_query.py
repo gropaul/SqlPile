@@ -8,7 +8,7 @@ from src.config import DATABASE_PATH
 
 from typing import Optional
 
-from src.sql_analysis.load_schemapile_json_to_ddb import TABLE_TABLE_NAME, COLUMNS_TABLE_NAME, QUERIES_TABLE_NAME
+from src.sql_analysis.load_schemapile_json_to_ddb import TABLES_TABLE_NAME, COLUMNS_TABLE_NAME, QUERIES_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_to_schema import parse_create_table
 from src.sql_analysis.tools.sql_types import unify_type
@@ -48,7 +48,7 @@ def get_schemas_from_create_query():
 
 
     max_tables_id = con.execute(f"""
-        SELECT MAX(id) FROM {TABLE_TABLE_NAME}
+        SELECT MAX(id) FROM {TABLES_TABLE_NAME}
     """).fetchone()[0]
     print(f"Max table id: {max_tables_id}")
 
@@ -65,7 +65,7 @@ def get_schemas_from_create_query():
         JOIN repos ON queries.repo_id = repos.id
         WHERE get_table_name(queries.sql) IS NOT NULL
           AND queries.type = 'CREATE'
-          AND (repos.id = 11781 OR true)
+          AND (repos.id = 24430 OR true)
           AND query_table_name IS NOT NULL 
           AND NOT EXISTS (
             SELECT 1
@@ -87,7 +87,7 @@ def get_schemas_from_create_query():
 
             # check if the table already exists
             existing_table = con.execute(f"""
-                SELECT id FROM {TABLE_TABLE_NAME} 
+                SELECT id FROM {TABLES_TABLE_NAME} 
                 WHERE repo_id = ? AND table_name_clean = ?
             """, (repo_id, clean_name)).fetchone()
 
@@ -100,7 +100,7 @@ def get_schemas_from_create_query():
             # columns:    id, repo_id, table_name, table_name_clean, file_url
             table_id = max_tables_id + n_new_tables
             con.execute(f"""
-                INSERT INTO {TABLE_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
+                INSERT INTO {TABLES_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
                 VALUES (?, ?, ?, ?, ?)
             """, (table_id, repo_id, table_schema.table_name, table_schema.table_name.lower(), None))
 
@@ -108,6 +108,7 @@ def get_schemas_from_create_query():
                 # columns: id,table_id,column_name,column_type,column_base_type,column_type_original,semantic_type,is_unique,is_nullable,is_indexed,is_primary_key
                 n_new_columns += 1
                 column_name = column.name
+                column_table_index =  column.table_index
                 column_type_original = column.type
                 column_type, base_type = unify_type(column_type_original)
                 semantic_type = get_column_semantic_type(column_name, base_type)
@@ -116,19 +117,19 @@ def get_schemas_from_create_query():
 
                 con.execute(f"""
                     INSERT INTO {COLUMNS_TABLE_NAME} (
-                        id, table_id, column_name, column_type, column_base_type,
+                        id, table_id, column_name, column_table_index, column_type, column_base_type,
                         column_type_original, semantic_type, is_unique, is_nullable,
                         is_indexed, is_primary_key
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    column_id, table_id, column_name, column_type, base_type,
+                    column_id, table_id, column_name, column_table_index, column_type, base_type,
                     column_type_original, semantic_type, column.is_primary_key,
                     True, False, False
                 ))
 
         except Exception as e:
-            # print(sql)
-            # print(f"Error parsing CREATE TABLE query in repo {repo_url} ({repo_id}): {e}")
+            print(sql)
+            print(f"Error parsing CREATE TABLE query in repo {repo_url} ({repo_id}): {e}")
             n_erros += 1
 
     print(f"Parsed {len(create_queries)} CREATE TABLE queries.")

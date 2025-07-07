@@ -11,6 +11,7 @@ class ColumnInfo:
     """Represents column metadata."""
     name: str
     type: str
+    table_index: int
     is_primary_key: bool = False
 
 
@@ -40,24 +41,93 @@ premiumn_plans = """create table `premium_plans`
                  """
 
 infobot_table = """
-                create table `infobot_discord_counts`
+                create table `npc_text`
                 (
-                    `shard_id`                  bigint(20) unsigned not null comment 'shard id',
-                    `cluster_id`                int(10) unsigned    not null default 0,
-                    `dev`                       tinyint(1) unsigned not null default 0 comment 'true if development data',
-                    `user_count`                bigint(20)          not null,
-                    `server_count`              bigint(20)          not null,
-                    `shard_count`               bigint(20) unsigned not null default 1 comment 'number of shards',
-                    `channel_count`             bigint(20) unsigned not null,
-                    `sent_messages`             bigint(20) unsigned not null default 0,
-                    `received_messages`         bigint(20) unsigned not null default 0,
-                    `memory_usage`              bigint(20) unsigned not null default 0,
-                    `games`                     bigint(20)          not null default 0 comment 'number of concurrent active games in progress',
-                    `last_updated`              datetime            not null default current_timestamp() on update current_timestamp(),
-                    `last_restart_intervention` datetime                     default null
-                ) engine = innodb
-                  default charset = latin1 comment = 'counts of users / servers on a per - shard basis' \
-                """
+                    `id`          mediumint(8) unsigned not null default '0',
+                    `text0_0`     longtext,
+                    `text0_1`     longtext,
+                    `lang0`       tinyint(3)   not null default '0',
+                    `prob0`       float                 not null default '0',
+                    `em0_0`       smallint(5) unsigned  not null default '0',
+                    `em0_1`       smallint(5) unsigned  not null default '0',
+                    `em0_2`       smallint(5) unsigned  not null default '0',
+                    `em0_3`       smallint(5) unsigned  not null default '0',
+                    `em0_4`       smallint(5) unsigned  not null default '0',
+                    `em0_5`       smallint(5) unsigned  not null default '0',
+                    `text1_0`     longtext,
+                    `text1_1`     longtext,
+                    `lang1`       tinyint(3)   not null default '0',
+                    `prob1`       float                 not null default '0',
+                    `em1_0`       smallint(5) unsigned  not null default '0',
+                    `em1_1`       smallint(5) unsigned  not null default '0',
+                    `em1_2`       smallint(5) unsigned  not null default '0',
+                    `em1_3`       smallint(5) unsigned  not null default '0',
+                    `em1_4`       smallint(5) unsigned  not null default '0',
+                    `em1_5`       smallint(5) unsigned  not null default '0',
+                    `text2_0`     longtext,
+                    `text2_1`     longtext,
+                    `lang2`       tinyint(3)   not null default '0',
+                    `prob2`       float                 not null default '0',
+                    `em2_0`       smallint(5) unsigned  not null default '0',
+                    `em2_1`       smallint(5) unsigned  not null default '0',
+                    `em2_2`       smallint(5) unsigned  not null default '0',
+                    `em2_3`       smallint(5) unsigned  not null default '0',
+                    `em2_4`       smallint(5) unsigned  not null default '0',
+                    `em2_5`       smallint(5) unsigned  not null default '0',
+                    `text3_0`     longtext,
+                    `text3_1`     longtext,
+                    `lang3`       tinyint(3)   not null default '0',
+                    `prob3`       float                 not null default '0',
+                    `em3_0`       smallint(5) unsigned  not null default '0',
+                    `em3_1`       smallint(5) unsigned  not null default '0',
+                    `em3_2`       smallint(5) unsigned  not null default '0',
+                    `em3_3`       smallint(5) unsigned  not null default '0',
+                    `em3_4`       smallint(5) unsigned  not null default '0',
+                    `em3_5`       smallint(5) unsigned  not null default '0',
+                    `text4_0`     longtext,
+                    `text4_1`     longtext,
+                    `lang4`       tinyint(3)   not null default '0',
+                    `prob4`       float                 not null default '0',
+                    `em4_0`       smallint(5) unsigned  not null default '0',
+                    `em4_1`       smallint(5) unsigned  not null default '0',
+                    `em4_2`       smallint(5) unsigned  not null default '0',
+                    `em4_3`       smallint(5) unsigned  not null default '0',
+                    `em4_4`       smallint(5) unsigned  not null default '0',
+                    `em4_5`       smallint(5) unsigned  not null default '0',
+                    `text5_0`     longtext,
+                    `text5_1`     longtext,
+                    `lang5`       tinyint(3)   not null default '0',
+                    `prob5`       float                 not null default '0',
+                    `em5_0`       smallint(5) unsigned  not null default '0',
+                    `em5_1`       smallint(5) unsigned  not null default '0',
+                    `em5_2`       smallint(5) unsigned  not null default '0',
+                    `em5_3`       smallint(5) unsigned  not null default '0',
+                    `em5_4`       smallint(5) unsigned  not null default '0',
+                    `em5_5`       smallint(5) unsigned  not null default '0',
+                    `text6_0`     longtext,
+                    `text6_1`     longtext,
+                    `lang6`       tinyint(3)   not null default '0',
+                    `prob6`       float                 not null default '0',
+                    `em6_0`       smallint(5) unsigned  not null default '0',
+                    `em6_1`       smallint(5) unsigned  not null default '0',
+                    `em6_2`       smallint(5) unsigned  not null default '0',
+                    `em6_3`       smallint(5) unsigned  not null default '0',
+                    `em6_4`       smallint(5) unsigned  not null default '0',
+                    `em6_5`       smallint(5) unsigned  not null default '0',
+                    `text7_0`     longtext,
+                    `text7_1`     longtext,
+                    `lang7`       tinyint(3)   not null default '0',
+                    `prob7`       float                 not null default '0',
+                    `em7_0`       smallint(5) unsigned  not null default '0',
+                    `em7_1`       smallint(5) unsigned  not null default '0',
+                    `em7_2`       smallint(5) unsigned  not null default '0',
+                    `em7_3`       smallint(5) unsigned  not null default '0',
+                    `em7_4`       smallint(5) unsigned  not null default '0',
+                    `em7_5`       smallint(5) unsigned  not null default '0',
+                    `wdbverified` smallint(5) signed             default '1',
+                    primary key (`id`)
+                ) engine = myisam
+                  default charset = utf8"""
 
 scheduled_games_table = """
                         create table schema.scheduled_games
@@ -228,7 +298,17 @@ def rewrite_sql_for_parsing(sql: str) -> str:
         decimal_part = re.search(r'decimal\s*\(\s*\d+\s*,\s*\d+\s*\)', match.group(0), re.IGNORECASE)
         return decimal_part.group(0) if decimal_part else match.group(0)
 
+    # remove unsigned also from floats : float unsigned -> float
+    sql = re.sub(r'\bfloat\s+unsigned\b', 'float', sql, flags=re.IGNORECASE)
+
+    # remove all "signed" specifiers -> Default is signed, so we can remove it
+    sql = re.sub(r'\bsigned\b', '', sql, flags=re.IGNORECASE)
+
     sql = pattern.sub(replacer, sql)
+
+    # remove everything that comes after "... engine ="
+    sql = sql.split(' engine =')[0]
+
 
     # the parser does not support the "zerofill" specifier, so we remove it
     sql = re.sub(r'\bzerofill\b', '', sql, flags=re.IGNORECASE)
@@ -259,7 +339,7 @@ def parse_create_table(sql: str) -> TableSchema:
     statement_cols = create_table_statement['columns']
 
     columns: List[ColumnInfo] = []
-    for statement_col in statement_cols:
+    for (index, statement_col) in enumerate(statement_cols):
         data_type = get_data_type(statement_col)
         name = statement_col['name']['value']
 
@@ -273,6 +353,7 @@ def parse_create_table(sql: str) -> TableSchema:
         columns.append(
             ColumnInfo(
                 name=name,
+                table_index=index,
                 type=data_type,
                 is_primary_key=is_primary_key
             )
