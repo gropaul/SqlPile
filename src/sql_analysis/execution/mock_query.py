@@ -6,7 +6,7 @@ from sqloxide import parse_sql, mutate_expressions
 
 from src.config import logger
 from src.sql_analysis.execution.models import Table, Column
-from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically
+from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically
 
 MockType = Literal['int', 'float', 'str']
 
@@ -77,13 +77,11 @@ def try_to_mock_and_execute_query( sandbox_con: duckdb.DuckDBPyConnection, sql: 
     setting_queries = """
         PRAGMA explain_output = 'all';
         SET disabled_optimizers = '';
-        SET disabled_optimizers = 'compressed_materialization,statistics_propagation,filter_pushdown';
+        SET disabled_optimizers = 'compressed_materialization,statistics_propagation';
     """
     try:
-        original_successful_query = sql
-        rewritten_sql = prepare_sql_statically(sql)
 
-        ast = parse_sql(sql=rewritten_sql, dialect='generic')
+        ast = parse_sql(sql=sql, dialect='generic')
         nulled_sql = mutate_expressions(parsed_query=ast, func=visit_placeholders_turn_null)[0]
         executed_query = nulled_sql
 

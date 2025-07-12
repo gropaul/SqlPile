@@ -1,8 +1,7 @@
 import json
 from typing import List, Dict, Literal
-
-import duckdb
 from tqdm import tqdm
+import duckdb
 
 from src.config import DATABASE_PATH, logger
 from src.sql_analysis.execution.models import Table, Column
@@ -41,7 +40,6 @@ def initialize_tables(table_structs: List[Dict]) -> List[Table]:
         logger.error(f"Some tables were not initialized: {len(table_structs) - len(tables)}")
 
     return tables
-
 
 
 def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
@@ -95,11 +93,15 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
     for (repo_id, queries, tables) in tqdm(plans, desc="Analyzing plans", unit="repo"):
         tables_parsed = initialize_tables(tables)
 
+        if not queries:
+            logger.warning(f"No queries found for repo ID: {repo_id}")
+            continue
+
         for query in queries:
             query_id = query['query_id']
             plan = json.loads(query['plan'])
             logger.info(f"Analyzing query ID: {query_id}, Repo ID: {repo_id}, SQL: {query['sql']}")
-            results, tracks = analyze_node(query_id, plan, tables_parsed)
+            results, tracks = analyze_node(query_id, plan, tables_parsed, [])
 
             # Insert results into the COLUMN_USAGES_TABLE_NAME
             for result in results:
@@ -116,4 +118,6 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
 
 
 if __name__ == "__main__":
-    analyse_plans(24430)
+    con = duckdb.connect(DATABASE_PATH)
+
+    analyse_plans(con, 27994)

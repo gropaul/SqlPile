@@ -26,6 +26,8 @@ langchain-ollama = "^0.3.3"
 langchain-openai = "^0.3.24"
 duckdb = {path = "/Users/paul/workspace/duckdb/tools/pythonpkg", develop = true}
 matplotlib = "^3.10.3"
+sqlparse = "^0.5.3"
+simple-ddl-parser = "^1.7.1"
 
 
 [build-system]

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import List, Optional
 from typing import Tuple
@@ -10,12 +11,14 @@ from src.config import DATABASE_PATH
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
 from src.sql_analysis.execution.models import Table, Column
-from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically, escape_for_insert
+from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically, escape_for_insert, \
+    prepare_sql_statically_macro
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, QUERIES_TABLE_NAME, \
     EXECUTABLE_QUERIES_TABLE_NAME, REPO_TABLE_NAME, ERRORS_QUERIES_TABLE_NAME, ERRORS_TABLES_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_USAGES_TABLE_NAME
 from src.sql_analysis.plan_analysis.analyse_plans import analyse_plans
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
+
 
 # Define the error table name
 
@@ -29,6 +32,7 @@ def quote(column_name: str) -> str:
 
     return column_name
 
+
 # Counter for error IDs
 error_id_counter = 0
 success_id_counter = 0
@@ -41,20 +45,24 @@ n_successful_insertions = 0
 
 n_column_usage_insertions = 0
 
-def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
+EXCLUDED_REPOS = [16340]
 
+
+def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+                  sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
     tables_with_columns = con.execute("""
-        SELECT table_id, ANY_VALUE(table_name), list_distinct(list({
-            'id': columns.id,
-            'column_index': columns.column_table_index,
-            'column_name': columns.column_name,
-            'column_base_type': columns.column_base_type
-        }))
-        FROM tables
-        JOIN columns ON tables.id = columns.table_id
-        WHERE tables.repo_id = ?
-        GROUP BY table_id
-    """, (repo_id,)).fetchall()
+                                      SELECT table_id,
+                                             ANY_VALUE(table_name),
+                                             list_distinct(list({
+                                                 'id': columns.id, 'column_index': columns.column_table_index,
+                                                     'column_name': columns.column_name,
+                                                 'column_base_type': columns.column_base_type
+                                                 }))
+                                      FROM tables
+                                               JOIN columns ON tables.id = columns.table_id
+                                      WHERE tables.repo_id = ?
+                                      GROUP BY table_id
+                                      """, (repo_id,)).fetchall()
 
     tables = []
 
@@ -85,7 +93,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
                 f'{quote(column['column_name'])} {base_type_to_duckdb_type(column['column_base_type'])}'
                 for column in columns)
             })"""
-            create_statement = prepare_sql_statically(create_statement)
+            create_statement = prepare_select_statically(create_statement)
             sandbox_con.execute(create_statement)
 
             # insert one valid and one null value into each table to confuse the optimizer
@@ -109,7 +117,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
             tables.append(table)
             global n_successful_table_creations
             n_successful_table_creations += 1
-        except Exception as e: #`trivia_user_cache`
+        except Exception as e:  # `trivia_user_cache`
 
             global n_failed_table_creations
             n_failed_table_creations += 1
@@ -117,25 +125,72 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, s
     return tables
 
 
-def populate_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection):
+
+
+def get_table_name_from_insert(sql: str) -> Optional[str]:
+    """
+    Extracts the table name from an INSERT INTO SQL query.
+    Supports:
+      - INSERT INTO table_name (column1, column2, ...)
+      - INSERT INTO schema_name.table_name (column1, column2, ...)
+    """
+    import re
+
+    # Remove extra whitespace and normalize casing for matching
+    cleaned_sql = ' '.join(sql.strip().split())
+    pattern = re.compile(
+        r'INSERT\s+INTO\s+([`"\[\]\w\.]+)',  # Match table name (optionally qualified)
+        re.IGNORECASE
+    )
+
+    match = pattern.match(cleaned_sql)
+    if match:
+        name = match.group(1).strip('`"[]')  # Remove optional backticks, quotes, etc.
+        # if the table name is a qualified name (e.g., schema.table), return only the table name
+        if '.' in name:
+            name = name.split('.')[-1]
+        return name.lower()
+    else:
+        return None
+
+
+def populate_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+                    sandbox_con: duckdb.DuckDBPyConnection):
     """
     Populate the tables with data from the repo.
     This function is called after the tables have been created.
     """
     # Get all insert queries for the repo
     insert_queries = con.execute(f"""
-        SELECT sql
+        SELECT 
+            sql, 
+            prepare_select_statically(sql) as sql_prepared,
+            sql LIKE '% select % from %' as is_insert_select
         FROM queries
         WHERE repo_id = ? AND type = 'INSERT'
-        ORDER BY length(sql) DESC OFFSET 10
+        ORDER BY length(sql)
     """, (repo_id,)).fetchall()
 
-    for (sql,) in insert_queries:
+    print(f"Found {len(insert_queries)} insert queries for repo {repo_id} ({repo_url})")
+
+    for (sql, sql_prepared, is_insert_select) in insert_queries:
         try:
+
+            if is_insert_select:
+                # get the number of elements in the current table to now whether the insertion is not causing too
+                # many values
+                table_name = get_table_name_from_insert(sql_prepared)
+                if table_name is None:
+                    logging.error(f"Failed to extract table name from insert query: {sql}")
+                    continue
+
+                count = sandbox_con.execute(f"SELECT COUNT(*) FROM {quote(table_name)}").fetchone()[0]
+                if count > 500_000:
+                    logging.warning(f"Skipping insert query for table {table_name} with {count} rows: {sql}")
+                    continue
+
             global n_successful_insertions
 
-            # Execute the insert query in the sandbox connection
-            sql_prepared = prepare_sql_statically(sql)
             # if there are multiple queries together, take the first one
             if ';' in sql_prepared:
                 sql_prepared = sql_prepared.split(';')[0].strip()
@@ -149,19 +204,16 @@ def populate_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             n_failed_insertions += 1
 
 
-
-
-def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection, tables: List[Table]):
-
+def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
+                    tables: List[Table]):
     queries_deduped = con.execute(f"""
-        SELECT MIN(id), sql, 
+        SELECT MIN(id), sql, MIN(prepare_select_statically(sql)) as sql_perpared
         FROM queries
         WHERE repo_id = ? AND type IN ('SELECT', 'WITH')
         GROUP BY sql
     """, (repo_id,)).fetchall()
 
-    for query_id, sql in queries_deduped:
-        sql_prepared = prepare_sql_statically(sql)
+    for query_id, sql, sql_prepared in queries_deduped:
         result: MockQueryResult = try_to_mock_and_execute_query(sandbox_con, sql_prepared, tables)
 
         if result.was_successful():
@@ -191,7 +243,6 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
 
 
 def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection):
-
     # get the columns that where recorded in the executable queries
     used_columns = con.execute(f"""
          SELECT {COLUMNS_TABLE_NAME}.id as column_id, column_name, table_name 
@@ -207,45 +258,49 @@ def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection
     for (column_id, column_name, table_name) in used_columns:
 
         try:
-            values = sandbox_con.execute(f"""
+            values_arrow = sandbox_con.execute(f"""
                 SELECT {column_id} as column_id, {column_name} as value
                 FROM {quote(table_name)}
-            """).fetchall()
+            """).arrow()
 
-            if not values:
+            if not values_arrow:
                 continue
 
-            for (column_id, value) in values:
-                try:
-                    con.execute(f"""
-                        INSERT INTO {quote(COLUMN_VALUES_TABLE_NAME)} (column_id, value)
-                        VALUES ({column_id}, '{escape_for_insert(value)}')
-                    """)
-                except Exception as e:
-                    print(f"Failed to insert value '{value}' for column ID {column_id}: {e}")
-                    continue
+            try:
+                con.execute(f"""
+                    INSERT INTO {quote(COLUMN_VALUES_TABLE_NAME)} (column_id, value)
+                    SELECT * FROM values_arrow
+                """)
+            except Exception as e:
+                print(f"Failed to insert values' for column ID {column_id}: {e}")
+                continue
 
         except Exception as e:
             print(f"Failed to execute query for column {column_name} in table {table_name}: {e}")
             continue
 
 
-
-    
-
-
 def iterate_through_repos():
-
     con = duckdb.connect(DATABASE_PATH, read_only=False)
+    sandbox_con = duckdb.connect()
+
+    # Add all the macros from EXTRA_FUNCTIONS
+    for function in EXTRA_FUNCTIONS:
+        sandbox_con.execute(function)
 
     repos = con.execute(f"""
         SELECT repos.id, repos.repo_url, COUNT(queries.id) AS query_count
         FROM repos
         JOIN queries ON repos.id = queries.repo_id
-        WHERE queries.type IN ('SELECT', 'WITH') and (repos.id = 24430 or true)
+        WHERE 
+            queries.type IN ('SELECT', 'WITH') 
+            and (repos.id = 32859 or false)
+            and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
     """).fetchall()
+
+    con.execute(prepare_sql_statically_macro)
 
     # create executable_queries table if it doesn't exist
     con.execute(f"""
@@ -283,7 +338,7 @@ def iterate_through_repos():
             error_message VARCHAR
         )
     """)
-    
+
     # Create a table to store the column values with strings
     con.execute(f"""
         CREATE OR REPLACE TABLE {COLUMN_VALUES_TABLE_NAME} (
@@ -308,21 +363,29 @@ def iterate_through_repos():
 
     with tqdm(repos, desc="Processing repositories", unit="repo") as pbar:
         for repo_id, repo_url, cnt in pbar:
+            logging.info(f"Processing repository {repo_id} ({repo_url}) with {cnt} queries")
 
-            sandbox_con = duckdb.connect(':memory:', read_only=False)
+            # reset the sandbox connection
+            table_names = sandbox_con.execute("SHOW ALL TABLES;").fetchall()
+            for (database, schema, name, column_names, column_types, temporary) in table_names:
+                try:
+                    sandbox_con.execute(f'DROP TABLE "{database}"."{schema}"."{name}"')
+                except Exception as e:
+                    pass
 
-            # Add all the macros from EXTRA_FUNCTIONS
-            for function in EXTRA_FUNCTIONS:
-                sandbox_con.execute(function)
+            table_names = sandbox_con.execute("SHOW ALL TABLES;").fetchall()
+            if len(table_names) != 0:
+                logging.error("Not all tables have been deleted")
 
             tables = create_tables(repo_id, repo_url, con, sandbox_con)
             populate_tables(repo_id, repo_url, con, sandbox_con)
+
             execute_queries(repo_id, repo_url, sandbox_con, con, tables)
 
             analyse_plans(con, repo_id)
+
             save_used_column_values(repo_id, sandbox_con, con)
-            
-            sandbox_con.close()
+            con.execute("CHECKPOINT;")
 
             # Update counts
             error_count = con.execute(f"SELECT COUNT(*) FROM {ERRORS_QUERIES_TABLE_NAME}").fetchone()[0]
@@ -336,9 +399,9 @@ def iterate_through_repos():
                 'Success Count': success_count,
             })
 
-
     # Print the failed table creation statistics
-    print(f"Failed to create {n_failed_table_creations} tables, successfully created {n_successful_table_creations} tables.")
+    print(
+        f"Failed to create {n_failed_table_creations} tables, successfully created {n_successful_table_creations} tables.")
     if n_failed_insertions > 0:
         print(
             f"Failed to insert {n_failed_insertions} rows into tables, successfully inserted {n_successful_insertions} rows.")
@@ -350,7 +413,6 @@ def iterate_through_repos():
         print("No errors occurred during execution")
 
     con.close()
-
 
 
 if __name__ == "__main__":

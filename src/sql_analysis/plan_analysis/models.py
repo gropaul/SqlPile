@@ -3,11 +3,11 @@ import duckdb
 import re
 
 from src.sql_analysis.execution.models import Column
-from src.sql_analysis.tools.sql_types import BaseType
+from src.sql_analysis.tools.sql_types import BaseType, unify_type
 
 OperatorType = Literal['PROJECTION', 'FILTER', 'COMPARISON_JOIN', 'AGGREGATE', 'ORDER_BY', 'SEQ_SCAN']  # type: ignore
 ColumnUsageType = Literal[
-    'PROJECTION', 'FILTER', 'JOIN_KEY', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP']  # type: ignore
+    'PROJECTION', 'FILTER', 'JOIN_KEY', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'TOP_N_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP']  # type: ignore
 
 BOUND_COLUMN_REF_NAME = 'BOUND_REF'
 
@@ -143,6 +143,34 @@ class ColumnTrack:
         self.parents = parents
         self.base_type: BaseType = base_type
         self.binding: TableColumnBinding = binding
+
+    @staticmethod
+    def get_boolean_track() -> 'ColumnTrack':
+        """
+        Returns a ColumnTrack that represents a boolean track used in mark joins
+        """
+        return ColumnTrack(
+            scanned_columns=[],
+            expression=ExpressionInfo(expression='', expression_type='Boolean', expression_class='CONSTANT',
+                                      return_type='Boolean'),
+            parents=[],
+            base_type='Boolean',
+            binding=TableColumnBinding.empty()
+        )
+
+    @staticmethod
+    def get_const_track(expressionInfo: ExpressionInfo) -> 'ColumnTrack':
+        """
+        Returns a ColumnTrack that represents a constant track.
+        This is used for constant expressions in the query.
+        """
+        return ColumnTrack(
+            scanned_columns=[],
+            expression=expressionInfo,
+            parents=[],
+            base_type=unify_type(expressionInfo.return_type)[1],
+            binding=TableColumnBinding.empty()
+        )
 
     def __repr__(self):
         return f"ColumnTrack(involved_columns={[column.column_name for column in self.scanned_columns]}, " \

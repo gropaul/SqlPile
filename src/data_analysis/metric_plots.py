@@ -21,7 +21,9 @@ def normalized_entropy(s: str) -> float:
 
     return shannon_entropy / max_entropy
 
+
 import regex as re  # pip install regex (not re)
+
 
 def create_metric_plots_by_usage_type():
     """
@@ -37,20 +39,25 @@ def create_metric_plots_by_usage_type():
 
     # First, make sure the values_often view exists
     con.execute("""
-        CREATE OR REPLACE VIEW values_often AS
-        WITH often AS (
-            SELECT column_id
-            FROM column_values
-            GROUP BY column_id
-            HAVING COUNT(DISTINCT value) > 5 OR COUNT(value) > 50
-        )
-        SELECT column_values.column_id, column_values.value
-        FROM column_values
-        WHERE 
-            column_values.column_id IN (SELECT column_id FROM often) AND
-            value != 'example text' and value != 'None'
-;
-    """)
+                CREATE OR REPLACE VIEW values_often AS
+                WITH often AS (SELECT column_id
+                               FROM column_values
+                               GROUP BY column_id
+                               HAVING COUNT(DISTINCT value) > 10
+                                   OR COUNT(value) > 10)
+                SELECT column_values.column_id, column_values.value
+                FROM column_values
+                WHERE column_values.column_id IN (SELECT column_id FROM often)
+                  AND value != 'example text'
+                  and value != 'None'
+                ;
+                """)
+
+    count = con.execute("""
+                        SELECT COUNT(*)
+                        FROM values_often
+                        """).fetchone()[0]
+    print(f"Number of values in values_often: {count}")
 
     # Now create the value_stats view
     con.execute("""
@@ -71,12 +78,10 @@ def create_metric_plots_by_usage_type():
                   LENGTH(REGEXP_REPLACE(value, '[^a-zA-Z]', '', 'g'))::float 
                   / NULLIF(LENGTH(value), 0)
                 ) AS alpha_ratio,
-                
                 AVG(
                   LENGTH(REGEXP_REPLACE(value, '[^0-9]', '', 'g'))::float 
                   / NULLIF(LENGTH(value), 0)
                 ) AS numeric_ratio,
-                
                 AVG(
                   LENGTH(REGEXP_REPLACE(value, '[a-zA-Z0-9]', '', 'g'))::float 
                   / NULLIF(LENGTH(value), 0)
@@ -84,10 +89,10 @@ def create_metric_plots_by_usage_type():
                 AVG(
                     LENGTH(TRIM(value)) - LENGTH(REPLACE(TRIM(value), ' ', '')) + 1
                 ) AS word_count,
-               normalized_entropy(string_agg(value)) AS normalized_entropy,
-               list_distinct(list(usage_type)) AS usage_types,
-               list(value)[0:10] AS sample_values,
-               list_distinct(list(value)) AS distinct_values
+               -- normalized_entropy(string_agg(value)) AS normalized_entropy,
+               list_distinct(list(usage_type)) AS usage_types
+               -- list(value)[0:10] AS sample_values,
+               -- list_distinct(list(value)) AS distinct_values
         FROM values_often
         JOIN usages ON values_often.column_id = usages.column_id
         JOIN columns ON values_often.column_id = columns.id
@@ -99,8 +104,9 @@ def create_metric_plots_by_usage_type():
 
     # Get all distinct usage types
     usage_types = con.execute("""
-        SELECT DISTINCT usage_type FROM column_usages
-    """).fetchall()
+                              SELECT DISTINCT usage_type
+                              FROM column_usages
+                              """).fetchall()
     usage_types = [ut[0] for ut in usage_types]
 
     # Define the metrics we want to plot
@@ -115,7 +121,7 @@ def create_metric_plots_by_usage_type():
         'alpha_ratio',
         'special_char_ratio',
         'numeric_ratio',
-        'normalized_entropy',
+        # 'normalized_entropy',
         'word_count'
     ]
 

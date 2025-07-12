@@ -15,7 +15,7 @@ import time
 from sqloxide import parse_sql
 
 from src.config import DATABASE_PATH, logger
-from src.sql_analysis.execution.prepare_sql_for_execution import prepare_sql_statically
+from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically
 from src.sql_analysis.load_schemapile_json_to_ddb import ERRORS_QUERIES_TABLE_NAME
 
 SYSTEM_PROMPT = """
@@ -109,7 +109,7 @@ def try_to_fix_query(extracted_sql: str, code: str) -> FixResult:
             # if the response is an object and has the 'content' attribute, use that
             if hasattr(response, 'content'):
                 response = response.content
-            fixed_query = prepare_sql_statically(response)
+            fixed_query = prepare_select_statically(response)
             if can_parse_query(fixed_query):
                 logger.info(f"Successfully fixed query with model {model_name}.")
                 return FixResult(code=code, fixed_query=fixed_query, model_name=model_name)

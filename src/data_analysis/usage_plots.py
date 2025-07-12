@@ -58,7 +58,12 @@ def column_usage_plot():
                 SELECT id, query_id, unnest(column_ids) AS c_id, usage_type
                 FROM column_usages
             )
-            SELECT usage_type, column_base_type, COUNT(DISTINCT c_id) as column_cnt, COUNT(DISTINCT query_id)as query_cnt, COUNT(DISTINCT repo_id) as repo_cnt
+            SELECT 
+                usage_type, column_base_type, 
+                COUNT(c_id) as column_cnt, 
+                COUNT(DISTINCT c_id) as column_distinct_cnt, 
+                COUNT(DISTINCT query_id) as query_cnt, 
+                COUNT(DISTINCT repo_id) as repo_cnt
             FROM unnested_ids
             JOIN columns ON columns.id = unnested_ids.c_id JOIN queries q on q.id = query_id
             WHERE usage_type = '{usage}'
@@ -72,6 +77,8 @@ def column_usage_plot():
 
     # Create stacked bar plot for column counts
     create_stacked_bar_plot(all_results, 'column_cnt', dir)
+
+    create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
 
     # Create stacked bar plot for query counts
     create_stacked_bar_plot(all_results, 'query_cnt', dir)
@@ -108,8 +115,9 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
     # Map count_type to index in the result tuple
     count_indices = {
         'column_cnt': 2,  # Index of column_cnt in the result tuple
-        'query_cnt': 3,   # Index of query_cnt in the result tuple
-        'repo_cnt': 4     # Index of repo_cnt in the result tuple
+        'column_distinct_cnt': 3,  # Index of column_cnt in the result tuple
+        'query_cnt': 4,   # Index of query_cnt in the result tuple
+        'repo_cnt': 5     # Index of repo_cnt in the result tuple
     }
 
     count_index = count_indices[count_type]

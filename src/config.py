@@ -88,7 +88,7 @@ def setup_logging():
 
     console_handler.setFormatter(formatter)
 
-    if LOG_FILE:
+    if LOG_FILE and False:
         # Create file handler
         file_handler = logging.FileHandler(LOG_FILE)
         file_handler.setLevel(LOG_LEVEL)
