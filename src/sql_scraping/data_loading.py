@@ -2,12 +2,12 @@ import json
 import os
 from typing import List
 import duckdb
-from src.config import DATA_DIR, logger, QUERIES_DIR, INPUT_DATA_DIR
+from src.config import DATA_DIR, logger, QUERIES_DIR_RAW, INPUT_DATA_DIR
 
 def get_processed_urls() -> List[str]:
 
     try:
-        result = duckdb.sql(f" SELECT repo_url FROM '{QUERIES_DIR}/*/*.parquet'").fetchall()
+        result = duckdb.sql(f" SELECT repo_url FROM '{QUERIES_DIR_RAW}/*/*.parquet'").fetchall()
 
         urls = [row[0] for row in result]
         logger.info(f"Found {len(urls)} processed URLs in the database.")

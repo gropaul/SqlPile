@@ -1,25 +1,23 @@
 import os
 
-from src.config import QUERIES_DIR, DATA_DIR
+from src.config import QUERIES_DIR_RAW, DATA_DIR, QUERIES_DIR_FROM_CLUSTER
 
 CLUSTER_DATA_PATH = '/export/scratch2/home/gross/SqlPile/data/'
 REMOTE_NAME = 'gross@diamonds4'
 
-queries_dir_from_data_path = QUERIES_DIR.replace(DATA_DIR + '/', '')
+queries_dir_from_data_path = QUERIES_DIR_RAW.replace(DATA_DIR + '/', '')
 CLUSTER_QUERIES_DIR = os.path.join(CLUSTER_DATA_PATH, queries_dir_from_data_path)
 
-LOCAL_QUERIES_DIR = QUERIES_DIR
+LOCAL_QUERIES_DIR = QUERIES_DIR_RAW
 CLUSTER_UNIFIED_FILE_PATH = os.path.join(CLUSTER_QUERIES_DIR, 'parquet_queries_tmp.parquet')
-LOCAL_UNIFIED_FILE_PATH = os.path.join(LOCAL_QUERIES_DIR, '_unified', 'parquet_queries_tmp.parquet')
+QUERIES_DIAMOND4_PATH = os.path.join(QUERIES_DIR_FROM_CLUSTER, 'queries_diamond4.parquet')
 
 def load_queries_from_cluster():
 
-
-
-    print(f"Copying unified from {CLUSTER_UNIFIED_FILE_PATH} to {LOCAL_UNIFIED_FILE_PATH}")
+    print(f"Copying unified from {CLUSTER_UNIFIED_FILE_PATH} to {QUERIES_DIAMOND4_PATH}")
 
     # use scp to copy the unified queries from the cluster to the local machine
-    command = f'scp -r {REMOTE_NAME}:{CLUSTER_UNIFIED_FILE_PATH} {LOCAL_UNIFIED_FILE_PATH}'
+    command = f'scp -r {REMOTE_NAME}:{CLUSTER_UNIFIED_FILE_PATH} {QUERIES_DIAMOND4_PATH}'
     print(f"Running command: {command}")
     # os.system(f'scp -r {REMOTE_NAME}:{CLUSTER_QUERIES_DIR} {LOCAL_QUERIES_DIR}')
     print("Queries copied successfully.")
@@ -30,7 +28,7 @@ def unifiy_file():
 
     # copy to parquet_queries_tmp (COPY (SELECT * FROM tbl) TO 'output.parquet' (FORMAT parquet);)
     copy_quey = f""" 
-    COPY ({from_query}) TO '{CLUSTER_UNIFIED_FILE_PATH}' (FORMAT parquet);
+    COPY ({from_query}) TO '{CLUSTER_UNIFIED_FILE_PATH}' (FORMAT parquet, OVERWRITE TRUE, COMPRESSION ZSTD, ROW_GROUP_SIZE 5)
     """
 
     print(f"Running query: \n{copy_quey}")

@@ -8,7 +8,7 @@ from src.sql_analysis.load_schemapile_json_to_ddb import load_schemapile_json_to
 def all():
 
     # load_schemapile_json_to_database(ask=False)
-    load_queries_to_database(ask=False)
+    # load_queries_to_database(ask=False)
     add_tpch()
     get_schemas_from_create_query()
     execute_repo_queries()

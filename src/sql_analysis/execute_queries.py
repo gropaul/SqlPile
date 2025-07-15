@@ -169,7 +169,14 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
                     continue
 
                 count = sandbox_con.execute(f"SELECT COUNT(*) FROM {quote(table_name)}").fetchone()[0]
-                if count > 500_000:
+
+                # for table names with fewer/equal than 3 characters, the limit is 10_000, otherwise 500_000
+                if len(table_name) <= 3:
+                    limit = 10_000
+                else:
+                    limit = 500_000
+
+                if count > limit:
                     logging.warning(f"Skipping insert query for table {table_name} with {count} rows: {sql}")
                     continue
 
@@ -221,25 +228,29 @@ def populate_empty_tables(tables: List[Table], sandbox_con: duckdb.DuckDBPyConne
     """
     ids = []
     for table in tables:
-        # Check if the table is empty
-        count = sandbox_con.execute(f"SELECT COUNT(*) FROM {table.table_name}").fetchone()[0]
-        if count == 0:
-            # insert one valid and one null value into each table to confuse the optimizer
-            # INSERT INTO table_name (column1, column2, column3, ...)
-            # VALUES (value1, value2, value3, ...);
+        try:
+            # Check if the table is empty
+            count = sandbox_con.execute(f"SELECT COUNT(*) FROM {quote(table.table_name)}").fetchone()[0]
+            if count == 0:
+                # insert one valid and one null value into each table to confuse the optimizer
+                # INSERT INTO table_name (column1, column2, column3, ...)
+                # VALUES (value1, value2, value3, ...);
 
-            columns = table.columns
-            columns_list = ', '.join(quote(column.column_name) for column in columns)
-            values_list = ', '.join(base_type_to_example_value(column.column_base_type) for column in columns)
-            null_list = ', '.join('NULL' for _ in columns)
+                columns = table.columns
+                columns_list = ', '.join(quote(column.column_name) for column in columns)
+                values_list = ', '.join(base_type_to_example_value(column.column_base_type) for column in columns)
+                null_list = ', '.join('NULL' for _ in columns)
 
-            insert_statement = f"""
-            INSERT INTO {table.table_name} ({columns_list})
-            VALUES ({values_list}), ({null_list});
-            """
+                insert_statement = f"""
+                        INSERT INTO {table.table_name} ({columns_list})
+                        VALUES ({values_list}), ({null_list});
+                        """
 
-            sandbox_con.execute(insert_statement)
-            ids.append(table.table_id)
+                sandbox_con.execute(insert_statement)
+                ids.append(table.table_id)
+        except Exception as e:
+            logging.error(f"Failed to populate table {table.table_name} with ID {table.table_id}: {e}")
+            continue
 
     return ids
 

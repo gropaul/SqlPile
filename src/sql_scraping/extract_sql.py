@@ -7,7 +7,7 @@ import pyarrow.parquet as pq
 
 from typing import List, Optional, Dict, Callable, Literal
 
-from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR, ONLY_SCRAPE_SELECT_QUERIES, HEADER_N_LINES
+from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR_RAW, ONLY_SCRAPE_SELECT_QUERIES, HEADER_N_LINES
 from src.sql_scraping.extract_strings import extract_strings, ExtractedString
 from src.sql_scraping.string_utils import tidy_up_query, split_sql_statements
 
@@ -129,7 +129,7 @@ def get_dir_for_url(repo_url: str) -> str:
     url_without_protocol = repo_url.replace('https://', '').replace('http://', '')
     url_without_protocol = url_without_protocol.replace('github.com/', '')
     storage_dir_name = f"{url_without_protocol.replace('/', '_')}"
-    storage_dir_name = os.path.join(QUERIES_DIR, storage_dir_name)
+    storage_dir_name = os.path.join(QUERIES_DIR_RAW, storage_dir_name)
     return storage_dir_name
 
 
@@ -206,10 +206,10 @@ class RepoAnalysisResult:
 
     def save(self, storage_dir: Optional[str] = None) -> None:
         # save queries to a file
-        if not os.path.exists(QUERIES_DIR):
-            os.makedirs(QUERIES_DIR, exist_ok=True)
+        if not os.path.exists(QUERIES_DIR_RAW):
+            os.makedirs(QUERIES_DIR_RAW, exist_ok=True)
 
-        logger.info(f"Saving analysis result for {self.repo_name} to {QUERIES_DIR}.")
+        logger.info(f"Saving analysis result for {self.repo_name} to {QUERIES_DIR_RAW}.")
 
         if storage_dir is not None:
             storage_dir_name = storage_dir

@@ -3,8 +3,9 @@ from typing import List
 
 import duckdb
 import pandas as pd
+from tqdm import tqdm
 
-from src.config import DATA_DIR, QUERIES_DIR, DATABASE_PATH, logger
+from src.config import DATABASE_PATH, logger, QUERIES_DIR_PARTITIONED
 from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_TABLE_NAME, REPO_TABLE_NAME, \
     FILES_META_DATA_TABLE_NAME, FILES_TABLE_NAME
 
@@ -39,65 +40,137 @@ def read_and_concat_parquet_files(file_paths: List[str]) -> pd.DataFrame:
     return result_df
 
 
-def load_meta_data_files_to_database(con: duckdb.DuckDBPyConnection):
-    # get all the meta data files saved in the DATA_DIR
-    create_files_meta_data = f"""
-        CREATE OR REPLACE TABLE {FILES_META_DATA_TABLE_NAME} AS (
-            
-            WITH files AS (
-                SELECT repos.id AS repo_id, repo_url, *
-                FROM (
-                    SELECT repo_url, unnest(metadata_files, recursive := true) 
-                    FROM '{QUERIES_DIR}/*/*.parquet'
-                ) AS unnested_files
-                JOIN {REPO_TABLE_NAME} AS repos USING (repo_url)
-            ),
-            numbered_ids AS (
-                SELECT range AS file_id
-                FROM range(0, (SELECT COUNT(*) FROM files))
-            ),
-            files_with_id AS (
-                SELECT *, file_id
-                FROM files
-                POSITIONAL JOIN numbered_ids
-            )
-            SELECT file_id AS id, repo_id, file_path, file_type, content
-            FROM files_with_id
-        )
+def load_meta_data_files_to_database(con: duckdb.DuckDBPyConnection, repo_id: int):
+    # Insert metadata for the specific repo
+    insert_files_meta_data = f"""
+        INSERT INTO {FILES_META_DATA_TABLE_NAME} (id, repo_id, file_path, file_type, content)
+        SELECT 
+            COALESCE((SELECT MAX(id) FROM {FILES_META_DATA_TABLE_NAME}), 0) + row_number() OVER () AS id,
+            {repo_id} AS repo_id,
+            file_path,
+            file_type,
+            content
+        FROM (
+            SELECT unnest(metadata_files, recursive := true)
+            FROM parquet_queries_tmp_table
+        ) AS unnested_files;
     """
-    con.execute(create_files_meta_data)
+    con.execute(insert_files_meta_data)
 
 
-def create_missing_repos_from_queries(con: duckdb.DuckDBPyConnection):
-    insert_new_repos = f"""
-        WITH new_repos AS (
-            SELECT DISTINCT repo_url, split(repo_url, '/')[-1] AS repo_name
-            FROM parquet_queries_with_id
-            WHERE repo_url NOT IN (SELECT repo_url FROM {REPO_TABLE_NAME})
-        ),
-        existing_cnt AS (
-            SELECT MAX(id) AS count FROM {REPO_TABLE_NAME}
-        ),
-        new_repos_cnt AS (
-            SELECT COUNT(*) AS count FROM new_repos
-        ),
-        all_counts AS (
-            SELECT existing_cnt.count AS existing_count, new_repos_cnt.count AS new_count
-            FROM existing_cnt, new_repos_cnt
-        ),
-        numbered_ids AS (
-            SELECT range AS id
-            FROM all_counts, range(all_counts.existing_count + 1, all_counts.existing_count + all_counts.new_count + 1)
-        ),
-        new_repos_with_id AS (
-            SELECT *, id
-            FROM new_repos
-            POSITIONAL JOIN numbered_ids
-        )
+def create_missing_repo_for_url(con: duckdb.DuckDBPyConnection, repo_url: str) -> int:
+    """
+    Returns the repo_id
+    """
+
+    # check if the repo already exists
+    repo_exists = con.execute(f"""
+        SELECT id FROM {REPO_TABLE_NAME} WHERE repo_url = '{repo_url}'
+    """).fetchone()
+    if repo_exists is not None:
+        logger.info(f"Repository {repo_url} already exists in the database.")
+        return repo_exists[0]
+
+    repo_id = con.execute(f"""
+        SELECT COALESCE(MAX(id), 0) + 1 FROM {REPO_TABLE_NAME}
+    """).fetchone()[0]
+
+    repo_name = repo_url.split('/')[-1]  # Extract the repo name from the URL
+    insert_repo_query = f"""
         INSERT INTO {REPO_TABLE_NAME} (id, repo_name, repo_url)
-        SELECT id, repo_name, repo_url FROM new_repos_with_id
+        VALUES ({repo_id}, '{repo_name}', '{repo_url}')
     """
-    con.execute(insert_new_repos).fetchall()
+    con.execute(insert_repo_query)
+
+    logger.info(f"Inserted new repository {repo_name} with id {repo_id} into the database.")
+    return repo_id
+
+
+
+def load_queries_for_repo(repo_url: str, file_name: str, con: duckdb.DuckDBPyConnection):
+    # Create a temporary table with queries for this repo only
+    create_parquet_queries_with_dups = f"""
+        CREATE OR REPLACE VIEW parquet_queries_tmp_table_with_dups AS (
+            FROM read_parquet('{file_name}', union_by_name = true)
+            WHERE repo_url = '{repo_url}'
+        )
+    """
+    con.execute(create_parquet_queries_with_dups)
+
+    logger.info(f"Created temporary table with queries from repo {repo_url}.")
+
+    # *** CREATE A DEDUPLICATED TEMPORARY TABLE WITH REPO QUERIES ***
+    create_parquet_queries = f"""
+        CREATE OR REPLACE TEMP TABLE parquet_queries_tmp_table AS (
+            SELECT repo_url, repo_name, arbitrary(file_results) as file_results, arbitrary(metadata_files) as metadata_files
+            FROM parquet_queries_tmp_table_with_dups
+            GROUP BY repo_url, repo_name
+        )
+    """
+    con.execute(create_parquet_queries)
+    logger.info(f"Created temporary table with deduplicated queries for repo {repo_url}.")
+
+    repo_id = create_missing_repo_for_url(con, repo_url)
+    logger.info(f"Inserted new repositories from queries into the repository table for repo {repo_url}.")
+
+    # *** LOAD META DATA FILES ***
+    load_meta_data_files_to_database(con, repo_id)
+    logger.info(f"Loaded meta data files into the database for repo {repo_url}.")
+
+    # *** CREATE FILES VIEW CONTAIN FILE INFORMATION AND QUERIES ***
+    file_results_view_query = f"""
+        CREATE OR REPLACE VIEW file_results_with_id AS
+        WITH unnested as (SELECT 
+            {repo_id} AS repo_id,
+            p.repo_name,
+            p.repo_url,
+            unnest(file_results, max_depth := 2) AS file_result
+         FROM parquet_queries_tmp_table AS p    
+        )
+        SELECT *, row_number() OVER () - 1 AS file_id
+        FROM unnested  
+    """
+    con.execute(file_results_view_query)
+    logger.info(f"Created view with file results and queries for repo {repo_url}.")
+
+    # *** CREATE FILE TABLES ***
+    query = f"""
+        INSERT INTO {FILES_TABLE_NAME}
+        SELECT file_id, repo_id, file_path as path, language, header, len(queries) as query_count
+        FROM file_results_with_id
+    """
+    con.execute(query)
+    logger.info(f"Inserted into files table with file information and queries for repo {repo_url}.")
+
+    # *** CREATE QUERIES TABLE ***
+    min_queries_id = con.execute(f"""
+        SELECT COALESCE(MAX(id), 0) FROM {QUERIES_TABLE_NAME}
+    """).fetchone()[0] or 0
+
+    query = f"""
+        INSERT INTO {QUERIES_TABLE_NAME}
+        SELECT 
+            {min_queries_id} + row_number() OVER () - 1 AS id,
+            file_id,
+            repo_id,
+            sql,
+            line,
+            text_context,
+            text_context_offset,
+            type
+        FROM (
+            SELECT 
+                file_id,
+                repo_id,
+                unnest(queries, recursive := true) AS q
+            FROM file_results_with_id
+        ) AS queries_unnested;
+    """
+
+    # language as file_language, file_path, header,
+    logger.info(f"Inserting into queries table with query information for repo {repo_url}.")
+    con.execute(query)
+
 
 
 def load_queries_to_database(ask: bool = True):
@@ -112,137 +185,81 @@ def load_queries_to_database(ask: bool = True):
 
     # remove the old database if it exists
     db_path = os.path.join(DATABASE_PATH)
-    queries_path = os.path.join(DATA_DIR, QUERIES_DIR)
 
     con = duckdb.connect(db_path)
     con.execute('SET preserve_insertion_order=false')
     con.execute('SET threads=8')
 
-    # create first a non-duplicated repo table becaus of out of memory issues with the parquet files
-    create_parquet_queries_with_dups = f"""
-            CREATE OR REPLACE TEMP TABLE parquet_queries_tmp_table_with_dups AS (FROM read_parquet('{QUERIES_DIR}/*/*.parquet', union_by_name = true))
-        """
-    con.execute(create_parquet_queries_with_dups)
-
-    logger.info("Created temporary table with all queries from parquet files.")
-
-    # *** CREATE A DEDUPLICATED TEMPORARY TABLE WITH ALL QUERIES ***
-    create_parquet_queries = f"""
-        CREATE OR REPLACE TEMP TABLE parquet_queries_tmp_table AS (
-            SELECT repo_url, repo_name, MIN(file_results) as file_results , MIN(metadata_files) as metadata_files
-            FROM parquet_queries_tmp_table_with_dups
-            GROUP BY repo_url, repo_name
-        )
-    """
-    con.execute(create_parquet_queries)
-
-    logger.info("Created temporary table with deduplicated queries.")
-
-    # Drop the temporary table with duplicates to free up memory
-    con.execute("DROP TABLE IF EXISTS parquet_queries_tmp_table_with_dups")
-
-    # *** CREATE PARQUET VIEW ***
-    # positional join with range(count) to add an id column
+    # Create the tables before processing repos
+    # Create FILES table
     con.execute(f"""
-          CREATE OR REPLACE TEMP TABLE parquet_queries_with_id AS 
-          SELECT * FROM parquet_queries_tmp_table POSITIONAL 
-          JOIN (SELECT range as id FROM range(0, (SELECT COUNT(*) FROM parquet_queries_tmp_table)))
-      """)
-    logger.info("Created temporary table with queries and added an id column.")
-
-    create_missing_repos_from_queries(con)
-    logger.info("Inserted new repositories from queries into the repository table.")
-
-    # *** LOAD META DATA FILES ***
-    load_meta_data_files_to_database(con)
-    logger.info("Loaded meta data files into the database.")
-
-    # *** CREATE FILES VIEW CONTAING FILE INFORMATINO AND QUERIES ***
-
-    file_results_view_query = f"""
-        CREATE OR REPLACE VIEW file_results_with_id AS (
-            WITH 
-                repo_results as (
-                    SELECT id as repo_id, p.repo_name, p.repo_url, p.file_results as file_results, 
-                    FROM parquet_queries_tmp_table as p
-                    LEFT JOIN {REPO_TABLE_NAME} as r USING (repo_url)
-                ),
-                file_results AS (
-                    SELECT repo_id, repo_name, repo_url, unnest(file_results) as file_results 
-                    FROM repo_results
-                ),
-                file_results_filtered AS (
-                    SELECT repo_id, repo_name, repo_url, file_results 
-                    FROM file_results 
-                    WHERE length(file_results.queries) > 1
-                ),
-                file_results_unnested as (
-                    SELECT repo_id, repo_name, repo_url, unnest(file_results) 
-                    FROM file_results_filtered
-                ),
-                file_ids as (SELECT range as file_id FROM range(0, (SELECT COUNT(*) FROM file_results_unnested))),
-                file_results_with_file_id AS (
-                    SELECT *
-                    FROM file_results_unnested
-                    POSITIONAL JOIN file_ids
-                )
-            SELECT * FROM file_results_with_file_id
+        CREATE OR REPLACE TABLE {FILES_TABLE_NAME} (
+            file_id INTEGER,
+            repo_id INTEGER,
+            path VARCHAR,
+            language VARCHAR,
+            header VARCHAR,
+            query_count INTEGER
         )
-        """
-    con.execute(file_results_view_query)
-    logger.info("Created view with file results and queries.")
+    """)
+    logger.info("Created empty files table.")
 
-    # *** CREATE FILE TABLES ***
-
-    query = f"""
-        CREATE OR REPLACE TABLE {FILES_TABLE_NAME} AS (
-            SELECT file_id, repo_id, file_path as path, language, header, len(queries) as query_count
-            FROM file_results_with_id
+    # Create QUERIES table
+    con.execute(f"""
+        CREATE OR REPLACE TABLE {QUERIES_TABLE_NAME} (
+            id INTEGER,
+            file_id INTEGER,
+            repo_id INTEGER,
+            sql VARCHAR,
+            line INTEGER,
+            text_context VARCHAR,
+            text_context_offset INTEGER,
+            type VARCHAR
         )
-        """
-    con.execute(query)
-    logger.info("Created files table with file information and queries.")
+    """)
+    logger.info("Created empty queries table.")
 
-    # *** CREATE QUERIES TABLE ***
-
-    query = f"""
-        CREATE OR REPLACE TABLE {QUERIES_TABLE_NAME} AS (
-            WITH
-                queries AS (
-                    SELECT 
-                        file_id, repo_id,
-                        unnest(queries, recursive := true) AS query
-                    FROM file_results_with_id
-                ),
-                query_ids AS (
-                    SELECT range AS id FROM range(0, (SELECT COUNT(*) FROM queries))
-                ),
-                queries_with_id AS (
-                    SELECT *, id
-                    FROM queries
-                    POSITIONAL JOIN query_ids
-                )
-            SELECT id, file_id, repo_id, sql, line, text_context, text_context_offset, type
-            FROM queries_with_id
+    # Create metadata files table
+    create_table_if_not_exists = f"""
+        CREATE OR REPLACE TABLE {FILES_META_DATA_TABLE_NAME} (
+            id INTEGER,
+            repo_id INTEGER,
+            file_path VARCHAR,
+            file_type VARCHAR,
+            content VARCHAR
         )
     """
+    con.execute(create_table_if_not_exists)
+    logger.info("Created empty metadata files table.")
 
-    # language as file_language, file_path, header,
-    logger.info("Creating queries table with query information.")
-    con.execute(query)
+    # Get all unique repo URLs
+    urls = con.execute(f"""
+        SELECT repo_url, arbitrary(filename) FROM read_parquet('{QUERIES_DIR_PARTITIONED}/*/*.parquet', union_by_name = true)
+        WHERE len(file_results) > 0
+        GROUP BY repo_url
+    """).fetchall()
 
-    # get teh count of queries imported
+    logger.info(f"Found {len(urls)} unique repositories to process.")
+
+    # Process each repo individually to save memory
+    for (url, file_name) in tqdm(urls, desc="Processing repositories", unit="repo"):
+        logger.info(f"Processing repo: {url}")
+        load_queries_for_repo(url, file_name, con)
+        logger.info(f"Completed processing repo: {url}")
+
+    # The remaining can be done for all at once
+    # Get the count of queries imported
     count = con.execute(f"SELECT COUNT(*) FROM {QUERIES_TABLE_NAME}").fetchone()[0]
     logger.info(f"Imported {count} queries into the database.")
 
-    # print the number of queries where we found a repo_id and the number of queries without a repo_id using a group by
+    # Print the number of queries where we found a repo_id and the number of queries without a repo_id using a group by
     repo_counts = con.execute(f"""
         SELECT repo_id is not null as has_repo, COUNT(*) as count
         FROM {QUERIES_TABLE_NAME}
         GROUP BY has_repo
     """).fetchall()
 
-    # print the types of the queries and the number of queries per type
+    # Print the types of the queries and the number of queries per type
     query_types = con.execute(f"""
         SELECT type, COUNT(*) as count 
         FROM {QUERIES_TABLE_NAME} 

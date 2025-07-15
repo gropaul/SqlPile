@@ -84,7 +84,7 @@ def base_type_to_example_value(base_type: BaseType) -> str:
     elif base_type == "Binary":
         return "'\\xDEADBEEF'"  # Example binary data
     elif base_type == "JSON":
-        return '{"key": "value"}'
+        return "'{\"key\": \"value\"}'"
     elif base_type == "UUID":
         return "'123e4567-e89b-12d3-a456-426614174000'"
     elif base_type == "XML":

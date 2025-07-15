@@ -12,7 +12,9 @@ PLOTS_DIR = os.path.join(ROOT, "plots")
 INPUT_DATA_DIR = os.path.join(ROOT, "input_data")
 REPO_DIR = os.path.join(DATA_DIR, "repos")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
-QUERIES_DIR = os.path.join(DATA_DIR, "queries_v4")
+QUERIES_DIR_RAW = os.path.join(DATA_DIR, "queries_raw")
+QUERIES_DIR_FROM_CLUSTER = os.path.join(DATA_DIR, "queries_from_cluster")
+QUERIES_DIR_PARTITIONED = os.path.join(DATA_DIR, "queries_partitioned")
 DATABASE_PATH = os.path.join(DATA_DIR, 'schemapile.duckdb')
 TMP_DIR = os.path.join(DATA_DIR, "tmp")
 DATABASE_TMP_DIR = os.path.join(TMP_DIR, "databases")
@@ -30,7 +32,7 @@ PROCESS_ZIPPED_REPOS = False
 LOG_TO_FILE = False  # Whether to log to a file or not
 
 # create all directories if they do not exist
-DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR, TMP_DIR, DATABASE_TMP_DIR]
+DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR_RAW, TMP_DIR, DATABASE_TMP_DIR]
 
 for directory in DIRS:
     if not os.path.exists(directory):
