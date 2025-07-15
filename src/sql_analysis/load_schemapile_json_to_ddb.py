@@ -15,6 +15,7 @@ REPO_META_DATA_FILES_TABLE_NAME = 'repos_meta_data'
 FILES_TABLE_NAME = 'files'
 FILES_META_DATA_TABLE_NAME = 'repo_meta_data_files'
 TABLES_TABLE_NAME = 'tables'
+TABLES_DATA_FILES_TABLE_NAME = 'table_data_files'
 COLUMNS_TABLE_NAME = 'columns'
 COLUMN_VALUES_TABLE_NAME = 'column_values'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
@@ -153,6 +154,19 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
     # remove the old database if it exists
     db_path = os.path.join(DATABASE_PATH)
     con = duckdb.connect(db_path)
+
+    # Drop the tables cascadingly if they exist
+    con.execute(f"""
+        DROP TABLE IF EXISTS {ERRORS_QUERIES_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {EXECUTABLE_QUERIES_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {ERRORS_TABLES_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {COLUMNS_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {TABLES_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {REPO_TABLE_NAME} CASCADE;
+        """)
+
+    print("Creating new tables...")
+
     con.execute(f"""
         CREATE OR REPLACE TABLE {REPO_TABLE_NAME} (
             id BIGINT {primary_key()},
@@ -185,6 +199,9 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
             is_primary_key BOOLEAN
         )
     """)
+
+
+
 
 
     con = duckdb.connect(db_path)

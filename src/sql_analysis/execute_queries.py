@@ -15,7 +15,8 @@ from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_
     prepare_sql_statically_macro
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, QUERIES_TABLE_NAME, \
     EXECUTABLE_QUERIES_TABLE_NAME, REPO_TABLE_NAME, ERRORS_QUERIES_TABLE_NAME, ERRORS_TABLES_TABLE_NAME, \
-    COLUMN_VALUES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_USAGES_TABLE_NAME
+    COLUMN_VALUES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_USAGES_TABLE_NAME, \
+    TABLES_DATA_FILES_TABLE_NAME
 from src.sql_analysis.plan_analysis.analyse_plans import analyse_plans
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
 
@@ -96,21 +97,6 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             create_statement = prepare_select_statically(create_statement)
             sandbox_con.execute(create_statement)
 
-            # insert one valid and one null value into each table to confuse the optimizer
-            # INSERT INTO table_name (column1, column2, column3, ...)
-            # VALUES (value1, value2, value3, ...);
-
-            columns_list = ', '.join(quote(column['column_name']) for column in columns)
-            values_list = ', '.join(base_type_to_example_value(column['column_base_type']) for column in columns)
-            null_list = ', '.join('NULL' for _ in columns)
-
-            insert_statement = f"""
-            INSERT INTO {complete_quoted_table_name} ({columns_list})
-            VALUES ({values_list}), ({null_list});
-            """
-
-            sandbox_con.execute(insert_statement)
-
             table = Table(table_id, complete_quoted_table_name,
                           [Column(column['id'], column['column_name'], column['column_base_type']) for column in
                            columns])
@@ -123,8 +109,6 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             n_failed_table_creations += 1
             continue
     return tables
-
-
 
 
 def get_table_name_from_insert(sql: str) -> Optional[str]:
@@ -154,8 +138,8 @@ def get_table_name_from_insert(sql: str) -> Optional[str]:
         return None
 
 
-def populate_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
-                    sandbox_con: duckdb.DuckDBPyConnection):
+def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+                                 sandbox_con: duckdb.DuckDBPyConnection):
     """
     Populate the tables with data from the repo.
     This function is called after the tables have been created.
@@ -204,12 +188,71 @@ def populate_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             n_failed_insertions += 1
 
 
+def populate_tables_with_files(repo_id: int, con: duckdb.DuckDBPyConnection,
+                               sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table]):
+    data_files = con.execute(f"""
+        SELECT table_name, file_url
+        FROM {TABLES_DATA_FILES_TABLE_NAME}
+        WHERE repo_id = ?
+    """, (repo_id,)).fetchall()
+
+    existing_table_names = {table.table_name for table in tables}
+
+    for (table_name, file_url) in data_files:
+        # check if the table_name exists in the tables
+        if quote(table_name) not in existing_table_names:
+            logging.error(f"Table {table_name} not found in repo {repo_id} for file {file_url}")
+            continue
+
+        insert_query = f"""
+            INSERT INTO {quote(table_name)}
+            SELECT * FROM '{escape_for_insert(file_url)}'
+        """
+        try:
+            sandbox_con.execute(insert_query)
+        except Exception as e:
+            logging.error(
+                f"Failed to insert data from file {file_url} into table {table_name} in repo {repo_id}: {e}")
+
+
+def populate_empty_tables(tables: List[Table], sandbox_con: duckdb.DuckDBPyConnection) -> List[int]:
+    """
+    Populates empty tables, returning a list of table IDs that were populated.
+    """
+    ids = []
+    for table in tables:
+        # Check if the table is empty
+        count = sandbox_con.execute(f"SELECT COUNT(*) FROM {table.table_name}").fetchone()[0]
+        if count == 0:
+            # insert one valid and one null value into each table to confuse the optimizer
+            # INSERT INTO table_name (column1, column2, column3, ...)
+            # VALUES (value1, value2, value3, ...);
+
+            columns = table.columns
+            columns_list = ', '.join(quote(column.column_name) for column in columns)
+            values_list = ', '.join(base_type_to_example_value(column.column_base_type) for column in columns)
+            null_list = ', '.join('NULL' for _ in columns)
+
+            insert_statement = f"""
+            INSERT INTO {table.table_name} ({columns_list})
+            VALUES ({values_list}), ({null_list});
+            """
+
+            sandbox_con.execute(insert_statement)
+            ids.append(table.table_id)
+
+    return ids
+
+
 def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
                     tables: List[Table]):
     queries_deduped = con.execute(f"""
         SELECT MIN(id), sql, MIN(prepare_select_statically(sql)) as sql_perpared
         FROM queries
-        WHERE repo_id = ? AND type IN ('SELECT', 'WITH')
+        WHERE 
+            repo_id = ? AND 
+            type IN ('SELECT', 'WITH') AND
+            (id = 27602561 or True)  -- filter for a specific query or all queries
         GROUP BY sql
     """, (repo_id,)).fetchall()
 
@@ -221,7 +264,7 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
             success_id_counter += 1
             insert_query = f"""
                 INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, repo_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, logical_plan_optimized_detailed, physical_plan)
-                VALUES ({success_id_counter}, {query_id}, {repo_id}, '{escape_for_insert(result.original_query)}', '{escape_for_insert(result.executable_sql)}', 
+                VALUES ({success_id_counter}, {query_id}, {repo_id}, '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}', 
                 '{escape_for_insert(json.dumps(result.logical_plan))}', 
                 '{escape_for_insert(json.dumps(result.logical_plan_optimized))}', 
                 '{escape_for_insert(json.dumps(result.logical_plan_optimized_detailed))}',
@@ -236,24 +279,27 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
                     id, repo_id, repo_url, query_id, error_message, original_sql, executable_sql
                 ) VALUES (
                     {error_id_counter}, {repo_id}, '{escape_for_insert(repo_url)}', {query_id}, 
-                    '{escape_for_insert(str(result.error))}', '{escape_for_insert(result.original_query)}', '{escape_for_insert(result.executable_sql)}'
+                    '{escape_for_insert(str(result.error))}', '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}'
                 )
             """)
             continue
 
 
-def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection):
+def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection, artificial_populated_ids: List[int]):
     # get the columns that where recorded in the executable queries
     used_columns = con.execute(f"""
          SELECT {COLUMNS_TABLE_NAME}.id as column_id, column_name, table_name 
          FROM {COLUMNS_TABLE_NAME} 
          JOIN {TABLES_TABLE_NAME} on {COLUMNS_TABLE_NAME}.table_id = {TABLES_TABLE_NAME}.id
-         WHERE column_base_type = 'Text' and {COLUMNS_TABLE_NAME}.id IN (
+         WHERE 
+            column_base_type = 'Text' and 
+            {COLUMNS_TABLE_NAME}.id IN (
              SELECT DISTINCT unnest(column_ids)
              FROM column_usages 
              JOIN queries ON queries.id = query_id 
              WHERE queries.repo_id = {repo_id}
-         )
+            ) and 
+            {TABLES_TABLE_NAME}.id NOT IN {artificial_populated_ids}
     """).fetchall()
     for (column_id, column_name, table_name) in used_columns:
 
@@ -280,7 +326,7 @@ def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection
             continue
 
 
-def iterate_through_repos():
+def execute_repo_queries():
     con = duckdb.connect(DATABASE_PATH, read_only=False)
     sandbox_con = duckdb.connect()
 
@@ -294,7 +340,7 @@ def iterate_through_repos():
         JOIN queries ON repos.id = queries.repo_id
         WHERE 
             queries.type IN ('SELECT', 'WITH') 
-            and (repos.id = 32859 or false)
+            and (repos.id = 32859 or TRUE)  -- filter for a specific repo or all repos
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
@@ -351,6 +397,7 @@ def iterate_through_repos():
            CREATE OR REPLACE TABLE {COLUMN_USAGES_TABLE_NAME} (
                id INTEGER,
                query_id INTEGER,
+               node_id VARCHAR,
                column_ids INTEGER[],
                expression VARCHAR,
                expression_result_type VARCHAR,
@@ -378,13 +425,17 @@ def iterate_through_repos():
                 logging.error("Not all tables have been deleted")
 
             tables = create_tables(repo_id, repo_url, con, sandbox_con)
-            populate_tables(repo_id, repo_url, con, sandbox_con)
+
+            populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
+            populate_tables_with_files(repo_id, con, sandbox_con, tables)
+            artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
             execute_queries(repo_id, repo_url, sandbox_con, con, tables)
 
             analyse_plans(con, repo_id)
 
-            save_used_column_values(repo_id, sandbox_con, con)
+            save_used_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
+
             con.execute("CHECKPOINT;")
 
             # Update counts
@@ -416,4 +467,4 @@ def iterate_through_repos():
 
 
 if __name__ == "__main__":
-    iterate_through_repos()
+    execute_repo_queries()

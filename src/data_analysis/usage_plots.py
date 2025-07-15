@@ -2,7 +2,6 @@ import os.path
 import os
 import matplotlib.pyplot as plt
 import duckdb
-import matplotlib as mpl
 import numpy as np
 
 
@@ -55,17 +54,17 @@ def column_usage_plot():
     for (usage, ) in usage_types:
         query = f"""
             WITH unnested_ids AS (
-                SELECT id, query_id, unnest(column_ids) AS c_id, usage_type
+                SELECT id, query_id, unnest(column_ids) AS column_id, usage_type, expression
                 FROM column_usages
             )
             SELECT 
                 usage_type, column_base_type, 
-                COUNT(c_id) as column_cnt, 
-                COUNT(DISTINCT c_id) as column_distinct_cnt, 
+                COUNT(column_id) as column_cnt, 
+                COUNT(DISTINCT column_id) as column_distinct_cnt, 
                 COUNT(DISTINCT query_id) as query_cnt, 
                 COUNT(DISTINCT repo_id) as repo_cnt
             FROM unnested_ids
-            JOIN columns ON columns.id = unnested_ids.c_id JOIN queries q on q.id = query_id
+            JOIN columns ON columns.id = unnested_ids.column_id JOIN queries q on q.id = query_id
             WHERE usage_type = '{usage}'
             GROUP BY all ORDER BY usage_type, column_cnt DESC;
         """

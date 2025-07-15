@@ -4,7 +4,7 @@ from typing import List
 import duckdb
 import pandas as pd
 
-from src.config import DATA_DIR, QUERIES_DIR, DATABASE_PATH
+from src.config import DATA_DIR, QUERIES_DIR, DATABASE_PATH, logger
 from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_TABLE_NAME, REPO_TABLE_NAME, \
     FILES_META_DATA_TABLE_NAME, FILES_TABLE_NAME
 
@@ -120,9 +120,11 @@ def load_queries_to_database(ask: bool = True):
 
     # create first a non-duplicated repo table becaus of out of memory issues with the parquet files
     create_parquet_queries_with_dups = f"""
-            CREATE OR REPLACE TEMP TABLE parquet_queries_tmp_table_with_dups AS (FROM '{QUERIES_DIR}/*/*.parquet')
+            CREATE OR REPLACE TEMP TABLE parquet_queries_tmp_table_with_dups AS (FROM read_parquet('{QUERIES_DIR}/*/*.parquet', union_by_name = true))
         """
     con.execute(create_parquet_queries_with_dups)
+
+    logger.info("Created temporary table with all queries from parquet files.")
 
     # *** CREATE A DEDUPLICATED TEMPORARY TABLE WITH ALL QUERIES ***
     create_parquet_queries = f"""
@@ -134,6 +136,8 @@ def load_queries_to_database(ask: bool = True):
     """
     con.execute(create_parquet_queries)
 
+    logger.info("Created temporary table with deduplicated queries.")
+
     # Drop the temporary table with duplicates to free up memory
     con.execute("DROP TABLE IF EXISTS parquet_queries_tmp_table_with_dups")
 
@@ -144,11 +148,14 @@ def load_queries_to_database(ask: bool = True):
           SELECT * FROM parquet_queries_tmp_table POSITIONAL 
           JOIN (SELECT range as id FROM range(0, (SELECT COUNT(*) FROM parquet_queries_tmp_table)))
       """)
+    logger.info("Created temporary table with queries and added an id column.")
 
     create_missing_repos_from_queries(con)
+    logger.info("Inserted new repositories from queries into the repository table.")
 
     # *** LOAD META DATA FILES ***
     load_meta_data_files_to_database(con)
+    logger.info("Loaded meta data files into the database.")
 
     # *** CREATE FILES VIEW CONTAING FILE INFORMATINO AND QUERIES ***
 
@@ -183,6 +190,7 @@ def load_queries_to_database(ask: bool = True):
         )
         """
     con.execute(file_results_view_query)
+    logger.info("Created view with file results and queries.")
 
     # *** CREATE FILE TABLES ***
 
@@ -193,6 +201,7 @@ def load_queries_to_database(ask: bool = True):
         )
         """
     con.execute(query)
+    logger.info("Created files table with file information and queries.")
 
     # *** CREATE QUERIES TABLE ***
 
@@ -219,12 +228,12 @@ def load_queries_to_database(ask: bool = True):
     """
 
     # language as file_language, file_path, header,
-    print(query)
+    logger.info("Creating queries table with query information.")
     con.execute(query)
 
     # get teh count of queries imported
     count = con.execute(f"SELECT COUNT(*) FROM {QUERIES_TABLE_NAME}").fetchone()[0]
-    print(f"Imported {count} queries into the database.")
+    logger.info(f"Imported {count} queries into the database.")
 
     # print the number of queries where we found a repo_id and the number of queries without a repo_id using a group by
     repo_counts = con.execute(f"""

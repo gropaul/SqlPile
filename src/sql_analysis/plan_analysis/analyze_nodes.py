@@ -1,15 +1,13 @@
 import json
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import duckdb
 
-from src.config import logger, DATABASE_PATH
+from src.config import logger
 from src.sql_analysis.execution.models import Table
 from src.sql_analysis.plan_analysis.models import ColumnUsage, OperatorType, \
     ColumnTrack, ExpressionInfo, TableColumnBinding, ColumnUsageType, JoinConditionInfo
-from src.sql_analysis.plan_analysis.tracking import track_and_find_usage
+from src.sql_analysis.plan_analysis.tracking import track_and_find_usage, get_column_bindings
 from src.sql_analysis.plan_analysis.utils import to_list, to_expressions, to_conditions
-
-
 
 
 def get_one_child_tracks(children_tracks: List[List[ColumnTrack]]) -> List[ColumnTrack]:
@@ -37,34 +35,41 @@ class CTEOccurrence:
     """
     Represents an occurrence of a CTE in the execution plan.
     """
+
     def __init__(self, cte_id: int, cte_tracks: List[ColumnTrack]):
         self.cte_id = cte_id
         self.cte_tracks = cte_tracks
 
+
 # query_id: int, plan: Dict, tables: List[Table], children_tracks: List[ColumnTrack]
 class Params:
-    def __init__(self, query_id: int, plan: any, tables: List[Table], children_tracks: List[List[ColumnTrack]],
+    def __init__(self, query_id: int, node_id: str, plan: any, tables: List[Table],
+                 children_tracks: List[List[ColumnTrack]],
                  ctes: List[CTEOccurrence]):
-
         self.query_id = query_id
+        self.node_id = node_id
         self.plan = plan
         self.tables = tables
         self.children_tracks = children_tracks
         self.occurrences: List[CTEOccurrence] = ctes if ctes is not None else []
 
 
-def analyze_node(query_id: int, plan: Dict, tables: List[Table], cteOccurrence: List[CTEOccurrence]) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
+def analyze_node(query_id: int, plan: Dict, tables: List[Table], cte_occurrence: List[CTEOccurrence], parent_node_id: str = '', child_index: int = 0) -> \
+Tuple[List[ColumnUsage], List[ColumnTrack]]:
     """
     Analyze a single node in the execution plan.
     """
 
     node_operator: OperatorType = plan['operator_type'].strip().upper()
 
+    node_id: str = f"{parent_node_id}.{child_index}" if parent_node_id else str(child_index)
+
+
     children_tracks: List[List[ColumnTrack]] = []
     results: List[ColumnUsage] = []
 
-    for child in plan.get('children', []):
-        child_results, child_tracks = analyze_node(query_id, child, tables, cteOccurrence)
+    for child_index, child in enumerate(plan.get('children', [])):
+        child_results, child_tracks = analyze_node(query_id, child, tables, cte_occurrence, node_id, child_index)
         results.extend(child_results)
         children_tracks.append(child_tracks)
 
@@ -72,9 +77,9 @@ def analyze_node(query_id: int, plan: Dict, tables: List[Table], cteOccurrence: 
             # add a cte occurrence if this is a CTE node
             cte_id = plan.get('extra_info', {}).get('Table Index', -1)
             cte = CTEOccurrence(cte_id=cte_id, cte_tracks=children_tracks[0])
-            existing_ids = [occ.cte_id for occ in cteOccurrence]
+            existing_ids = [occ.cte_id for occ in cte_occurrence]
             if cte_id not in existing_ids:
-                cteOccurrence.append(cte)
+                cte_occurrence.append(cte)
 
     analyze_map = {
         'GET': analyze_get,
@@ -97,7 +102,7 @@ def analyze_node(query_id: int, plan: Dict, tables: List[Table], cteOccurrence: 
     analyze_fn = analyze_map.get(node_operator)
 
     if analyze_fn:
-        params = Params(query_id, plan, tables, children_tracks, cteOccurrence)
+        params = Params(query_id, node_id, plan, tables, children_tracks, cte_occurrence)
         node_results, node_tracks = analyze_fn(params)
         results.extend(node_results)
         return results, node_tracks
@@ -112,14 +117,17 @@ def analyze_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     filter_expressions: List[str] = to_list(extra_info.get('Filters', []))
     projections: List[ExpressionInfo] = to_expressions(plan.get('expressions', []))
 
-    # if the table is e.g. a schema table, we won't find Table
+    table_filters = to_expressions(plan.get('table_filters', []))
+
+    # if the table is e.g., a schema table, we won't find Table
     if 'Table' not in extra_info or not extra_info['Table']:
         logger.error("No table name found in extra_info. Cannot analyze GET node.")
         return [], []
 
     scan_table_name = extra_info['Table']
+    table_id = plan['table_index'][0]
 
-    scan_table: Table = None
+    scan_table: Optional[Table] = None
     my_tracks = []
     for table in tables:
         if table.table_name == scan_table_name:
@@ -140,38 +148,56 @@ def analyze_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
                     base_type=column.column_base_type,
                     parents=[],
                     binding=TableColumnBinding(
-                        table_id=plan['table_index'][0],
+                        table_id=table_id,
                         column_id=column_index
                     )
                 ))
+
+    filter_usages = []
+    for (column_index, filter_expression) in enumerate(table_filters):
+        expression_column_bindings = get_column_bindings(filter_expression)
+        used_columns = []
+        for binding in expression_column_bindings:
+            for column in scan_table.columns:
+                if column.column_name.lower() == binding.expression.lower():
+                    used_columns.append(column.column_id)
+        filter_usages.append(ColumnUsage(
+            query_id=query_id,
+            node_id=params.node_id,
+            column_ids=used_columns,
+            expression=filter_expression.expression,
+            expression_result_type=filter_expression.return_type,
+            usage_type='SCAN_FILTER',
+        ))
 
     # the number of tracks and usages should be the same as the number of projections
     if len(my_tracks) != len(projections):
         logger.error(
             f"Number of tracks ({len(my_tracks)}) does not match number of projections ({len(projections)}) for table {scan_table_name}.")
 
-    usages = [
+    scan_usages = [
         ColumnUsage.from_column_track(
             match=track,
             query_id=query_id,
+            node_id=params.node_id,
             usage_type='SCAN_LOOKUP'
         ) for track in my_tracks
     ]
+
+    usages = scan_usages + filter_usages
     return usages, my_tracks
 
 
 def analyze_chunk_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
-
     params.query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
 
     expressions: List[ExpressionInfo] = to_expressions(plan.get('expressions', []))
 
     my_tracks = [ColumnTrack.get_const_track(e) for e in expressions]
 
-    usages = [] # its just a chunk scan, no usage type
+    usages = []  # it's just a chunk scan, no usage type
 
     return usages, my_tracks
-
 
 def analyze_projection(params: Params, usage_type: ColumnUsageType = 'PROJECTION') -> Tuple[
     List[ColumnUsage], List[ColumnTrack]]:
@@ -188,7 +214,7 @@ def analyze_projection(params: Params, usage_type: ColumnUsageType = 'PROJECTION
     for (column_index, projection) in enumerate(projections):
         # check if there are any children tracks that match the projection
         binding = TableColumnBinding(table_id=table_id, column_id=column_index)
-        track, usage = track_and_find_usage(projection, query_id, children_tracks, usage_type, binding=binding)
+        track, usage = track_and_find_usage(projection, query_id, params.node_id, children_tracks, usage_type, binding=binding)
         my_tracks.append(track)
         usages.append(usage)
 
@@ -209,7 +235,7 @@ def analyze_order_by(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrac
     orders = to_expressions(plan.get('orders', []))
     for (column_index, order) in enumerate(orders):
         binding = TableColumnBinding(table_id=-1, column_id=column_index)
-        track, usage = track_and_find_usage(order, query_id, children_tracks, 'ORDER_KEY', binding=binding)
+        track, usage = track_and_find_usage(order, query_id, params.node_id, children_tracks, 'ORDER_KEY', binding=binding)
         usages.append(usage)
 
     return usages, children_tracks
@@ -228,7 +254,7 @@ def analyze_filter(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]
 
     for (column_index, filter_expression) in enumerate(filter_expressions):
         binding = TableColumnBinding(table_id=-1, column_id=column_index)
-        track, usage = track_and_find_usage(filter_expression, query_id, children_tracks,
+        track, usage = track_and_find_usage(filter_expression, query_id, params.node_id, children_tracks,
                                             'FILTER', binding=binding)
         usages.append(usage)
 
@@ -243,8 +269,8 @@ def analyze_aggregate(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTra
     Example: SELECT id, COUNT(*), MIN(id) FROM my_table GROUP BY id
 
     1. groups → Columns used for grouping (e.g., `id`)
-    2. expressions → Aggregation expressions (e.g., `COUNT(*)`, `MIN(id)`)
-    3. grouping_functions → (Unknown usage — see DuckDB source)
+    2. Expressions → Aggregation expressions (e.g., `COUNT(*)`, `MIN(id)`)
+    3. Grouping_functions → (Unknown usage — see DuckDB source)
 
     For reference, see the DuckDB source code:
     [DuckDB logical_aggregate.cpp (lines 15–24)](https://github.com/duckdb/duckdb/blob/1fe72eca288f726f90103616fa6f23c057caf22a/src/planner/operator/logical_aggregate.cpp#L15-L24)
@@ -261,7 +287,7 @@ def analyze_aggregate(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTra
 
     for (column_index, group_expression) in enumerate(groups):
         binding = TableColumnBinding(table_id=-1, column_id=column_index)
-        track, usage = track_and_find_usage(group_expression, query_id, children_tracks,
+        track, usage = track_and_find_usage(group_expression, query_id, params.node_id, children_tracks,
                                             'GROUP_KEY', binding=binding)
         usages.append(usage)
         my_tracks.append(track)
@@ -270,7 +296,7 @@ def analyze_aggregate(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTra
     usages.extend(expression_usages)
     my_tracks.extend(expression_tracks)
 
-    return usages, children_tracks
+    return usages, my_tracks
 
 
 def get_join_projections(plan: Dict) -> Tuple[List[int], List[int]]:
@@ -298,15 +324,16 @@ def analyze_join(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
         left_expression = condition.left
         right_expression = condition.right
 
-        _, left_usage = track_and_find_usage(left_expression, query_id, left_tracks,
+        _, left_usage = track_and_find_usage(left_expression, query_id, params.node_id, left_tracks,
                                              'JOIN_KEY')
-        _, right_usage = track_and_find_usage(right_expression, query_id, right_tracks,
+        _, right_usage = track_and_find_usage(right_expression, query_id, params.node_id, right_tracks,
                                               'JOIN_KEY')
 
         # self, query_id: int, column_ids: List[int], expression: str, expression_result_type: str,
         # usage_type: ColumnUsageTyp
         combined_usage = ColumnUsage(
             query_id=query_id,
+            node_id=params.node_id,
             column_ids=[*left_usage.column_ids, *right_usage.column_ids],
             expression=f"{left_expression.expression} {condition.comparison} {right_expression.expression}",
             expression_result_type=left_expression.return_type,  # Assuming both sides have the same type
@@ -316,7 +343,7 @@ def analyze_join(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
         usages.append(combined_usage)
 
     left_projections, right_projections = get_join_projections(plan)
-    # if the max projection index is larger then the number of tracks, log an error
+    # if the max projection index is larger, then the number of tracks, log an error
     if left_projections:
         if max(left_projections) >= len(left_tracks):
             logger.error(f"Left projections {left_projections} exceed the number of left tracks {len(left_tracks)}.")
@@ -333,17 +360,17 @@ def analyze_join(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
 
     # see https://github.com/duckdb/duckdb/blob/4a11bc84256b736953a490bebd9bc6ca4faf227d/src/planner/operator/logical_join.cpp#L33
     if join_type in ['SEMI', 'ANTI']:
-        # For SEMI and ANTI joins, we only project the left hand side
+        # For SEMI and ANTI joins, we only project the left-hand side
         return usages, left_tracks
 
     if join_type == 'MARK':
-        # For MARK join, we project the left hand side, plus a BOOLEAN column indicating the MARK
+        # For MARK join, we project the left-hand side, plus a BOOLEAN column indicating the MARK
         left_tracks.append(ColumnTrack.get_boolean_track())
         return usages, left_tracks
 
     if join_type in ['RIGHT_SEMI', 'RIGHT_ANTI']:
-        # For RIGHT_SEMI and RIGHT_ANTI joins, we project the right hand side
-        return  usages, right_tracks
+        # For RIGHT_SEMI and RIGHT_ANTI joins, we project the right-hand side
+        return usages, right_tracks
 
     # For any other join, we project both sides
     return usages, left_tracks + right_tracks
@@ -351,12 +378,12 @@ def analyze_join(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
 
 def analyze_union(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     """
-    Analyze a union node in the execution plan. Just return the tracks from the children nodes.
+    Analyze a union node in the execution plan. Return the tracks from the children nodes.
     """
 
     child_1, child_2 = get_two_child_tracks(params.children_tracks)
 
-    # they  result is are the tracks of the first child, see
+    # they result is are the tracks of the first child, see
     # https://github.com/duckdb/duckdb/blob/5e6dbcb8ad3d7d393e9d2668ed3cf61be802506d/src/include/duckdb/planner/operator/logical_set_operation.hpp#L56
     usages = []
     return usages, child_1
@@ -374,7 +401,7 @@ def analyze_top_n(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]
     orders = to_expressions(plan.get('orders', []))
     for (column_index, order) in enumerate(orders):
         binding = TableColumnBinding(table_id=-1, column_id=column_index)
-        track, usage = track_and_find_usage(order, query_id, children_tracks,
+        track, usage = track_and_find_usage(order, query_id, params.node_id, children_tracks,
                                             'TOP_N_KEY', binding=binding)
         usages.append(usage)
 
@@ -402,6 +429,7 @@ def analyze_cte(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     left, right = get_two_child_tracks(children_tracks)
 
     return [], right
+
 
 def analyze_cte_scan(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     """

@@ -75,7 +75,7 @@ def get_schemas_from_create_query():
         FROM distrinct_queries AS queries
         JOIN repos ON queries.repo_id = repos.id
         WHERE query_table_name IS NOT NULL
-          AND (repos.id = 32859 OR true)
+          AND (repos.id = 32859 OR true)  -- filter for a specific repo or all repos
           AND query_table_name IS NOT NULL 
           AND NOT EXISTS (
             FROM tables 

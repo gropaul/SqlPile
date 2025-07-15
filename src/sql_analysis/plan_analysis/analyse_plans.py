@@ -101,14 +101,14 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
             query_id = query['query_id']
             plan = json.loads(query['plan'])
             logger.info(f"Analyzing query ID: {query_id}, Repo ID: {repo_id}, SQL: {query['sql']}")
-            results, tracks = analyze_node(query_id, plan, tables_parsed, [])
+            results, tracks = analyze_node(query_id, plan, tables_parsed, [], )
 
             # Insert results into the COLUMN_USAGES_TABLE_NAME
             for result in results:
                 # logger.info(f"Query ID: {id}, Operator: {result.usage_type}, Expression: {result.expression}, Columns: {result.column_ids}")
                 insert_query = f"""
-                    INSERT INTO {COLUMN_USAGES_TABLE_NAME} ( id, query_id, column_ids, expression, expression_result_type, usage_type)
-                    VALUES ({min_usage_id}, {query_id}, {json.dumps(result.column_ids)}, '{escape_for_insert(result.expression)}', '{result.expression_result_type}', '{result.usage_type}')
+                    INSERT INTO {COLUMN_USAGES_TABLE_NAME} ( id, query_id, node_id, column_ids, expression, expression_result_type, usage_type)
+                    VALUES ({min_usage_id}, {query_id}, '{result.node_id}', {json.dumps(result.column_ids)}, '{escape_for_insert(result.expression)}', '{result.expression_result_type}', '{result.usage_type}')
                 """
                 con.execute(insert_query)
                 min_usage_id += 1

@@ -28,7 +28,7 @@ class MockParameter:
 
 # Returns all mock queries with parameters inserted
 class MockQueryResult:
-    def __init__(self, original_query: Optional[str], executed_query: Optional[str] = None,
+    def __init__(self, executed_query: Optional[str] = None,
                  error: Optional[Exception] = None,
                  logical_plan: Optional[Dict] = None,
                  logical_plan_optimized: Optional[Dict] = None,
@@ -36,7 +36,6 @@ class MockQueryResult:
                  physical_plan: Optional[Dict] = None,
                  successful: bool = True
                  ):
-        self.original_query = original_query
         self.executable_sql = executed_query
         self.error = error
         self.logical_plan = logical_plan
@@ -98,7 +97,7 @@ def try_to_mock_and_execute_query( sandbox_con: duckdb.DuckDBPyConnection, sql: 
         successful = False
         last_error = e
 
-    return MockQueryResult(original_query=original_successful_query, executed_query=executed_query,
+    return MockQueryResult(executed_query=executed_query,
                            error=last_error,
                            logical_plan=logical_plan_json,
                            logical_plan_optimized=logical_plan_optimized,

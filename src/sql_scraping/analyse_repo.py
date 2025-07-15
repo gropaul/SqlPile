@@ -8,7 +8,7 @@ import requests
 
 from src.config import REPO_DIR, logger, PROCESS_ZIPPED_REPOS, REPO_HANDLING
 from src.sql_scraping.extract_sql import RepoAnalysisResult, FileAnalysisResult, extract_sql_from_repo, MetaDataFile, \
-    META_DATA_FILE_ENDINGS, MAX_METADATA_FILE_SIZE
+    META_DATA_FILE_ENDINGS, MAX_METADATA_FILE_SIZE, DataFile
 
 allowed_providers = ['https://github', 'https://gitlab']
 
@@ -201,6 +201,38 @@ def get_metadata_from_repo(repo_path: str) -> List[MetaDataFile]:
     return metadata
 
 
+def get_datafiles_from_repo(repo_path: str) -> List[DataFile]:
+
+    """Get all data files in the repository that have the DATA_FILE_ENDINGS."""
+    from src.sql_scraping.extract_sql import DATA_FILE_ENDINGS
+
+    files_in_repo = os.listdir(repo_path)
+    data_files = [f for f in files_in_repo if any(f.endswith(ending) for ending in DATA_FILE_ENDINGS)]
+
+    data_files = [os.path.join(repo_path, f) for f in data_files]
+    data: List[DataFile] = []
+    for data_file in data_files:
+        try:
+
+            file_type = os.path.splitext(data_file)[1].lower()
+            url = f"https://raw.githubusercontent.com/{data_file.replace(repo_path, '').lstrip(os.sep)}"
+            byte_size = os.path.getsize(data_file)
+            data.append(DataFile(file_path=data_file, file_type=file_type, url=url, byte_size=byte_size))
+        except Exception as e:
+            logger.error(f"Error reading data file {data_file}: {e}")
+
+    count_per_file = {df.file_type: 0 for df in data}
+    for df in data:
+        count_per_file[df.file_type] += 1
+
+    count_per_type_string = ', '.join(f"{count} {file_type}" for file_type, count in count_per_file.items())
+    if count_per_file:
+        logger.info(f"Found {len(data)} data files in the repository: {count_per_type_string}")
+    else :
+        logger.info(f"No data files found in the repository.")
+    return data
+
+
 
 def analyse_repo(repo_url) -> Optional[RepoAnalysisResult]:
     name, url = get_repo_name_and_url(repo_url)
@@ -224,8 +256,10 @@ def analyse_repo(repo_url) -> Optional[RepoAnalysisResult]:
 
     if queries_count > 0:
         meta_data = get_metadata_from_repo(repo_dir)
+        data_files = get_datafiles_from_repo(repo_dir)
     else:
         meta_data = []
+        data_files = []
 
 
     if REPO_HANDLING == 'delete_after_processing':
@@ -244,7 +278,8 @@ def analyse_repo(repo_url) -> Optional[RepoAnalysisResult]:
         repo_name=name,
         repo_url=url,
         file_results=results,
-        metadata_files=meta_data
+        metadata_files=meta_data,
+        data_files=data_files
     )
 
 

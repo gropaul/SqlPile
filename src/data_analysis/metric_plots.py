@@ -2,6 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import duckdb
 import math
+import numpy as np
 from collections import Counter
 
 from src.config import DATABASE_PATH, PLOTS_DIR
@@ -25,14 +26,42 @@ def normalized_entropy(s: str) -> float:
 import regex as re  # pip install regex (not re)
 
 
+def filter_outliers(data_list, lower_percentile=5, upper_percentile=95):
+    """
+    Filter outliers from a list of data points based on percentiles.
+
+    Args:
+        data_list: List of numeric values
+        lower_percentile: Lower percentile threshold (default: 5)
+        upper_percentile: Upper percentile threshold (default: 95)
+
+    Returns:
+        Filtered list with outliers removed
+    """
+    if not data_list or len(data_list) < 10:  # Don't filter if too few data points
+        return data_list
+
+    try:
+        # Calculate percentile thresholds
+        lower_bound = np.percentile(data_list, lower_percentile)
+        upper_bound = np.percentile(data_list, upper_percentile)
+
+        # Filter values within the percentile range
+        return [x for x in data_list if lower_bound <= x <= upper_bound]
+    except Exception as e:
+        print(f"Warning: Could not filter outliers: {e}")
+        return data_list
+
+
 def create_metric_plots_by_usage_type():
     """
-    Create box plots showing the distribution of metrics for columns with each usage_type.
-    For each metric (like min_value_length, max_value_length, etc.), create a box plot
+    Create violin plots showing the distribution of metrics for columns with each usage_type.
+    For each metric (like min_value_length, max_value_length, etc.), create a violin plot
     with usage types on the x-axis and the metric values on the y-axis.
     Save each plot as a separate PDF file.
     """
     con = duckdb.connect(DATABASE_PATH)
+    # con = duckdb.connect('/Users/paul/workspace/SqlPile/data/schemapile_10_07.duckdb')
 
     # Register the normalized_entropy function with DuckDB
     con.create_function("normalized_entropy", normalized_entropy, [str], float, type="native")
@@ -62,6 +91,7 @@ def create_metric_plots_by_usage_type():
     # Now create the value_stats view
     con.execute("""
         CREATE OR REPLACE TABLE value_stats AS
+        -- CREATE VIEW IF NOT EXISTS value_stats AS
         WITH usages AS (
             SELECT unnest(column_ids) as column_id, usage_type
             FROM column_usages
@@ -151,15 +181,40 @@ def create_metric_plots_by_usage_type():
 
             # Convert to a list of values
             values = [row[0] for row in result if row[0] is not None]
-            data.append(values)
 
-        # Create the box plot with all usage types
-        if any(data):  # Check if there's any data to plot
-            ax.boxplot(
-                data,
-                labels=usage_types,
-                showfliers=False,  # This hides the outliers
+            # Filter outliers to prevent them from distorting the plot
+            filtered_values = filter_outliers(values)
+            data.append(filtered_values)
+
+        # Filter out empty data and adjust usage types accordingly
+        filtered_data_with_labels = [(d, label) for d, label in zip(data, usage_types) if len(d) > 0]
+        filtered_data, filtered_labels = zip(*filtered_data_with_labels)
+
+        # Create the violin plot with filtered data
+        if filtered_data:
+            ax.violinplot(
+                filtered_data,
+                showmeans=True,
+                showmedians=True,
+                showextrema=False
             )
+            ax.set_xticks(range(1, len(filtered_labels) + 1))
+            ax.set_xticklabels(filtered_labels)
+
+            # Set reasonable y-axis limits based on the filtered data
+            # Combine all filtered data to calculate global min and max
+            all_values = [val for sublist in data for val in sublist]
+            if all_values:
+                # Use percentiles to set limits to avoid any remaining outliers
+                y_min = np.percentile(all_values, 1)
+                y_max = np.percentile(all_values, 99)
+
+                # Add some padding
+                y_range = y_max - y_min
+                y_min = max(0, y_min - 0.05 * y_range)  # Ensure non-negative for counts
+                y_max = y_max + 0.05 * y_range
+
+                ax.set_ylim(y_min, y_max)
 
             ax.set_xlabel('Usage Type')
             ax.set_ylabel(f'{metric} Value Range')

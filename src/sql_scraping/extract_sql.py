@@ -37,11 +37,19 @@ meta_data_file_schema = pa.struct([
     ('content', pa.string())
 ])
 
+data_file_schema = pa.struct([
+    ('file_path', pa.string()),
+    ('file_type', pa.string()),
+    ('byte_size', pa.int64()),
+    ('url', pa.string())
+])
+
 repo_result_schema = pa.schema([
     ('repo_name', pa.string()),
     ('repo_url', pa.string()),
     ('file_results', pa.list_(file_result_schema)),
-    ('metadata_files', pa.list_(meta_data_file_schema))
+    ('metadata_files', pa.list_(meta_data_file_schema)),
+    ('data_files', pa.list_(data_file_schema))
 ])
 
 
@@ -126,6 +134,7 @@ def get_dir_for_url(repo_url: str) -> str:
 
 
 META_DATA_FILE_ENDINGS = ['.json', '.yaml', '.yml', '.txt', '.md']
+DATA_FILE_ENDINGS = ['.csv', '.parquet', '.tsv', '.xlsx', '.xls']
 MetaDataFileEnding = Literal[tuple(META_DATA_FILE_ENDINGS)]  # type: ignore
 
 MAX_METADATA_FILE_SIZE = 1 * 1024 * 1024  # 1 MB
@@ -147,15 +156,34 @@ class MetaDataFile:
         }
 
 
+class DataFile:
+
+    def __init__(self, file_path: str, file_type: str, url: str, byte_size: int):
+        self.file_path = file_path
+        self.file_type = file_type
+        self.url = url
+        self.byte_size = byte_size
+
+    def to_dict(self) -> Dict[str, str]:
+        """Convert the DataFile instance to a dictionary."""
+        return {
+            'file_path': self.file_path,
+            'file_type': self.file_type,
+            'url': self.url,
+            'byte_size': self.byte_size
+        }
+
+
 class RepoAnalysisResult:
     """Data class to represent the result of a repository analysis."""
 
     def __init__(self, repo_name: str, repo_url: str, file_results: List[FileAnalysisResult],
-                 metadata_files: List[MetaDataFile]):
+                 metadata_files: List[MetaDataFile], data_files: List[DataFile]):
         self.repo_name = repo_name
         self.repo_url = repo_url
         self.file_results = file_results
         self.metadata_files = metadata_files
+        self.data_files: List[DataFile] =  data_files
 
     def get_number_of_queries(self) -> int:
         """Get the total number of SQL queries extracted from the repository."""
@@ -167,7 +195,8 @@ class RepoAnalysisResult:
             'repo_name': self.repo_name,
             'repo_url': self.repo_url,
             'file_results': [file_result.to_dict() for file_result in self.file_results],
-            'metadata_files': [metadata_file.to_dict() for metadata_file in self.metadata_files]
+            'metadata_files': [metadata_file.to_dict() for metadata_file in self.metadata_files],
+            'data_files': [data_file.to_dict() for data_file in self.data_files]
         }
 
     def to_json(self) -> str:

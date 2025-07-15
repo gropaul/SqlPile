@@ -210,9 +210,10 @@ class ColumnTrackExpressionMatch:
 
 
 class ColumnUsage:
-    def __init__(self, query_id: int, column_ids: List[int], expression: str, expression_result_type: str,
+    def __init__(self, query_id: int, node_id: str, column_ids: List[int], expression: str, expression_result_type: str,
                  usage_type: ColumnUsageType):
         self.query_id = query_id
+        self.node_id = node_id
         self.column_ids = column_ids
         self.expression = expression
         self.expression_result_type = expression_result_type
@@ -222,10 +223,12 @@ class ColumnUsage:
     def from_column_track(
             match: ColumnTrack,
             query_id: int,
+            node_id: str,
             usage_type: ColumnUsageType,
     ) -> 'ColumnUsage':
         return ColumnUsage(
             query_id=query_id,
+            node_id=node_id,
             column_ids=match.get_all_involved_column_ids(),
             expression=match.expression.expression,
             expression_result_type=match.base_type,
