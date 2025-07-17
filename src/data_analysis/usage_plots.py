@@ -1,5 +1,7 @@
 import os.path
 import os
+from typing import List
+
 import matplotlib.pyplot as plt
 import duckdb
 import numpy as np
@@ -37,72 +39,74 @@ except Exception as e:
     })
 
 
-def column_usage_plot():
+def column_physical_type_usage_plot(con: duckdb.DuckDBPyConnection, usage_types: List[str]):
     """
     Create a stacked bar plot showing column usage types and their distribution by column base type.
     """
-    con = duckdb.connect(DATABASE_PATH)
-    usage_types = con.execute("""SELECT DISTINCT usage_type FROM column_usages""").fetchall()
-
-    dir = os.path.join(PLOTS_DIR, 'column_usage')
-    if not os.path.exists(dir):
-        os.makedirs(dir)
 
     # Dictionary to store all results
+    all_results = get_results(con, usage_types, 'column_base_type')
+
+    # Create stacked bar plot for column counts
+    dir = os.path.join(PLOTS_DIR, 'column_usage', 'physical_type')
+    create_stacked_bar_plot(all_results, 'column_cnt', dir)
+    create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
+    create_stacked_bar_plot(all_results, 'query_cnt', dir)
+    create_stacked_bar_plot(all_results, 'repo_cnt', dir)
+
+
+def get_results(con: duckdb.DuckDBPyConnection, usage_types: List[str], group_column: str, where_clause: str = "TRUE "):
+
     all_results = {}
 
-    for (usage, ) in usage_types:
+    for usage in usage_types:
         query = f"""
             WITH unnested_ids AS (
                 SELECT id, query_id, unnest(column_ids) AS column_id, usage_type, expression
                 FROM column_usages
             )
             SELECT 
-                usage_type, column_base_type, 
+                usage_type, {group_column}, 
                 COUNT(column_id) as column_cnt, 
                 COUNT(DISTINCT column_id) as column_distinct_cnt, 
                 COUNT(DISTINCT query_id) as query_cnt, 
                 COUNT(DISTINCT repo_id) as repo_cnt
             FROM unnested_ids
             JOIN columns ON columns.id = unnested_ids.column_id JOIN queries q on q.id = query_id
-            WHERE usage_type = '{usage}'
-            GROUP BY all ORDER BY usage_type, column_cnt DESC;
+            WHERE usage_type = '{usage}' AND {where_clause} 
+            GROUP BY all 
+            ORDER BY usage_type, column_cnt DESC;
         """
 
         result = con.execute(query).fetchall()
         all_results[usage] = result
-        print(f"Results for {usage}:")
-        print(result)
+    return all_results
+
+def column_semantic_type_usage_plot(con: duckdb.DuckDBPyConnection, usage_types: List[str], group_column: str = 'semantic_type[6:]', where_clause: str = "contains(semantic_type, 'sato_')"):
+
+    # Dictionary to store all results
+    all_results = get_results(con, usage_types, group_column, where_clause)
 
     # Create stacked bar plot for column counts
+
+    dir = os.path.join(PLOTS_DIR, 'column_usage', 'semantic_type')
     create_stacked_bar_plot(all_results, 'column_cnt', dir)
-
     create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
-
-    # Create stacked bar plot for query counts
     create_stacked_bar_plot(all_results, 'query_cnt', dir)
-
-    # Create stacked bar plot for repo counts
     create_stacked_bar_plot(all_results, 'repo_cnt', dir)
 
 
 def darken_color(color, amount=1.3):
-    """
-    Darken the given color by multiplying its RGB components by 1/amount.
-
-    Args:
-        color: Matplotlib color (e.g., from a colormap)
-        amount: Factor by which to darken the color
-
-    Returns:
-        Darkened RGB color tuple
-    """
     import matplotlib.colors as mcolors
     c = mcolors.to_rgb(color)
     return tuple(max(min(x / amount, 1.0), 0.0) for x in c)
 
 
 def create_stacked_bar_plot(all_results, count_type, output_dir):
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     """
     Create a stacked bar plot for the given count type, showing percentages.
 
@@ -245,13 +249,38 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
     plt.legend(title='Column Base Type', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
 
-    # Save the plot as PDF with high quality
-    filename = f'usage_types_by_{count_type}.pdf'
-    plt.savefig(os.path.join(output_dir, filename), format='pdf', bbox_inches='tight', dpi=300)
+    # Save the plot
+    filename = f'usage_types_by_{count_type}.{OUTPUT_FORMAT}'
+    plt.savefig(os.path.join(output_dir, filename), format=OUTPUT_FORMAT, bbox_inches='tight', dpi=300)
     plt.close()
 
     print(f"Saved stacked bar plot for {count_type} to {os.path.join(output_dir, filename)}")
 
 
+def column_semantic_type_syntactic_usage_plot(con: duckdb.DuckDBPyConnection, usage_types: List[str]):
+    """
+    Create a stacked bar plot showing column semantic types and their distribution by syntactic type.
+    """
+
+    # Dictionary to store all results
+    all_results = get_results(con, usage_types, 'semantic_type_syntactic', "semantic_type_syntactic is not null and semantic_type_syntactic != 'Test' ")
+
+    # Create stacked bar plot for column counts
+    dir = os.path.join(PLOTS_DIR, 'column_usage', 'semantic_type_syntactic')
+    create_stacked_bar_plot(all_results, 'column_cnt', dir)
+    create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
+    create_stacked_bar_plot(all_results, 'query_cnt', dir)
+    create_stacked_bar_plot(all_results, 'repo_cnt', dir)
+
+OUTPUT_FORMAT = 'png'
+
 if __name__ == "__main__":
-    column_usage_plot()
+    con = duckdb.connect(DATABASE_PATH)
+    usage_types = con.execute("""SELECT DISTINCT usage_type FROM column_usages""").fetchall()
+    usage_types = [usage[0] for usage in usage_types]
+    usage_types.remove('TOP_N_KEY')  # Remove 'TOP_N_KEY' if it exists
+    print(f"Found {len(usage_types)} usage types: {usage_types}")
+    column_physical_type_usage_plot(con, usage_types)
+    column_semantic_type_usage_plot(con, usage_types)
+    column_semantic_type_syntactic_usage_plot(con, usage_types)
+

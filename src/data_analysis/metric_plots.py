@@ -60,7 +60,7 @@ def create_metric_plots_by_usage_type():
     with usage types on the x-axis and the metric values on the y-axis.
     Save each plot as a separate PDF file.
     """
-    con = duckdb.connect(DATABASE_PATH)
+    con = duckdb.connect(DATABASE_PATH, read_only=True)
     # con = duckdb.connect('/Users/paul/workspace/SqlPile/data/schemapile_10_07.duckdb')
 
     # Register the normalized_entropy function with DuckDB
@@ -68,7 +68,7 @@ def create_metric_plots_by_usage_type():
 
     # First, make sure the values_often view exists
     con.execute("""
-                CREATE OR REPLACE VIEW values_often AS
+                CREATE OR REPLACE TEMP VIEW values_often AS
                 WITH often AS (SELECT column_id
                                FROM column_values
                                GROUP BY column_id
@@ -90,8 +90,8 @@ def create_metric_plots_by_usage_type():
 
     # Now create the value_stats view
     con.execute("""
-        CREATE OR REPLACE TABLE value_stats AS
-        -- CREATE VIEW IF NOT EXISTS value_stats AS
+        CREATE OR REPLACE TEMP TABLE value_stats AS
+        -- CREATE TEMP VIEW IF NOT EXISTS value_stats AS
         WITH usages AS (
             SELECT unnest(column_ids) as column_id, usage_type
             FROM column_usages
@@ -120,7 +120,7 @@ def create_metric_plots_by_usage_type():
                     LENGTH(TRIM(value)) - LENGTH(REPLACE(TRIM(value), ' ', '')) + 1
                 ) AS word_count,
                -- normalized_entropy(string_agg(value)) AS normalized_entropy,
-               list_distinct(list(usage_type)) AS usage_types
+               list(DISTINCT usage_type) AS usage_types
                -- list(value)[0:10] AS sample_values,
                -- list_distinct(list(value)) AS distinct_values
         FROM values_often
