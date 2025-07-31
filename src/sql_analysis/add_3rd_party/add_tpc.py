@@ -1,8 +1,8 @@
 import os
 
-from src.config import DATABASE_PATH, DATA_DIR
 import duckdb
 
+from src.config import DATABASE_PATH, DATA_DIR
 from src.sql_analysis.load_schemapile_json_to_ddb import TABLES_DATA_FILES_TABLE_NAME
 
 

@@ -4,9 +4,6 @@ from typing import List
 from sqloxide import parse_sql
 from tree_sitter_language_pack import get_parser
 
-from src.sql_analysis.tools.parse_sql import print_recursive
-from src.sql_analysis.tools.sql_types import unify_type
-
 
 @dataclass
 class ColumnInfo:
@@ -192,6 +189,15 @@ def test_parse_create_scheduled_games_table():
         assert isinstance(column.type, str)
 
 
+def test_repo_31537():
+    query = """
+        create table notification_home ( resource_id integer primary key default nextval ( 'resource_id_seq' ) , owner_uid varchar ( 255 ) not null unique )
+    """
+    schema = parse_create_table(query)
+    expected_column_names = ['resource_id', 'owner_uid']
+
+    print(schema)
+
 def test_repo_16784():
     query = """
             create table browsertracker
@@ -363,9 +369,6 @@ def get_data_type(statement_col: dict) -> str:
     return list(statement_col['data_type'].keys())[0]
 
 
-import re
-
-
 def remove_table_options(sql: str) -> str:
     """
     Removes the table options from a CREATE TABLE SQL statement.
@@ -431,6 +434,29 @@ def drop_constraints(sql: str) -> str:
     return cleaned
 
 
+def clean_identifier(identifier: str) -> str:
+    """
+    Cleans a SQL identifier by:
+    - Removing schema prefixes (e.g., 'schema.table' → 'table')
+    - Removing surrounding quotes (single, double, or backticks)
+    - Converting the result to lowercase
+    """
+    # If schema is included, split and take the last part
+    if '.' in identifier:
+        identifier = identifier.split('.')[-1]
+
+    # Remove surrounding quotes if present
+    if (
+        (identifier.startswith('"') and identifier.endswith('"')) or
+        (identifier.startswith('`') and identifier.endswith('`')) or
+        (identifier.startswith("'") and identifier.endswith("'"))
+    ):
+        identifier = identifier[1:-1]
+
+    return identifier.lower()
+
+
+
 def rewrite_sql_for_parsing(sql: str) -> str:
     # Match variations like:
     # decimal(5,2) unsigned
@@ -453,6 +479,13 @@ def rewrite_sql_for_parsing(sql: str) -> str:
 
     # remove all "signed" specifiers -> Default is signed, so we can remove it
     sql = re.sub(r'\bsigned\b', '', sql, flags=re.IGNORECASE)
+
+    # rewrite all 'varchar_ignorecase' to 'varchar' (case-insensitive) as the parser does not support it
+    sql = re.sub(r'\bvarchar_ignorecase\b', 'varchar', sql, flags=re.IGNORECASE)
+    sql = re.sub(r'\bn?varchar2?\b', 'varchar', sql, flags=re.IGNORECASE)
+    sql = re.sub(r'\bnational\s+varchar\b', 'varchar', sql, flags=re.IGNORECASE)
+    sql = re.sub(r'\bcharacter\s+varying\b', 'varchar', sql, flags=re.IGNORECASE)
+    sql = re.sub(r'\blong\s+varchar\b', 'varchar', sql, flags=re.IGNORECASE)
 
     sql = pattern.sub(replacer, sql)
 
@@ -495,8 +528,11 @@ def parse_create_table_with_tree_sitter(sql: str) -> TableSchema:
     columns: List[ColumnInfo] = []
 
     for definition in column_definitions:
-        identifier = [child for child in definition.children if child.type == 'identifier'][0]
+
+        identifier = [child for child in definition.children if child.type == 'identifier' or child.type == 'literal'][0]
         column_name = identifier.text.strip().decode('utf-8')
+        # remove quotes from the column name if they exist
+        column_name = clean_identifier(column_name)
 
         type = definition.children[1].text.strip().decode('utf-8')
 
@@ -576,6 +612,26 @@ def parse_create_table_with_sqloxide(sql: str) -> TableSchema:
 
     return TableSchema(table_name=table_name, columns=columns)
 
+
+
+def test_query_index_error():
+    sql = """
+          create table "user"
+          (
+              "id"        text         not null,
+              "email"     text         not null,
+              "username"  text         not null,
+              "bio"       text,
+              "image"     text,
+              "password"  text         not null,
+              "createdat" timestamp(3) not null default current_timestamp,
+              "updatedat" timestamp(3) not null,
+              constraint "user_pkey" primary key ("id")
+          ) \
+          """
+
+    schema = parse_create_table(sql)
+    print(schema)
 
 if __name__ == "__main__":
     test_parse_create_scheduled_games_table()

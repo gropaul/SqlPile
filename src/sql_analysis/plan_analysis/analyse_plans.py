@@ -1,7 +1,8 @@
 import json
-from typing import List, Dict, Literal
-from tqdm import tqdm
+from typing import List, Dict
+
 import duckdb
+from tqdm import tqdm
 
 from src.config import DATABASE_PATH, logger
 from src.sql_analysis.execution.models import Table, Column
@@ -42,7 +43,7 @@ def initialize_tables(table_structs: List[Dict]) -> List[Table]:
     return tables
 
 
-def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
+def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int, query_id: int = None):
 
     min_usage_id = con.execute(f"""
         SELECT MIN(id) + 1 FROM {COLUMN_USAGES_TABLE_NAME}
@@ -51,34 +52,35 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
     if min_usage_id is None:
         min_usage_id = 0
 
-    plans_query = """
+    plans_query = f"""
         SELECT 
             r.id AS repo_id,
             -- Subquery for queries
             (
-                SELECT list({
+                SELECT list({{
                     query_id: q.query_id,
                     sql: q.executable_sql,
                     plan: q.logical_plan_optimized_detailed
-                })
+                }})
                 FROM queries_executable q
                 WHERE q.repo_id = r.id
+                {" AND q.query_id = " + str(query_id) if query_id is not None else "" }
             ) AS queries,
             -- Subquery for tables and their columns
             (
-                SELECT list({
+                SELECT list({{
                     table_id: t.id,
-                    table_name: t.table_name,
+                    table_name: t.table_name_clean,
                     columns: (
-                        SELECT list({
+                        SELECT list({{
                             column_id: c.id,
                             column_name: c.column_name,
                             column_base_type: c.column_base_type
-                        })
+                        }})
                         FROM columns c
                         WHERE c.table_id = t.id
                     )
-                })
+                }})
                 FROM tables t
                 WHERE t.repo_id = r.id
             ) AS tables
@@ -86,8 +88,8 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
         WHERE EXISTS (
             FROM queries_executable q
             WHERE q.repo_id = r.id 
-        ) AND repo_id = 
-    """ + str(repo_id)
+        ) AND repo_id = {repo_id}
+    """
     plans = con.execute(plans_query).fetchall()
 
     for (repo_id, queries, tables) in tqdm(plans, desc="Analyzing plans", unit="repo"):
@@ -119,5 +121,6 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int):
 
 if __name__ == "__main__":
     con = duckdb.connect(DATABASE_PATH)
-
-    analyse_plans(con, 27994)
+    query_id = 12177818
+    repo_id = 23184
+    analyse_plans(con, repo_id, query_id)

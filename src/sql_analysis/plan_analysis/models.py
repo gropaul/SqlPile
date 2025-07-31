@@ -1,13 +1,14 @@
-from typing import Literal, List, Optional
-import duckdb
 import re
+from typing import Literal, List, Optional
+
+import duckdb
 
 from src.sql_analysis.execution.models import Column
 from src.sql_analysis.tools.sql_types import BaseType, unify_type
 
 OperatorType = Literal['PROJECTION', 'FILTER', 'COMPARISON_JOIN', 'AGGREGATE', 'ORDER_BY', 'SEQ_SCAN']  # type: ignore
 ColumnUsageType = Literal[
-    'PROJECTION', 'FILTER', 'JOIN_KEY', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'TOP_N_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP']  # type: ignore
+    'PROJECTION', 'FILTER', 'JOIN_KEY', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'TOP_N_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP', 'DISTINCT_KEY']  # type: ignore
 
 BOUND_COLUMN_REF_NAME = 'BOUND_REF'
 

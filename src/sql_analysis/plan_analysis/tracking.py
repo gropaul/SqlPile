@@ -1,10 +1,10 @@
 from typing import List, Tuple
 
+from src.config import logger
 from src.sql_analysis.plan_analysis.models import ExpressionInfo, ColumnTrack, ColumnTrackExpressionMatch, ColumnUsage, \
     TableColumnBinding, ColumnUsageType, BOUND_COLUMN_REF_NAME
 from src.sql_analysis.tools.sql_types import unify_type
 
-from src.config import logger
 
 def get_column_bindings(expression: ExpressionInfo) -> List[ExpressionInfo]:
     column_bindings = []

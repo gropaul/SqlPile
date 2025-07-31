@@ -5,7 +5,6 @@ from src.sql_scraping.analyse_repo import get_repo_name_and_url
 from src.sql_scraping.extract_sql import extract_sql_from_repo, FileAnalysisResult, RepoAnalysisResult, \
     SqlExtractionParams
 
-
 files_accepted = 0
 
 

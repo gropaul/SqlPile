@@ -1,8 +1,9 @@
-import duckdb
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import os
+
+import duckdb
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 
 from src.config import PLOTS_DIR, DATABASE_PATH
 
@@ -16,8 +17,10 @@ def usage_type_to_operator(usage_type: str) -> str:
         'ORDER_KEY': 'ORDER BY',
         'JOIN_KEY': 'JOIN',
         'GROUP_KEY': 'GROUP',
+        'DISTINCT_KEY': 'GROUP',
         'FILTER': 'FILTER',
-        'AGGREGATE': 'AGGREGATE'
+        'AGGREGATE': 'AGGREGATE',
+        'WINDOW_EXPRESSION': 'WINDOW',
     }
 
     if usage_type not in usage_to_operator_map:
@@ -44,6 +47,10 @@ def get_operator_stats():
                      ORDER BY 2 DESC;
                      """).df()
 
+    # add a row with the total number of queries
+    total_queries = df['Count'].sum()
+    df = df._append({'Type': 'Total', 'Count': total_queries}, ignore_index=True)
+
     # create a nice md table
     df = df.round(2)
     md_table_query_types = df.to_markdown(index=False, tablefmt="pipe")
@@ -69,6 +76,7 @@ def get_operator_stats():
 
     # create a nice md table
     df = df.round(2)
+
     md_table_operators = df.to_markdown(index=False, tablefmt="pipe")
 
     return md_table_query_types, md_table_operators
@@ -160,26 +168,23 @@ def get_value_number_stats():
     con = duckdb.connect(DATABASE_PATH, read_only=True)
 
     stats = con.execute("""
-                        WITH cnts AS (
-                            SELECT column_id, COUNT(*) as cnt, COUNT(DISTINCT  value) as distinct_cnt
-                            FROM column_values 
-                            GROUP BY column_id
-                        )
-                            SELECT 
-                                AVG(cnt), 
-                                MEDIAN(cnt), 
-                                MIN(cnt), 
-                                Max(cnt), 
-                                SUM(cnt > 10), 
-                                SUM(cnt > 100), 
-                                SUM(cnt > 1000), 
-                                AVG(distinct_cnt),
-                                MEDIAN(distinct_cnt),
-                                MIN(distinct_cnt),
-                                Max(distinct_cnt),
-                                SUM(distinct_cnt > 10),
-                                SUM(distinct_cnt > 100),
-                                SUM(distinct_cnt > 1000)
+                        WITH cnts AS (SELECT column_id, COUNT(*) as cnt, COUNT(DISTINCT value) as distinct_cnt
+                                      FROM column_values
+                                      GROUP BY column_id)
+                        SELECT AVG(cnt),
+                               MEDIAN(cnt),
+                               MIN(cnt),
+                               Max(cnt),
+                               SUM(cnt > 10),
+                               SUM(cnt > 100),
+                               SUM(cnt > 1000),
+                               AVG(distinct_cnt),
+                               MEDIAN(distinct_cnt),
+                               MIN(distinct_cnt),
+                               Max(distinct_cnt),
+                               SUM(distinct_cnt > 10),
+                               SUM(distinct_cnt > 100),
+                               SUM(distinct_cnt > 1000)
                         FROM cnts;
                         """).df()
 
@@ -195,14 +200,20 @@ def get_value_number_stats():
     return md_table
 
 
-def get_usage_combinations():
-
+def get_usages_informations():
     ops = ['JOIN_KEY', 'SCAN_LOOKUP', 'SCAN_FILTER', 'PROJECTION', 'ORDER_KEY', 'GROUP_KEY', 'FILTER', 'AGGREGATE']
 
     tables = []
 
     for op in ops:
         con = duckdb.connect(DATABASE_PATH, read_only=True)
+        con.execute("""
+                    CREATE TEMP VIEW column_usages_unnested AS
+                    (
+                    SELECT *, unnest(column_ids) AS column_id
+                    FROM column_usages
+                    )
+                    """)
         query = f"""
             WITH usages AS (
               SELECT query_id, repo_id, node_id, usage_type, list(column_base_type) as op_types, COUNT(*) as cnt 
@@ -218,7 +229,7 @@ def get_usage_combinations():
             FROM usages
             GROUP BY ALL
             ORDER BY 3 DESC
-            LIMIT 10
+            LIMIT 5;
         """
         df = con.execute(query).df()
         df = df.round(2)
@@ -236,9 +247,9 @@ if __name__ == "__main__":
     table_stats = get_table_stats()
 
     path = os.path.join(PLOTS_DIR, 'dataset_stats.md')
-    plot_path = plot_path.replace(PLOTS_DIR, '').replace('\\', '/')
+    plot_path = plot_path.replace(PLOTS_DIR, '.').replace('\\', '/')
 
-    usage_combinations = get_usage_combinations()
+    usage_combinations = get_usages_informations()
 
     # Write the results to a markdown file
     template = f"""# Operator Statistics

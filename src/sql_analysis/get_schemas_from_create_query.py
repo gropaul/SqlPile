@@ -5,12 +5,9 @@ import duckdb
 from tqdm import tqdm
 
 from src.config import DATABASE_PATH
-
-from typing import Optional
-
 from src.sql_analysis.load_schemapile_json_to_ddb import TABLES_TABLE_NAME, COLUMNS_TABLE_NAME, QUERIES_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
-from src.sql_analysis.tools.sql_to_schema import parse_create_table
+from src.sql_analysis.tools.sql_to_schema import parse_create_table, clean_identifier
 from src.sql_analysis.tools.sql_types import unify_type
 
 
@@ -39,7 +36,7 @@ def udf_get_table_name_from_create(query: str) -> Optional[str]:
     else:
         return None
 
-def get_schemas_from_create_query():
+def get_schemas_from_create_query(repo_id: Optional[int] = None):
     con = duckdb.connect(DATABASE_PATH)
 
     con.execute(f"""
@@ -75,7 +72,7 @@ def get_schemas_from_create_query():
         FROM distrinct_queries AS queries
         JOIN repos ON queries.repo_id = repos.id
         WHERE query_table_name IS NOT NULL
-          AND (repos.id = 32859 OR true)  -- filter for a specific repo or all repos
+          AND ({'repo_id = ' + str(repo_id) if repo_id is not None else 'True'})
           AND query_table_name IS NOT NULL 
           AND NOT EXISTS (
             FROM tables 
@@ -93,13 +90,13 @@ def get_schemas_from_create_query():
         try:
             table_schema = parse_create_table(sql)
 
-            clean_name = table_schema.table_name.lower()
+            table_name_clean = clean_identifier(table_schema.table_name)
 
             # check if the table already exists
             existing_table = con.execute(f"""
                 SELECT id FROM {TABLES_TABLE_NAME} 
                 WHERE repo_id = ? AND table_name_clean = ?
-            """, (repo_id, clean_name)).fetchone()
+            """, (repo_id, table_name_clean)).fetchone()
 
             if existing_table is not None:
                 continue
@@ -112,7 +109,7 @@ def get_schemas_from_create_query():
             con.execute(f"""
                 INSERT INTO {TABLES_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
                 VALUES (?, ?, ?, ?, ?)
-            """, (table_id, repo_id, table_schema.table_name, table_schema.table_name.lower(), None))
+            """, (table_id, repo_id, table_schema.table_name, table_name_clean, None))
 
             for column in table_schema.columns:
                 # columns: id,table_id,column_name,column_type,column_base_type,column_type_original,semantic_type,is_unique,is_nullable,is_indexed,is_primary_key
@@ -150,4 +147,4 @@ def get_schemas_from_create_query():
 
 
 if __name__ == "__main__":
-    get_schemas_from_create_query()
+    get_schemas_from_create_query(repo_id=None)

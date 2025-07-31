@@ -1,8 +1,6 @@
 import json
 import logging
-import os
 from typing import List, Optional
-from typing import Tuple
 
 import duckdb
 from tqdm import tqdm
@@ -13,10 +11,10 @@ from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_a
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically, escape_for_insert, \
     prepare_sql_statically_macro
-from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, QUERIES_TABLE_NAME, \
-    EXECUTABLE_QUERIES_TABLE_NAME, REPO_TABLE_NAME, ERRORS_QUERIES_TABLE_NAME, ERRORS_TABLES_TABLE_NAME, \
+from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, EXECUTABLE_QUERIES_TABLE_NAME, \
+    REPO_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_USAGES_TABLE_NAME, \
-    TABLES_DATA_FILES_TABLE_NAME
+    TABLES_DATA_FILES_TABLE_NAME, QUERIES_ERROR_INSERT_TABLE_NAME
 from src.sql_analysis.plan_analysis.analyse_plans import analyse_plans
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
 
@@ -53,7 +51,8 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
                   sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
     tables_with_columns = con.execute("""
                                       SELECT table_id,
-                                             ANY_VALUE(table_name),
+                                             FIRST(table_name),
+                                             FIRST(table_name_clean),
                                              list_distinct(list({
                                                  'id': columns.id, 'column_index': columns.column_table_index,
                                                      'column_name': columns.column_name,
@@ -67,7 +66,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
 
     tables = []
 
-    for table_id, table_name, columns in tables_with_columns:
+    for table_id, table_name, table_name_clean, columns in tables_with_columns:
 
         # sort columns by their index
         columns.sort(key=lambda x: x['column_index'])
@@ -77,7 +76,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             # if it does, create the schema if it doesn't exist
             schema_name, name_without_schema = table_name.split('.', 1)
 
-            complete_quoted_table_name = f'{quote(schema_name)}.{quote(name_without_schema)}'
+            complete_quoted_table_name = f'{quote(schema_name)}.{quote(table_name_clean)}'
             try:
                 sandbox_con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote(schema_name)}")
             except Exception as e:
@@ -85,7 +84,7 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
                 continue
 
         else:
-            complete_quoted_table_name = quote(table_name)
+            complete_quoted_table_name = quote(table_name_clean)
 
         try:
             create_statement = f"""
@@ -105,8 +104,10 @@ def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             n_successful_table_creations += 1
         except Exception as e:  # `trivia_user_cache`
 
-            global n_failed_table_creations
-            n_failed_table_creations += 1
+            con.execute(f"""
+                INSERT INTO {QUERIES_ERROR_CREATE_TABLE_NAME} (table_id, table_name, error_message)
+                VALUES ({table_id}, '{escape_for_insert(table_name)}', '{escape_for_insert(str(e))}')
+            """)
             continue
     return tables
 
@@ -147,6 +148,7 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
     # Get all insert queries for the repo
     insert_queries = con.execute(f"""
         SELECT 
+            id, 
             sql, 
             prepare_select_statically(sql) as sql_prepared,
             sql LIKE '% select % from %' as is_insert_select
@@ -157,7 +159,7 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
 
     print(f"Found {len(insert_queries)} insert queries for repo {repo_id} ({repo_url})")
 
-    for (sql, sql_prepared, is_insert_select) in insert_queries:
+    for (query_id, sql, sql_prepared, is_insert_select) in insert_queries:
         try:
 
             if is_insert_select:
@@ -191,7 +193,11 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
             n_successful_insertions += 1
         except Exception as e:
             global n_failed_insertions
-            # print(f"Failed to execute insert query: {sql_prepared} with error: {e}")
+
+            con.execute(f"""
+                INSERT INTO {QUERIES_ERROR_INSERT_TABLE_NAME} (query_id, error_message)
+                VALUES ({query_id}, '{escape_for_insert(str(e))}')
+            """)
             n_failed_insertions += 1
 
 
@@ -286,7 +292,7 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
             global error_id_counter
             error_id_counter += 1
             con.execute(f"""
-                INSERT INTO {ERRORS_QUERIES_TABLE_NAME} (
+                INSERT INTO {QUERIES_ERROR_SELECT_TABLE_NAME} (
                     id, repo_id, repo_url, query_id, error_message, original_sql, executable_sql
                 ) VALUES (
                     {error_id_counter}, {repo_id}, '{escape_for_insert(repo_url)}', {query_id}, 
@@ -337,7 +343,7 @@ def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection
             continue
 
 
-def execute_repo_queries():
+def execute_repo_queries(repo_id: Optional[int] = None):
     con = duckdb.connect(DATABASE_PATH, read_only=False)
     sandbox_con = duckdb.connect()
 
@@ -351,7 +357,7 @@ def execute_repo_queries():
         JOIN queries ON repos.id = queries.repo_id
         WHERE 
             queries.type IN ('SELECT', 'WITH') 
-            and (repos.id = 32859 or TRUE)  -- filter for a specific repo or all repos
+            and ({'repos.id = ' + str(repo_id) if repo_id is not None else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
@@ -376,7 +382,7 @@ def execute_repo_queries():
 
     # create error table if it doesn't exist
     con.execute(f"""
-        CREATE OR REPLACE TABLE {ERRORS_QUERIES_TABLE_NAME} (
+        CREATE OR REPLACE TABLE {QUERIES_ERROR_SELECT_TABLE_NAME} (
             id BIGINT {primary_key()},
             repo_id BIGINT {foreign_key(REPO_TABLE_NAME, 'id')},
             repo_url VARCHAR,
@@ -388,13 +394,20 @@ def execute_repo_queries():
     """)
 
     con.execute(f"""
-        CREATE OR REPLACE TABLE {ERRORS_TABLES_TABLE_NAME} (
-            id BIGINT {primary_key()},
-            repo_id BIGINT {foreign_key(REPO_TABLE_NAME, 'id')},
+        CREATE OR REPLACE TABLE {QUERIES_ERROR_CREATE_TABLE_NAME} (
+            table_id BIGINT,
             table_name VARCHAR,
             error_message VARCHAR
         )
     """)
+
+    con.execute(f"""
+        CREATE OR REPLACE TABLE {QUERIES_ERROR_INSERT_TABLE_NAME} (
+            query_id BIGINT,
+            error_message VARCHAR,
+            )
+    """)
+
 
     # Create a table to store the column values with strings
     con.execute(f"""
@@ -450,7 +463,7 @@ def execute_repo_queries():
             con.execute("CHECKPOINT;")
 
             # Update counts
-            error_count = con.execute(f"SELECT COUNT(*) FROM {ERRORS_QUERIES_TABLE_NAME}").fetchone()[0]
+            error_count = con.execute(f"SELECT COUNT(*) FROM {QUERIES_ERROR_SELECT_TABLE_NAME}").fetchone()[0]
             success_count = con.execute(f"SELECT COUNT(*) FROM {EXECUTABLE_QUERIES_TABLE_NAME}").fetchone()[0]
             total = success_count + error_count
 
@@ -459,6 +472,7 @@ def execute_repo_queries():
             pbar.set_postfix({
                 'Success Rate': f"{percent_success:.2f}%",
                 'Success Count': success_count,
+                'Usages': con.execute(f"SELECT COUNT(*) FROM {COLUMN_USAGES_TABLE_NAME}").fetchone()[0],
             })
 
     # Print the failed table creation statistics
@@ -470,7 +484,7 @@ def execute_repo_queries():
     # Check if any errors were recorded
     print(f"Successfully executed {success_count} queries across all repositories")
     if error_count > 0:
-        print(f"{error_count} errors were recorded in the {ERRORS_QUERIES_TABLE_NAME} table")
+        print(f"{error_count} errors were recorded in the {QUERIES_ERROR_SELECT_TABLE_NAME} table")
     else:
         print("No errors occurred during execution")
 

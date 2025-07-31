@@ -1,12 +1,10 @@
-from itertools import product
-from typing import Literal, List, Optional, Dict
 import json
+from typing import Literal, List, Optional, Dict
+
 import duckdb
 from sqloxide import parse_sql, mutate_expressions
 
-from src.config import logger
-from src.sql_analysis.execution.models import Table, Column
-from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically
+from src.sql_analysis.execution.models import Table
 
 MockType = Literal['int', 'float', 'str']
 

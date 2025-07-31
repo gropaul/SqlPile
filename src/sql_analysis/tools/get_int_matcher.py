@@ -2,8 +2,6 @@
 
 
 def matcher():
-    import re
-
     prefixes = ['signed', 'unsigned', 'u']
     suffixes = ['unsigned', 'signed', 'u']
 

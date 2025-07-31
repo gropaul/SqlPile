@@ -1,7 +1,7 @@
 from typing import Literal, Dict, Optional, List
 
-from tree_sitter_language_pack import get_parser
 from tree_sitter import Node
+from tree_sitter_language_pack import get_parser
 
 # ---------------------------------------------------------------------------
 # Public API types

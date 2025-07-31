@@ -1,8 +1,10 @@
-import json
 import os
 from typing import List
+
 import duckdb
-from src.config import DATA_DIR, logger, QUERIES_DIR_RAW, INPUT_DATA_DIR
+
+from src.config import logger, QUERIES_DIR_RAW, SCHEMAPILE_DIR
+
 
 def get_processed_urls() -> List[str]:
 
@@ -20,7 +22,7 @@ def get_processed_urls() -> List[str]:
 
 def get_all_urls() -> List[str]:
 
-    parquet_path = os.path.join(INPUT_DATA_DIR, "repos.parquet")
+    parquet_path = os.path.join(SCHEMAPILE_DIR, "repos.parquet")
     result = duckdb.sql(f"SELECT url FROM '{parquet_path}'").fetchall()
     urls = [row[0] for row in result]
     logger.info(f"Found {len(urls)} total URLs in the database.")

@@ -1,13 +1,13 @@
 import json
-import logging
 import os
-import tqdm
+
 import duckdb
+import tqdm
 
-from src.config import DATA_DIR, DATABASE_PATH, logger
+from src.config import DATABASE_PATH, SCHEMAPILE_DIR
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
+from src.sql_analysis.tools.sql_to_schema import clean_identifier
 from src.sql_analysis.tools.sql_types import unify_type
-
 from src.sql_scraping.analyse_repo import get_repo_name_and_url
 
 REPO_TABLE_NAME = 'repos'
@@ -21,8 +21,10 @@ COLUMN_VALUES_TABLE_NAME = 'column_values'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
 QUERIES_TABLE_NAME = 'queries'
 EXECUTABLE_QUERIES_TABLE_NAME = 'queries_executable'
-ERRORS_QUERIES_TABLE_NAME = 'queries_error'
-ERRORS_TABLES_TABLE_NAME = 'tables_error'
+QUERIES_ERROR_SELECT_TABLE_NAME = 'queries_error_select'
+QUERIES_ERROR_CREATE_TABLE_NAME = 'queries_error_create'
+QUERIES_ERROR_INSERT_TABLE_NAME = 'queries_error_insert'
+
 repo_id_counter = 0
 table_id_counter = 0
 column_id_counter = 0
@@ -61,7 +63,8 @@ def get_id(table_name: str) -> int:
         raise ValueError(f"Unknown table name: {table_name}")
 
 
-from typing import List, Dict, Tuple
+from typing import Dict
+
 
 def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConnection) -> None:
     value = data[key]
@@ -83,7 +86,7 @@ def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConn
     tables = value.get('TABLES', [])
     for table_key in tables:
         table_value = tables[table_key]
-        table_name_clean = table_key.split('.')[-1]  # Get the table name from the key
+        table_name_clean = clean_identifier(table_key)
         table_id = get_id(TABLES_TABLE_NAME)
 
         # check if the table already exists
@@ -135,7 +138,7 @@ def process_repository(key: str, data: Dict[str, Dict], con: duckdb.DuckDBPyConn
 def read_schemapile_data():
     """Read the JSON data from schemapile-perm.json file."""
     # read the json schemapile-perm.json file
-    path = os.path.join(DATA_DIR, 'schemapile-perm.json')
+    path = os.path.join(SCHEMAPILE_DIR, 'schemapile-perm.json')
     with open(path, 'r') as file:
         data = json.load(file)
     return data
@@ -157,9 +160,9 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
 
     # Drop the tables cascadingly if they exist
     con.execute(f"""
-        DROP TABLE IF EXISTS {ERRORS_QUERIES_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {QUERIES_ERROR_SELECT_TABLE_NAME} CASCADE;
         DROP TABLE IF EXISTS {EXECUTABLE_QUERIES_TABLE_NAME} CASCADE;
-        DROP TABLE IF EXISTS {ERRORS_TABLES_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {QUERIES_ERROR_CREATE_TABLE_NAME} CASCADE;
         DROP TABLE IF EXISTS {COLUMNS_TABLE_NAME} CASCADE;
         DROP TABLE IF EXISTS {TABLES_TABLE_NAME} CASCADE;
         DROP TABLE IF EXISTS {REPO_TABLE_NAME} CASCADE;

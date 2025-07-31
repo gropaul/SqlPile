@@ -2,21 +2,19 @@
 # pip install langchain langchain-ollama langchain-openai
 import getpass
 import os
+import time
 from typing import Optional, List, Literal, Dict
 
 import duckdb
-from langchain_openai import ChatOpenAI
-
+from langchain.schema import HumanMessage, SystemMessage
 from langchain_core.language_models import BaseLLM
 from langchain_ollama.llms import OllamaLLM
-from langchain.schema import HumanMessage, SystemMessage
-import time
-
+from langchain_openai import ChatOpenAI
 from sqloxide import parse_sql
 
 from src.config import DATABASE_PATH, logger
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically
-from src.sql_analysis.load_schemapile_json_to_ddb import ERRORS_QUERIES_TABLE_NAME
+from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_ERROR_SELECT_TABLE_NAME
 
 SYSTEM_PROMPT = """
 Construct a valid sql query from this code. If there are parameters (e.g. $1, %s, :param, etc.), replace them with example values.
@@ -136,7 +134,7 @@ def fix_queries():
             sql, 
             text_context[text_context_offset-{code_context_window_start}:-text_context_offset+{code_context_window_end}] as context,
             queries.rowid as rowid
-        FROM {ERRORS_QUERIES_TABLE_NAME} 
+        FROM {QUERIES_ERROR_SELECT_TABLE_NAME} 
         JOIN queries ON queries.id = queries_error.query_id
         WHERE 'Query parsing' in error_message AND
              len(queries.text_context) != 0

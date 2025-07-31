@@ -1,11 +1,10 @@
-import os.path
 import os
-from typing import List
+import os.path
+from typing import List, Optional
 
-import matplotlib.pyplot as plt
 import duckdb
+import matplotlib.pyplot as plt
 import numpy as np
-
 
 from src.config import DATABASE_PATH, PLOTS_DIR
 
@@ -55,14 +54,14 @@ def column_physical_type_usage_plot(con: duckdb.DuckDBPyConnection, usage_types:
     create_stacked_bar_plot(all_results, 'repo_cnt', dir)
 
 
-def get_results(con: duckdb.DuckDBPyConnection, usage_types: List[str], group_column: str, where_clause: str = "TRUE "):
-
+def get_results(con: duckdb.DuckDBPyConnection, usage_types: List[str], group_column: str, where_clause: str = "TRUE ",
+                join_clause: str = ""):
     all_results = {}
 
     for usage in usage_types:
         query = f"""
             WITH unnested_ids AS (
-                SELECT id, query_id, unnest(column_ids) AS column_id, usage_type, expression
+                SELECT id, query_id, unnest(column_ids) AS column_id, unifiy_usage_types(usage_type) as usage_type, expression
                 FROM column_usages
             )
             SELECT 
@@ -72,24 +71,28 @@ def get_results(con: duckdb.DuckDBPyConnection, usage_types: List[str], group_co
                 COUNT(DISTINCT query_id) as query_cnt, 
                 COUNT(DISTINCT repo_id) as repo_cnt
             FROM unnested_ids
-            JOIN columns ON columns.id = unnested_ids.column_id JOIN queries q on q.id = query_id
-            WHERE usage_type = '{usage}' AND {where_clause} 
+            JOIN columns ON columns.id = unnested_ids.column_id 
+            JOIN queries q on q.id = query_id
+            {join_clause}
+            WHERE usage_type = '{usage}' AND ({where_clause})
             GROUP BY all 
             ORDER BY usage_type, column_cnt DESC;
         """
-
+        print(query)
         result = con.execute(query).fetchall()
         all_results[usage] = result
     return all_results
 
-def column_semantic_type_usage_plot(con: duckdb.DuckDBPyConnection, usage_types: List[str], group_column: str = 'semantic_type[6:]', where_clause: str = "contains(semantic_type, 'sato_')"):
 
+def column_semantic_type_sato_usage_plot(con: duckdb.DuckDBPyConnection, usage_types: List[str],
+                                         group_column: str = 'semantic_type[6:]',
+                                         where_clause: str = "contains(semantic_type, 'sato_')"):
     # Dictionary to store all results
     all_results = get_results(con, usage_types, group_column, where_clause)
 
     # Create stacked bar plot for column counts
 
-    dir = os.path.join(PLOTS_DIR, 'column_usage', 'semantic_type')
+    dir = os.path.join(PLOTS_DIR, 'column_usage', 'semantic_type_sato')
     create_stacked_bar_plot(all_results, 'column_cnt', dir)
     create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
     create_stacked_bar_plot(all_results, 'query_cnt', dir)
@@ -103,7 +106,6 @@ def darken_color(color, amount=1.3):
 
 
 def create_stacked_bar_plot(all_results, count_type, output_dir):
-
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -119,8 +121,8 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
     count_indices = {
         'column_cnt': 2,  # Index of column_cnt in the result tuple
         'column_distinct_cnt': 3,  # Index of column_cnt in the result tuple
-        'query_cnt': 4,   # Index of query_cnt in the result tuple
-        'repo_cnt': 5     # Index of repo_cnt in the result tuple
+        'query_cnt': 4,  # Index of query_cnt in the result tuple
+        'repo_cnt': 5  # Index of repo_cnt in the result tuple
     }
 
     count_index = count_indices[count_type]
@@ -131,6 +133,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
         for result in results:
             all_column_types.add(result[1])  # column_base_type is at index 1
 
+    print(all_column_types)
     all_column_types = sorted(list(all_column_types))
 
     # Prepare data for stacked bar plot
@@ -155,47 +158,50 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
             totals[i] += data[column_type][i]
 
     # Convert counts to percentages
+
     for column_type in all_column_types:
         for i in range(len(usage_types)):
             if totals[i] > 0:  # Avoid division by zero
                 data[column_type][i] = (data[column_type][i] / totals[i]) * 100
 
-    # Group column types with percentages < 3% into "Other" category
-    other_data = [0] * len(usage_types)
-    other_original_counts = [0] * len(usage_types)
-    small_column_types = []
+    average_column_type_usage = {column_type: max(data[column_type]) for column_type in all_column_types}
 
-    for column_type in all_column_types:
-        is_small = True
-        for i in range(len(usage_types)):
-            if data[column_type][i] >= 3:
-                is_small = False
-                break
+    top_usages = sorted(average_column_type_usage.items(), key=lambda x: x[1], reverse=True)
 
-        if is_small:
-            small_column_types.append(column_type)
-            for i in range(len(usage_types)):
-                other_data[i] += data[column_type][i]
-                other_original_counts[i] += original_counts[column_type][i]
+    # only take usages with more than 3% usage
+    top_usages = [(column_type, usage) for column_type, usage in top_usages if usage > 3]
 
-    # Remove small column types from the data dictionary and original_counts
-    for column_type in small_column_types:
-        del data[column_type]
-        del original_counts[column_type]
+    # add all the other column types that are not in the top to one "Other" category
+    other_column_types = [column_type for column_type in all_column_types if column_type not in dict(top_usages)]
+    if other_column_types:
+        # Create an "Other" category that sums up the counts of all other column types
+        original_counts["Other"] = [sum(original_counts[column_type][i] for column_type in other_column_types) for i in
+                                    range(len(usage_types))]
+        data["Other"] = [sum(data[column_type][i] for column_type in other_column_types) for i in
+                         range(len(usage_types))]
 
-    # Add "Other" category if there are any small column types
-    if small_column_types:
-        data["Other"] = other_data
-        original_counts["Other"] = other_original_counts
+        # Remove the individual "Other" column types from the data
+        for column_type in other_column_types:
+            del data[column_type]
 
     # Create the stacked bar plot
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(9, 6))
 
     bottom = [0] * len(usage_types)
 
     # Create a colormap with distinct and aesthetically pleasing colors
     # Using a custom colormap for better aesthetics
-    colors = plt.cm.plasma(np.linspace(0, 0.9, len(data.keys()) - (1 if "Other" in data else 0)))
+    # colors = plt.cm.plasma(np.linspace(0, 0.9, len(data.keys()) - (1 if "Other" in data else 0)))
+    colors = [
+        "#0072B2",  # Blue
+        "#D55E00",  # Vermilion
+        "#56B4E9",  # Sky Blue
+        "#E69F00",  # Orange
+        "#009E73",  # Bluish Green
+        "#F0E442",  # Yellow
+        "#CC79A7",  # Reddish Purple
+        "#000000",  # Black
+    ]
 
     # Define hatching patterns with lower density for reduced opacity effect
     hatches = ['..', '++', 'xx', 'oo', '**', '--', '||', '//']
@@ -203,20 +209,15 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
     # Get the column types from the data dictionary (after removing small ones)
     column_types_to_plot = list(data.keys())
 
-    # Move "Other" to the end if it exists
-    if "Other" in column_types_to_plot:
-        column_types_to_plot.remove("Other")
-        column_types_to_plot.append("Other")
-
     for i, column_type in enumerate(column_types_to_plot):
-        color = 'gray' if column_type == "Other" else colors[i]
+        color = 'gray' if column_type == "Other" else colors[i % len(colors)]
         # Use modulo to cycle through hatches if there are more column types than hatch patterns
-        hatch = '' if column_type == "Other" else hatches[i % len(hatches)]
+        hatch = '//' if column_type == "Other" else hatches[i % len(hatches)]
         hatch_color = darken_color(color, 1.3) if hatch else color
 
         # Create the bar segment
         bars = plt.bar(usage_types, data[column_type], bottom=bottom, label=column_type,
-                color=color, hatch=hatch, edgecolor=hatch_color, linewidth=0.3)
+                       color=color, hatch=hatch, edgecolor=hatch_color, linewidth=0.3)
         plt.bar(usage_types, data[column_type], bottom=bottom,
                 color='none', edgecolor='black', linewidth=0.5)
 
@@ -235,8 +236,8 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
                 count_text = f"{int(count)}"
 
                 # Add the text label
-                plt.text(j, y_pos, count_text, ha='center', va='center', 
-                         fontsize=15, color='black', fontweight='bold')
+                # plt.text(j, y_pos, count_text, ha='center', va='center',
+                #          fontsize=15, color='black', fontweight='bold')
 
         # Update the bottom position for the next segment
         bottom = [bottom[j] + data[column_type][j] for j in range(len(usage_types))]
@@ -251,7 +252,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
 
     # Save the plot
     filename = f'usage_types_by_{count_type}.{OUTPUT_FORMAT}'
-    plt.savefig(os.path.join(output_dir, filename), format=OUTPUT_FORMAT, bbox_inches='tight', dpi=300)
+    plt.savefig(os.path.join(output_dir, filename), format=OUTPUT_FORMAT, bbox_inches='tight')
     plt.close()
 
     print(f"Saved stacked bar plot for {count_type} to {os.path.join(output_dir, filename)}")
@@ -263,7 +264,8 @@ def column_semantic_type_syntactic_usage_plot(con: duckdb.DuckDBPyConnection, us
     """
 
     # Dictionary to store all results
-    all_results = get_results(con, usage_types, 'semantic_type_syntactic', "semantic_type_syntactic is not null and semantic_type_syntactic != 'Test' ")
+    all_results = get_results(con, usage_types, "ifnull(semantic_type_syntactic, 'Other') as semantic_type_syntactic",
+                              "(semantic_type_syntactic != 'Test' or semantic_type_syntactic is null) and column_base_type = 'Text'")
 
     # Create stacked bar plot for column counts
     dir = os.path.join(PLOTS_DIR, 'column_usage', 'semantic_type_syntactic')
@@ -272,15 +274,74 @@ def column_semantic_type_syntactic_usage_plot(con: duckdb.DuckDBPyConnection, us
     create_stacked_bar_plot(all_results, 'query_cnt', dir)
     create_stacked_bar_plot(all_results, 'repo_cnt', dir)
 
+
+def unify_llm_type(semantic_type: Optional[str]) -> str:
+
+    # {None, '', 'Password', 'Identifier', 'Contact', 'Boolean', 'Numeric', 'URL', 'Location',
+    # '', 'DateTime', 'Category', 'Email', 'Name', 'PhoneNumber', 'FullText', 'Title', 'Function'}
+
+    # Gender, Color are transformed to 'Category'
+    if semantic_type in ['Gender', 'Color']:
+        return 'Category'
+
+    # Email, PhoneNumber are transformed to 'Contact'
+    if semantic_type in ['Email', 'PhoneNumber']:
+        return 'Contact'
+
+    return  semantic_type if semantic_type else 'Unknown'
+
+
+def column_semantic_type_llm_usage_plot(con: duckdb.DuckDBPyConnection, usage_types: List[str]):
+    """
+    Create a stacked bar plot showing column semantic types and their distribution by LLM usage.
+    """
+    con.create_function('unify_llm_type', unify_llm_type, null_handling='SPECIAL')
+    # Dictionary to store all results
+    all_results = get_results(
+        con, usage_types,
+        "unify_llm_type(semantic_type_llm) as semantic_type_llm",
+        "(semantic_type_llm != 'Test' or semantic_type_llm is null) and column_base_type = 'Text'",
+        "JOIN (SELECT column_id as column_id_llm, semantic_type as semantic_type_llm FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv') AS st ON st.column_id_llm = columns.id"
+    )
+
+    # Create stacked bar plot for column counts
+    dir = os.path.join(PLOTS_DIR, 'column_usage', 'semantic_type_llm')
+    create_stacked_bar_plot(all_results, 'column_cnt', dir)
+    create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
+    create_stacked_bar_plot(all_results, 'query_cnt', dir)
+    create_stacked_bar_plot(all_results, 'repo_cnt', dir)
+
+
 OUTPUT_FORMAT = 'png'
 
-if __name__ == "__main__":
-    con = duckdb.connect(DATABASE_PATH)
-    usage_types = con.execute("""SELECT DISTINCT usage_type FROM column_usages""").fetchall()
-    usage_types = [usage[0] for usage in usage_types]
-    usage_types.remove('TOP_N_KEY')  # Remove 'TOP_N_KEY' if it exists
-    print(f"Found {len(usage_types)} usage types: {usage_types}")
-    column_physical_type_usage_plot(con, usage_types)
-    column_semantic_type_usage_plot(con, usage_types)
-    column_semantic_type_syntactic_usage_plot(con, usage_types)
 
+def unifiy_usage_types(usage_type: str) -> str:
+    if usage_type == 'TOP_N_KEY':
+        return 'ORDER_KEY'
+
+    if usage_type == 'SCAN_FILTER':
+        return 'FILTER'
+
+    if usage_type == 'DISTINCT_KEY':
+        return 'GROUP_KEY'
+
+    return usage_type
+
+
+if __name__ == "__main__":
+    con = duckdb.connect(DATABASE_PATH, read_only=True)
+    con.create_function(
+        "unifiy_usage_types",
+        unifiy_usage_types,
+        null_handling='SPECIAL',
+    )
+    usage_types = con.execute("""SELECT DISTINCT unifiy_usage_types(usage_type)
+                                 FROM column_usages
+                                 ORDER BY usage_type""").fetchall()
+    usage_types = [usage[0] for usage in usage_types]
+    print(f"Found {len(usage_types)} usage types: {usage_types}")
+
+    column_physical_type_usage_plot(con, usage_types)
+    column_semantic_type_sato_usage_plot(con, usage_types)
+    column_semantic_type_syntactic_usage_plot(con, usage_types)
+    column_semantic_type_llm_usage_plot(con, usage_types)

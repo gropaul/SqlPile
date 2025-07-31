@@ -1,6 +1,5 @@
 import os.path
 import re
-from codecs import ignore_errors
 from typing import List
 
 import duckdb

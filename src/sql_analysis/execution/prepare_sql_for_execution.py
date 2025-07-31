@@ -16,6 +16,9 @@ CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
     
     -- transform quoted timestamp: 'YYYY - MM - DD HH:MM:SS' → 'YYYY-MM-DD HH:MM:SS'
     .regexp_replace('''(\d{4})\s*-\s*(\d{2})\s*-\s*(\d{2})\s+(\d{2}:\d{2}:\d{2})''', '''\\1-\\2-\\3 \\4''', 'g')
+    
+    -- remove JOIN FETCH clauses: from owner left join fetch owner.pets -> from owner left join pets
+.regexp_replace('(?i)(left|right|inner|outer)?\s*join\s+fetch\s+\w+\.(\w+)', '\\1 join \\2', 'g')
 
     -- function renames
     .replace('date_format', 'strftime')
@@ -38,6 +41,7 @@ CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
 def prepare_select_statically(sql: str) -> str:
     # ddb does not support `these` marks, replace them with "these"
     sql = sql.replace('`', '"')
+
     # ddb does not support "> =" and "< =", replace them with ">=" and "<="
     sql = sql.replace('> =', '>=')
     sql = sql.replace('< =', '<=')

@@ -8,8 +8,8 @@ from typing import Literal
 # traverse one up as this is in src/config.py
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA_DIR = os.path.join(ROOT, "data")
+SCHEMAPILE_DIR = os.path.join(DATA_DIR, "schemapile")
 PLOTS_DIR = os.path.join(ROOT, "plots")
-INPUT_DATA_DIR = os.path.join(ROOT, "input_data")
 REPO_DIR = os.path.join(DATA_DIR, "repos")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
 QUERIES_DIR_RAW = os.path.join(DATA_DIR, "queries_raw")

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Dict, Tuple
 
 from tree_sitter import Node
-
-from src.config import logger, CHARACTERS_BEFORE_AND_AFTER_QUERY
 from tree_sitter_language_pack import get_parser
 
+from src.config import logger, CHARACTERS_BEFORE_AND_AFTER_QUERY
 from src.sql_scraping.string_utils import tidy_up_query
 
 
@@ -81,8 +79,6 @@ _EXTENSION_MAP = {
     "cs": "csharp",
 }
 
-import codecs
-import re
 
 def is_string_literal(node):
     is_string = (node.type == "string_literal" or 

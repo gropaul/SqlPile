@@ -1,5 +1,6 @@
 import json
 from typing import List, Dict, Tuple, Optional
+
 import duckdb
 
 from src.config import logger
@@ -8,6 +9,7 @@ from src.sql_analysis.plan_analysis.models import ColumnUsage, OperatorType, \
     ColumnTrack, ExpressionInfo, TableColumnBinding, ColumnUsageType, JoinConditionInfo
 from src.sql_analysis.plan_analysis.tracking import track_and_find_usage, get_column_bindings
 from src.sql_analysis.plan_analysis.utils import to_list, to_expressions, to_conditions
+from src.sql_analysis.tools.sql_to_schema import clean_identifier
 
 
 def get_one_child_tracks(children_tracks: List[List[ColumnTrack]]) -> List[ColumnTrack]:
@@ -96,6 +98,9 @@ Tuple[List[ColumnUsage], List[ColumnTrack]]:
         'LIMIT': analyze_limit,
         'CTE': analyze_cte,
         'CTE_SCAN': analyze_cte_scan,
+        'DISTINCT': analyze_distinct,
+        'CROSS_PRODUCT': analyze_cross_product,
+        'WINDOW': analyze_window,
 
     }
 
@@ -124,13 +129,13 @@ def analyze_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
         logger.error("No table name found in extra_info. Cannot analyze GET node.")
         return [], []
 
-    scan_table_name = extra_info['Table']
+    scan_table_name = clean_identifier(extra_info['Table'])
     table_id = plan['table_index'][0]
 
     scan_table: Optional[Table] = None
     my_tracks = []
     for table in tables:
-        if table.table_name == scan_table_name:
+        if table.table_name.lower() == scan_table_name.lower():
             scan_table = table
             break
 
@@ -448,3 +453,55 @@ def analyze_cte_scan(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrac
     cte_tracks = cte_occurrence.cte_tracks
 
     return [], cte_tracks
+
+
+def analyze_distinct(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
+    """
+    Analyze a DISTINCT node in the execution plan.
+    """
+    query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
+
+    children_tracks = get_one_child_tracks(children_tracks)
+    usages = []
+
+    distinct_targets = to_expressions(plan.get('distinct_targets', []))
+
+    for (column_index, target) in enumerate(distinct_targets):
+        _, usage = track_and_find_usage(target, query_id, params.node_id, children_tracks,
+                                            'DISTINCT_KEY')
+        usages.append(usage)
+
+    return usages, children_tracks
+
+
+def analyze_cross_product(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
+
+    query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
+
+    left_tracks, right_tracks = get_two_child_tracks(children_tracks)
+
+    usages = []
+
+    # CROSS_PRODUCT does not have join conditions, so we just return the tracks from both children
+    return usages, left_tracks + right_tracks
+
+
+def analyze_window(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
+
+    query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
+
+    children_tracks = get_one_child_tracks(children_tracks)
+
+    usages = []
+    window_expressions = to_expressions(plan.get('expressions', []))
+
+    expression_tracks = []
+    for (column_index, window_expression) in enumerate(window_expressions):
+        binding = TableColumnBinding(table_id=-1, column_id=column_index)
+        track, usage = track_and_find_usage(window_expression, query_id, params.node_id, children_tracks,
+                                            'WINDOW_EXPRESSION', binding=binding)
+        usages.append(usage)
+        expression_tracks.append(track)
+
+    # window op returns the tracks from the child node and then its own expressions' return types
+    return usages, children_tracks + expression_tracks

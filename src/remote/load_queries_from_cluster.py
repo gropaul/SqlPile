@@ -10,7 +10,7 @@ CLUSTER_QUERIES_DIR = os.path.join(CLUSTER_DATA_PATH, queries_dir_from_data_path
 
 LOCAL_QUERIES_DIR = QUERIES_DIR_RAW
 CLUSTER_UNIFIED_FILE_PATH = os.path.join(CLUSTER_QUERIES_DIR, 'parquet_queries_tmp.parquet')
-QUERIES_DIAMOND4_PATH = os.path.join(QUERIES_DIR_FROM_CLUSTER, 'queries_diamond4.parquet')
+QUERIES_DIAMOND4_PATH = os.path.join(QUERIES_DIR_FROM_CLUSTER, 'queries_diamonds4.parquet')
 
 def load_queries_from_cluster():
 

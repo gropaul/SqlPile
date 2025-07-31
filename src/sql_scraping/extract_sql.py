@@ -1,15 +1,14 @@
 import os
-import re
 from dataclasses import dataclass
+from typing import List, Optional, Dict, Callable, Literal
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from typing import List, Optional, Dict, Callable, Literal
-
 from src.config import logger, SOURCE_CODE_FILE_EXTENSIONS, QUERIES_DIR_RAW, ONLY_SCRAPE_SELECT_QUERIES, HEADER_N_LINES
 from src.sql_scraping.extract_strings import extract_strings, ExtractedString
-from src.sql_scraping.string_utils import tidy_up_query, split_sql_statements
+from src.sql_scraping.string_utils import split_sql_statements
 
 MAIN_SQL_START_WORDS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP', 'WITH']
 

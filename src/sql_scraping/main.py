@@ -1,16 +1,15 @@
 import argparse
-import json
-import os
 import time
-from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 
 import duckdb
 
 from analyse_repo import analyse_repo
-from src.config import logger, DATA_DIR, DATABASE_PATH
 from data_loading import get_urls
 from extract_sql import RepoAnalysisResult
+from src.config import logger
+
 
 def process_url(url: str) -> Optional[int]:
     logger.info(f"Processing URL: {url}")

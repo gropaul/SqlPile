@@ -1,11 +1,13 @@
-import os
-import matplotlib.pyplot as plt
-import duckdb
 import math
-import numpy as np
+import os
 from collections import Counter
 
+import duckdb
+import matplotlib.pyplot as plt
+import numpy as np
+
 from src.config import DATABASE_PATH, PLOTS_DIR
+from src.data_analysis.usage_plots import unifiy_usage_types
 
 
 def normalized_entropy(s: str) -> float:
@@ -23,10 +25,7 @@ def normalized_entropy(s: str) -> float:
     return shannon_entropy / max_entropy
 
 
-import regex as re  # pip install regex (not re)
-
-
-def filter_outliers(data_list, lower_percentile=5, upper_percentile=95):
+def filter_outliers(data_list, lower_percentile=2, upper_percentile=98):
     """
     Filter outliers from a list of data points based on percentiles.
 
@@ -60,25 +59,32 @@ def create_metric_plots_by_usage_type():
     with usage types on the x-axis and the metric values on the y-axis.
     Save each plot as a separate PDF file.
     """
-    con = duckdb.connect(DATABASE_PATH, read_only=True)
-    # con = duckdb.connect('/Users/paul/workspace/SqlPile/data/schemapile_10_07.duckdb')
+    # con = duckdb.connect(DATABASE_PATH, read_only=False)
+    con = duckdb.connect('/Users/paul/workspace/SqlPile/data/schemapile_29_07.duckdb')
 
     # Register the normalized_entropy function with DuckDB
     con.create_function("normalized_entropy", normalized_entropy, [str], float, type="native")
 
+    con.create_function(
+        "unifiy_usage_types",
+        unifiy_usage_types,
+        null_handling='SPECIAL',
+    )
+
     # First, make sure the values_often view exists
     con.execute("""
-                CREATE OR REPLACE TEMP VIEW values_often AS
+                CREATE OR REPLACE VIEW values_often AS
                 WITH often AS (SELECT column_id
                                FROM column_values
                                GROUP BY column_id
-                               HAVING COUNT(DISTINCT value) > 10
+                               HAVING COUNT(DISTINCT value) > 5
                                    OR COUNT(value) > 10)
                 SELECT column_values.column_id, column_values.value
                 FROM column_values
                 WHERE column_values.column_id IN (SELECT column_id FROM often)
                   AND value != 'example text'
                   and value != 'None'
+                  and len(value) > 0
                 ;
                 """)
 
@@ -90,53 +96,71 @@ def create_metric_plots_by_usage_type():
 
     # Now create the value_stats view
     con.execute("""
-        CREATE OR REPLACE TEMP TABLE value_stats AS
-        -- CREATE TEMP VIEW IF NOT EXISTS value_stats AS
+        -- CREATE OR REPLACE TABLE value_stats AS
+        CREATE TABLE IF NOT EXISTS value_stats AS
         WITH usages AS (
-            SELECT unnest(column_ids) as column_id, usage_type
-            FROM column_usages
+                SELECT unnest(column_ids) as column_id, unifiy_usage_types(usage_type) as usage_type, expression
+                FROM column_usages
+            ),
+        usages_aggs AS (
+          PIVOT usages
+          ON usage_type
+          USING ifnull(LIST(expression), []) as USAGE_EXPRESSIONS
+        ), 
+        value_aggs AS (
+          SELECT 
+            column_id,
+            COUNT(DISTINCT value) AS distinct_value_count,
+            COUNT(value)          AS total_value_count,
+            
+            AVG(bit_length(value) // 8) AS avg_bytes_per_string,
+            MIN(bit_length(value) // 8) AS min_bytes_per_string,
+            MAX(bit_length(value) // 8) AS max_bytes_per_string,
+            
+            AVG(LENGTH(value))    AS avg_value_length,
+            MIN(LENGTH(value))    AS min_value_length,
+            MAX(LENGTH(value))    AS max_value_length,
+            
+            MAX(LENGTH(value)) - MIN(LENGTH(value)) AS value_length_range,
+            COUNT(DISTINCT value) * 1.0 / COUNT(value) AS distinct_ratio,
+            AVG(
+              LENGTH(REGEXP_REPLACE(value, '[^a-zA-Z]', '', 'g'))::float 
+              / NULLIF(LENGTH(value), 0)
+            ) AS alpha_ratio,
+            AVG(
+              LENGTH(REGEXP_REPLACE(value, '[^0-9]', '', 'g'))::float 
+              / NULLIF(LENGTH(value), 0)
+            ) AS numeric_ratio,
+            AVG(
+              LENGTH(REGEXP_REPLACE(value, '[a-zA-Z0-9]', '', 'g'))::float 
+              / NULLIF(LENGTH(value), 0)
+            ) AS special_char_ratio,
+            AVG(
+                LENGTH(TRIM(value)) - LENGTH(REPLACE(TRIM(value), ' ', '')) + 1
+            ) AS word_count,
+            list(DISTINCT value)[:10] as values
+          FROM values_often 
+          WHERE len(value) > 0
+          GROUP BY column_id
         )
-        SELECT values_often.column_id, MIN(column_name) AS column_name, MIN(table_name) AS table_name,
-               COUNT(DISTINCT value) AS distinct_value_count,
-               COUNT(value)          AS total_value_count,
-               AVG(LENGTH(value))    AS avg_value_length,
-               MIN(LENGTH(value))    AS min_value_length,
-               MAX(LENGTH(value))    AS max_value_length,
-               MAX(LENGTH(value)) - MIN(LENGTH(value)) AS value_length_range,
-               COUNT(DISTINCT value) * 1.0 / COUNT(value) AS distinct_ratio,
-                AVG(
-                  LENGTH(REGEXP_REPLACE(value, '[^a-zA-Z]', '', 'g'))::float 
-                  / NULLIF(LENGTH(value), 0)
-                ) AS alpha_ratio,
-                AVG(
-                  LENGTH(REGEXP_REPLACE(value, '[^0-9]', '', 'g'))::float 
-                  / NULLIF(LENGTH(value), 0)
-                ) AS numeric_ratio,
-                AVG(
-                  LENGTH(REGEXP_REPLACE(value, '[a-zA-Z0-9]', '', 'g'))::float 
-                  / NULLIF(LENGTH(value), 0)
-                ) AS special_char_ratio,
-                AVG(
-                    LENGTH(TRIM(value)) - LENGTH(REPLACE(TRIM(value), ' ', '')) + 1
-                ) AS word_count,
-               -- normalized_entropy(string_agg(value)) AS normalized_entropy,
-               list(DISTINCT usage_type) AS usage_types
-               -- list(value)[0:10] AS sample_values,
-               -- list_distinct(list(value)) AS distinct_values
-        FROM values_often
-        JOIN usages ON values_often.column_id = usages.column_id
-        JOIN columns ON values_often.column_id = columns.id
+        SELECT columns.id, semantic_type_llm as semantic_type, columns.column_name AS column_name, tables.table_name AS table_name, 
+          usages_aggs.*, 
+          value_aggs.*
+        FROM value_aggs
+        JOIN usages_aggs ON value_aggs.column_id = usages_aggs.column_id
+        JOIN columns ON value_aggs.column_id = columns.id
         JOIN tables ON columns.table_id = tables.id
-        GROUP BY values_often.column_id;
+        LEFT JOIN (
+           SELECT column_id as column_id_llm, semantic_type as semantic_type_llm 
+           FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv'
+         ) AS st ON st.column_id_llm = columns.id
+          ORDER BY value_aggs.column_id;
     """)
 
     print("Value stats view created successfully.")
 
     # Get all distinct usage types
-    usage_types = con.execute("""
-                              SELECT DISTINCT usage_type
-                              FROM column_usages
-                              """).fetchall()
+    usage_types = con.execute("""SELECT DISTINCT unifiy_usage_types(usage_type) FROM column_usages""").fetchall()
     usage_types = [ut[0] for ut in usage_types]
 
     # Define the metrics we want to plot
@@ -173,9 +197,9 @@ def create_metric_plots_by_usage_type():
         for usage_type in usage_types:
             # Query the data for this usage type
             query = f"""
-                SELECT vs.{metric}
+                SELECT vs.{metric}, len(COLUMNS(c -> c LIKE '%_USAGE_EXPRESSIONS')) as usage_expressions_count
                 FROM value_stats vs
-                WHERE array_contains(vs.usage_types, '{usage_type}')
+                WHERE len({usage_type}_USAGE_EXPRESSIONS) > 0
             """
             result = con.execute(query).fetchall()
 

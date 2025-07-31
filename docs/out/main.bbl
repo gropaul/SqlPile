@@ -1,0 +1,111 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.2 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{nty/global//global/global}
+    \entry{vogelsgesang_get_2018}{inproceedings}{}
+      \name{author}{8}{}{%
+        {{hash=2af327c171205590c07f2f0d89bcd317}{%
+           family={Vogelsgesang},
+           familyi={V\bibinitperiod},
+           given={Adrian},
+           giveni={A\bibinitperiod}}}%
+        {{hash=c0f0be20507d4d97125a9e83c36532ce}{%
+           family={Haubenschild},
+           familyi={H\bibinitperiod},
+           given={Michael},
+           giveni={M\bibinitperiod}}}%
+        {{hash=1d58308482d0fe4c500df0debb3ad1c3}{%
+           family={Finis},
+           familyi={F\bibinitperiod},
+           given={Jan},
+           giveni={J\bibinitperiod}}}%
+        {{hash=2466c24cd22361559679d58bb1d8da60}{%
+           family={Kemper},
+           familyi={K\bibinitperiod},
+           given={Alfons},
+           giveni={A\bibinitperiod}}}%
+        {{hash=963c74f650ce23bb4617efc8276c5afb}{%
+           family={Leis},
+           familyi={L\bibinitperiod},
+           given={Viktor},
+           giveni={V\bibinitperiod}}}%
+        {{hash=7a39f3994563296690a04bdf9c2d34a8}{%
+           family={Muehlbauer},
+           familyi={M\bibinitperiod},
+           given={Tobias},
+           giveni={T\bibinitperiod}}}%
+        {{hash=856106a72d787bcea4281fca718cd7d7}{%
+           family={Neumann},
+           familyi={N\bibinitperiod},
+           given={Thomas},
+           giveni={T\bibinitperiod}}}%
+        {{hash=a349f7b41a5b71ed5ce27f132463a753}{%
+           family={Then},
+           familyi={T\bibinitperiod},
+           given={Manuel},
+           giveni={M\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {New York, NY, USA}%
+      }
+      \list{publisher}{1}{%
+        {Association for Computing Machinery}%
+      }
+      \strng{namehash}{3d0bc0e91baef2389ebbc3ef3e3ff3fd}
+      \strng{fullhash}{4d943d37af6f93793c193f23101c89d4}
+      \strng{bibnamehash}{3d0bc0e91baef2389ebbc3ef3e3ff3fd}
+      \strng{authorbibnamehash}{3d0bc0e91baef2389ebbc3ef3e3ff3fd}
+      \strng{authornamehash}{3d0bc0e91baef2389ebbc3ef3e3ff3fd}
+      \strng{authorfullhash}{4d943d37af6f93793c193f23101c89d4}
+      \field{sortinit}{V}
+      \field{sortinithash}{afb52128e5b4dc4b843768c0113d673b}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{shorttitle}
+      \field{abstract}{Industrial as well as academic analytics systems are usually evaluated based on well-known standard benchmarks, such as TPC-H or TPC-DS. These benchmarks test various components of the DBMS including the join optimizer, the implementation of the join and aggregation operators, concurrency control and the scheduler. However, these benchmarks fall short of evaluating the "real" challenges imposed by modern BI systems, such as Tableau, that emit machine-generated query workloads. This paper reports a comprehensive study based on a set of more than 60k real-world BI data repositories together with their generated query workload. The machine-generated workload posed by BI tools differs from the "hand-crafted" benchmark queries in multiple ways: Structurally simple relational operator trees often come with extremely complex scalar expressions such that expression evaluation becomes the limiting factor. At the same time, we also encountered much more complex relational operator trees than covered by benchmarks. This long tail in both, operator tree and expression complexity, is not adequately represented in standard benchmarks. We contribute various statistics gathered from the large dataset, e.g., data type distributions, operator frequency, string length distribution and expression complexity. We hope our study gives an impetus to database researchers and benchmark designers alike to address the relevant problems in future projects and to enable better database support for data exploration systems which become more and more important in the Big Data era.}
+      \field{booktitle}{Proceedings of the {Workshop} on {Testing} {Database} {Systems}}
+      \field{isbn}{978-1-4503-5826-2}
+      \field{month}{6}
+      \field{series}{{DBTest} '18}
+      \field{shorttitle}{Get {Real}}
+      \field{title}{Get {Real}: {How} {Benchmarks} {Fail} to {Represent} the {Real} {World}}
+      \field{urlday}{24}
+      \field{urlmonth}{4}
+      \field{urlyear}{2025}
+      \field{year}{2018}
+      \field{urldateera}{ce}
+      \field{pages}{1\bibrangedash 6}
+      \range{pages}{6}
+      \verb{doi}
+      \verb 10.1145/3209950.3209952
+      \endverb
+      \verb{file}
+      \verb Vogelsgesang et al. - 2018 - Get Real How Benchmarks Fail to Represent the Rea.pdf:/Users/paul/Zotero/storage/7YRJYX5C/Vogelsgesang et al. - 2018 - Get Real How Benchmarks Fail to Represent the Rea.pdf:application/pdf
+      \endverb
+      \verb{urlraw}
+      \verb https://doi.org/10.1145/3209950.3209952
+      \endverb
+      \verb{url}
+      \verb https://doi.org/10.1145/3209950.3209952
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+

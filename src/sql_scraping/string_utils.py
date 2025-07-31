@@ -1,5 +1,4 @@
 import re
-import re
 
 
 def split_sql_statements(sql: str) -> list[str]:
