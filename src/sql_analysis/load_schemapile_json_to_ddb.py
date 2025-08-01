@@ -23,6 +23,7 @@ QUERIES_TABLE_NAME = 'queries'
 EXECUTABLE_QUERIES_TABLE_NAME = 'queries_executable'
 QUERIES_ERROR_SELECT_TABLE_NAME = 'queries_error_select'
 QUERIES_ERROR_CREATE_TABLE_NAME = 'queries_error_create'
+QUERIES_ERROR_CREATE_VIEW_TABLE_NAME = 'queries_error_create_view'
 QUERIES_ERROR_INSERT_TABLE_NAME = 'queries_error_insert'
 
 repo_id_counter = 0

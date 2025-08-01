@@ -4,41 +4,15 @@ from typing import Optional
 import duckdb
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH
+from src.config import DATABASE_PATH, get_con
 from src.sql_analysis.load_schemapile_json_to_ddb import TABLES_TABLE_NAME, COLUMNS_TABLE_NAME, QUERIES_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_to_schema import parse_create_table, clean_identifier
 from src.sql_analysis.tools.sql_types import unify_type
 
-
-def udf_get_table_name_from_create(query: str) -> Optional[str]:
-    """
-    Extracts the table name from a CREATE TABLE SQL query.
-    Supports:
-      - CREATE TABLE
-      - CREATE OR REPLACE TABLE
-      - CREATE TABLE IF NOT EXISTS
-    """
-    # Remove extra whitespace and normalize casing for matching
-    cleaned_query = ' '.join(query.strip().split())
-    pattern = re.compile(
-        r'CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"\[\]\w\.]+)',
-        re.IGNORECASE
-    )
-
-    match = pattern.match(cleaned_query)
-    if match:
-        name = match.group(1).strip('`"[]')
-        # if the table name is a qualified name (e.g., schema.table), return only the table name
-        if '.' in name:
-            name = name.split('.')[-1]
-        return name.lower()
-    else:
-        return None
-
 def get_schemas_from_create_query(repo_id: Optional[int] = None):
-    con = duckdb.connect(DATABASE_PATH)
 
+    con = get_con()
     con.execute(f"""
         CREATE OR REPLACE TABLE queries_parsing_error (
             repo_id INTEGER,
@@ -47,10 +21,6 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
             error_message TEXT
         )
     """)
-
-    # register the UDF
-    con.create_function("get_table_name", udf_get_table_name_from_create, null_handling="special")
-
     max_tables_id = con.execute(f"""
         SELECT MAX(id) FROM {TABLES_TABLE_NAME}
     """).fetchone()[0]
@@ -66,9 +36,9 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
     WITH distrinct_queries AS (
         SELECT sql, id, repo_id, type
         FROM {QUERIES_TABLE_NAME}
-        WHERE type = 'CREATE'
+        WHERE type = 'CREATE' AND not is_create_view_udf(sql)
     )
-        SELECT sql, get_table_name(sql) AS query_table_name, queries.id, repos.repo_url, repos.id AS repo_id
+        SELECT sql, get_table_name_udf(sql) AS query_table_name, queries.id, repos.repo_url, repos.id AS repo_id
         FROM distrinct_queries AS queries
         JOIN repos ON queries.repo_id = repos.id
         WHERE query_table_name IS NOT NULL

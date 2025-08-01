@@ -44,7 +44,7 @@
 %% for your publication.
 %%
 %%
-\documentclass[sigconf,natbib=false]{acmart}
+\documentclass[sigconf,natbib=false]{style/acmart}
 \usepackage{biblatex}
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
@@ -104,9 +104,20 @@
   style=acmnumeric,
   ]{biblatex}
 
-%% Declare bibliography sources (one \addbibresource command per source)
-\addbibresource{main.bib}
+%% import acronyms
+\usepackage[nolist]{acronym}
+\usepackage{hyperref}
 
+\begin{acronym}
+\acro{DBMS}{Database Management System}
+\end{acronym}
+
+
+
+
+%% Declare bibliography sources (one \addbibresource command per source)
+\addbibresource{bib/main.bib}
+\include{variables}
 %%
 %% end of the preamble, start of the body of the document source.
 \begin{document}
@@ -170,9 +181,26 @@
 \maketitle
 
 \section{Introduction}
-In the following, we will discuss our finding when analyzing the string usage in DBMS~\cite{vogelsgesang_get_2018}.
+Recent real-world studies show that variable-sized strings are one of the most used column
+types in \acp{DBMS}.
+For example, van Renen et al~\cite{van_renen_why_2024} showed that 52.1\% of all columns in the
+Amazon Redshift are variable-sized string columns.
+A study performed by Szlang et al.~\cite{szlang_workload_2025} implies similar rates for the Snowflake Data Cloud.
+But already in 2018, Vogelsgesang et al.~\cite{vogelsgesang_get_2018} showed with their analysis of Public Tableau
+Workbooks\footnote{\url{https://public.tableau.com}} that 48.8\% of all data types used in the workbooks are of type Text.
 
-\section{Dataset Creation}
+However, up to now there is no detailed quantitative analysis on the performance implications of this strings in \acp{DBMS}.
+
+
+
+
+\section{Data Collection}
+The query and schema information for our dataset was collected from public GitHub repositories.
+We used the the list of GitHub repositories published by Döhmen et al.~\cite{dohmen_schemapile_2024} that were known to contain Schema Definitions.
+While Döhmen et al. focused on extracting Schemainformation from database dumps that where stored as SQL Files in the repository,
+we extracted every types of SQL statment from both SQL Files and Source Code files.
+
+\input{gen/sec_dataset_description}
 
 \section{What types of strings are used?}
 

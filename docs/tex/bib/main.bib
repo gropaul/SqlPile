@@ -1,17 +1,21 @@
 
-
+@misc{noauthor_dynamically_nodate,
+	title = {Dynamically {Exploiting} {Factorized} {Join} {Representations}},
+	url = {https://docs.google.com/document/d/1M3m9OByYJvVuOhDYRW9ICO0CYz_hUV8sK6O9DOGclP0/edit},
+	keywords = {Proposal, notion},
+}
 
 @phdthesis{mhedhbi_graphflowdb_2023,
 	type = {Doctoral {Thesis}},
 	title = {{GraphflowDB}: {Scalable} {Query} {Processing} on {Graph}-{Structured} {Relations}},
 	shorttitle = {{GraphflowDB}},
 	url = {https://uwspace.uwaterloo.ca/handle/10012/19981},
-	abstract = {Finding patterns over graph-structured datasets is ubiquitous and integral to a wide range of analytical applications, e.g., recommendation and fraud detection. When expressed in the high-level query languages of database management systems (DBMSs), these patterns correspond to many-to-many join computations, which generate very large intermediate relations during query processing and degrade the performance of existing systems.
-
-This thesis argues that modern query processors need to adopt two novel techniques to be efficient on growing many-to-many joins: (i) worst-case optimal join algorithms; and (ii) factorized representations. Traditional query processors generate join plans that use binary joins, which in iteration take two relations, base or intermediate, to join and produce a new relation. The theory of worst-case optimal joins have shown that this style of join processing can be provably suboptimal and hence generate unnecessarily large intermediate results. This can be avoided on cyclic join queries if the join is performed in a multi-way fashion a join-attribute-at-a-time. As its first contribution, this thesis proposes the design and implementation of a query processor and optimizer that can generate plans that mix worst-case optimal joins, i.e., attribute-at-a-time joins and binary joins, i.e., table-at-a-time joins. In contrast to prior approaches with novel join optimizers that require solving hard computational problems, such as computing low-width hypertree decompositions of queries, our join optimizer is cost-based and uses a traditional dynamic programming approach with a new cost metric.
-
-On acyclic queries, or acyclic parts of queries, sometimes the generation of large intermediate results cannot be avoided. Yet, the theory of factorization has shown that often such intermediate results can be highly compressible if they contain multi-valued dependencies between join attributes. Factorization proposes two relation representation schemes, called f- and d-representations, to represent the large intermediate results generated under many-to-many joins in a compressed format. Existing proposals to adopt factorized representations require designing processing on fully materialized general tries and novel operators that operate on entire tries, which are not easy to adopt in existing systems. As a second contribution, we describe the implementation of a novel query processing approach we call factorized vector execution that adopts f-representations. Factorized vector execution extends the traditional vectorized query processors to use multiple blocks of vectors instead of a single block allowing us to factorize intermediate results and delay or even avoid Cartesian products. Importantly, our design ensures that every core operator in the system still performs computations on vectors. As a third contribution, we further describe how to extend our factorized vector execution model with novel operators to adopt d-representations, which extend f-representations with cached and reused sub-relations. Our design here is based on using nested hash tables that can point to sub-relations instead of copying them and on directed acyclic graph-based query plans.
-
+	abstract = {Finding patterns over graph-structured datasets is ubiquitous and integral to a wide range of analytical applications, e.g., recommendation and fraud detection. When expressed in the high-level query languages of database management systems (DBMSs), these patterns correspond to many-to-many join computations, which generate very large intermediate relations during query processing and degrade the performance of existing systems. 
+ 
+This thesis argues that modern query processors need to adopt two novel techniques to be efficient on growing many-to-many joins: (i) worst-case optimal join algorithms; and (ii) factorized representations. Traditional query processors generate join plans that use binary joins, which in iteration take two relations, base or intermediate, to join and produce a new relation. The theory of worst-case optimal joins have shown that this style of join processing can be provably suboptimal and hence generate unnecessarily large intermediate results. This can be avoided on cyclic join queries if the join is performed in a multi-way fashion a join-attribute-at-a-time. As its first contribution, this thesis proposes the design and implementation of a query processor and optimizer that can generate plans that mix worst-case optimal joins, i.e., attribute-at-a-time joins and binary joins, i.e., table-at-a-time joins. In contrast to prior approaches with novel join optimizers that require solving hard computational problems, such as computing low-width hypertree decompositions of queries, our join optimizer is cost-based and uses a traditional dynamic programming approach with a new cost metric. 
+ 
+On acyclic queries, or acyclic parts of queries, sometimes the generation of large intermediate results cannot be avoided. Yet, the theory of factorization has shown that often such intermediate results can be highly compressible if they contain multi-valued dependencies between join attributes. Factorization proposes two relation representation schemes, called f- and d-representations, to represent the large intermediate results generated under many-to-many joins in a compressed format. Existing proposals to adopt factorized representations require designing processing on fully materialized general tries and novel operators that operate on entire tries, which are not easy to adopt in existing systems. As a second contribution, we describe the implementation of a novel query processing approach we call factorized vector execution that adopts f-representations. Factorized vector execution extends the traditional vectorized query processors to use multiple blocks of vectors instead of a single block allowing us to factorize intermediate results and delay or even avoid Cartesian products. Importantly, our design ensures that every core operator in the system still performs computations on vectors. As a third contribution, we further describe how to extend our factorized vector execution model with novel operators to adopt d-representations, which extend f-representations with cached and reused sub-relations. Our design here is based on using nested hash tables that can point to sub-relations instead of copying them and on directed acyclic graph-based query plans. 
+ 
 All of our techniques are implemented in the GraphflowDB system, which was developed throughout the years to facilitate the research in this thesis. We demonstrate that GraphflowDB’s query processor can outperform existing approaches and systems by orders of magnitude on both micro-benchmarks and end-to-end benchmarks. The designs proposed in this thesis adopt common-wisdom query processing techniques of pipelining, vector-based execution, and morsel-driven parallelism to ensure easy adoption in existing systems. We believe the design can serve as a blueprint for how to adopt these techniques in existing DBMSs to make them more efficient on workloads with many-to-many joins.},
 	language = {en},
 	urldate = {2024-01-07},
@@ -94,7 +98,7 @@ The name of the actual ranking function is BM25. The fuller name, Okapi BM25, in
 	year = {2016},
 	keywords = {WCOJ, Factorization, notion},
 	pages = {5--16},
-	annote = {Based on Cartesian product over union.
+	annote = {Based on Cartesian product over union. 
 “They exploit laws of relational algebra, in particular the distributivity of the Cartesian product over union that underlies algebraic factorization, and data and computation sharing to reduce redundancy in the representation and computation of query results.” (Olteanu and Schleich, 2016, p. 1)
 },
 	annote = {Conditional Independence allows factorization and caching
@@ -675,9 +679,9 @@ Conditional independence allows both caching a pointer, meaning that if you know
 @article{deutsch_tigergraph_2019,
 	title = {{TigerGraph}: {A} {Native} {MPP} {Graph} {Database}},
 	shorttitle = {{TigerGraph}},
-	abstract = {We present TigerGraph, a graph database system built from the ground up to support massively parallel computation of queries and analytics.
-TigerGraph's high-level query language, GSQL, is designed for compatibility with SQL, while simultaneously allowing NoSQL programmers to continue thinking in Bulk-Synchronous Processing (BSP) terms and reap the benefits of high-level specification.
-GSQL is sufficiently high-level to allow declarative SQL-style programming, yet sufficiently expressive to concisely specify the sophisticated iterative algorithms required by modern graph analytics and traditionally coded in general-purpose programming languages like C++ and Java.
+	abstract = {We present TigerGraph, a graph database system built from the ground up to support massively parallel computation of queries and analytics. 
+TigerGraph's high-level query language, GSQL, is designed for compatibility with SQL, while simultaneously allowing NoSQL programmers to continue thinking in Bulk-Synchronous Processing (BSP) terms and reap the benefits of high-level specification. 
+GSQL is sufficiently high-level to allow declarative SQL-style programming, yet sufficiently expressive to concisely specify the sophisticated iterative algorithms required by modern graph analytics and traditionally coded in general-purpose programming languages like C++ and Java. 
 We report very strong scale-up and scale-out performance over a benchmark we published on GitHub for full reproducibility.},
 	urldate = {2024-05-22},
 	journal = {ArXiv},
@@ -1369,12 +1373,12 @@ Hash functions are related to (and often confused with) checksums, check digits,
 @phdthesis{gubichev_query_2015,
 	title = {Query {Processing} and {Optimization} in {Graph} {Databases}},
 	url = {https://mediatum.ub.tum.de/1238730},
-	abstract = {Graph data management has received a lot of attention in
+	abstract = {Graph data management has received a lot of attention in 
 the last decade, fueled by rapid development of two vertical domains,
-Linked Data and Social Media. This thesis deals with the database aspects of
-graph processing problems in these two domains. We present both the new query processing
+Linked Data and Social Media. This thesis deals with the database aspects of 
+graph processing problems in these two domains. We present both the new query processing 
 techniques (e.g., efficient shortest path estimation) and the novel query optimization
-methods (in particular, for join ordering and cardinality estimation) for a
+methods (in particular, for join ordering and cardinality estimation) for a 
 broad range of graph databases.},
 	urldate = {2024-06-13},
 	school = {Technische Universität München},
@@ -3027,4 +3031,71 @@ This extended abstract describes and analyses a near-optimal probabilistic algor
 	keywords = {notion},
 	pages = {3694--3706},
 	file = {Van Renen et al. - 2024 - Why TPC is Not Enough An Analysis of the Amazon R.pdf:/Users/paul/Zotero/storage/LBFPKUHV/Van Renen et al. - 2024 - Why TPC is Not Enough An Analysis of the Amazon R.pdf:application/pdf},
+}
+
+@article{szlang_workload_2025,
+	title = {Workload {Insights} {From} {The} {Snowflake} {Data} {Cloud}: {What} {Do} {Production} {Analytic} {Queries} {Really} {Look} {Like}?},
+	volume = {18},
+	url = {https://doi.org/XX.XX/XXX.XX},
+	doi = {XX.XX/XXX.XX},
+	number = {12},
+	journal = {Proceedings of the VLDB Endowment},
+	author = {Szlang, Jan Vincent and Bress, Sebastian and Cattes, Sebastian and Dees, Jonathan and Funke, Florian and Heimel, Max and Oleynik, Michel and Oukid, Ismail and Maltenberger, Tobias},
+	year = {2025},
+	note = {Publisher: VLDB Endowment},
+	annote = {Preprint},
+	file = {Szlang et al. - 2025 - Workload Insights From The Snowflake Data Cloud W.pdf:/Users/paul/Zotero/storage/Y6Z5IYXI/Szlang et al. - 2025 - Workload Insights From The Snowflake Data Cloud W.pdf:application/pdf},
+}
+
+@article{boncz_fsst_2020,
+	title = {{FSST}: fast random access string compression},
+	volume = {13},
+	issn = {2150-8097},
+	shorttitle = {{FSST}},
+	url = {https://dl.acm.org/doi/10.14778/3407790.3407851},
+	doi = {10.14778/3407790.3407851},
+	abstract = {Strings are prevalent in real-world data sets. They often occupy a large fraction of the data and are slow to process. In this work, we present Fast Static Symbol Table (FSST), a lightweight compression scheme for strings. On text data, FSST offers decompression and compression speed similar to or better than the best speed-optimized compression methods, such as LZ4, yet offers significantly better compression factors. Moreover, its use of a static symbol table allows random access to individual, compressed strings, enabling lazy decompression and query processing on compressed data. We believe these features will make FSST a valuable piece in the standard compression toolbox.},
+	number = {12},
+	urldate = {2025-07-31},
+	journal = {Proc. VLDB Endow.},
+	author = {Boncz, Peter and Neumann, Thomas and Leis, Viktor},
+	month = jul,
+	year = {2020},
+	pages = {2649--2661},
+	file = {Full Text PDF:/Users/paul/Zotero/storage/UHTG5KB6/Boncz et al. - 2020 - FSST fast random access string compression.pdf:application/pdf},
+}
+
+@inproceedings{jain_sqlshare_2016,
+	address = {New York, NY, USA},
+	series = {{SIGMOD} '16},
+	title = {{SQLShare}: {Results} from a {Multi}-{Year} {SQL}-as-a-{Service} {Experiment}},
+	isbn = {978-1-4503-3531-7},
+	shorttitle = {{SQLShare}},
+	url = {https://dl.acm.org/doi/10.1145/2882903.2882957},
+	doi = {10.1145/2882903.2882957},
+	abstract = {We analyze the workload from a multi-year deployment of a database-as-a-service platform targeting scientists and data scientists with minimal database experience. Our hypothesis was that relatively minor changes to the way databases are delivered can increase their use in ad hoc analysis environments. The web-based SQLShare system emphasizes easy dataset-at-a-time ingest, relaxed schemas and schema inference, easy view creation and sharing, and full SQL support. We find that these features have helped attract workloads typically associated with scripts and files rather than relational databases: complex analytics, routine processing pipelines, data publishing, and collaborative analysis. Quantitatively, these workloads are characterized by shorter dataset "lifetimes", higher query complexity, and higher data complexity. We report on usage scenarios that suggest SQL is being used in place of scripts for one-off data analysis and ad hoc data sharing. The workload suggests that a new class of relational systems emphasizing short-term, ad hoc analytics over engineered schemas may improve uptake of database technology in data science contexts. Our contributions include a system design for delivering databases into these contexts, a description of a public research query workload dataset released to advance research in analytic data systems, and an initial analysis of the workload that provides evidence of new use cases under-supported in existing systems.},
+	urldate = {2025-07-31},
+	booktitle = {Proceedings of the 2016 {International} {Conference} on {Management} of {Data}},
+	publisher = {Association for Computing Machinery},
+	author = {Jain, Shrainik and Moritz, Dominik and Halperin, Daniel and Howe, Bill and Lazowska, Ed},
+	month = jun,
+	year = {2016},
+	pages = {281--293},
+	file = {Full Text PDF:/Users/paul/Zotero/storage/84V49YL7/Jain et al. - 2016 - SQLShare Results from a Multi-Year SQL-as-a-Servi.pdf:application/pdf},
+}
+
+@article{dohmen_schemapile_2024-1,
+	title = {{SchemaPile}: {A} {Large} {Collection} of {Relational} {Database} {Schemas}},
+	volume = {2},
+	shorttitle = {{SchemaPile}},
+	url = {https://dl.acm.org/doi/10.1145/3654975},
+	doi = {10.1145/3654975},
+	abstract = {Access to fine-grained schema information is crucial for understanding how relational databases are designed and used in practice, and for building systems that help users interact with them. Furthermore, such information is required as training data to leverage the potential of large language models (LLMs) for improving data preparation, data integration and natural language querying. Existing single-table corpora such as GitTables provide insights into how tables are structured in-the-wild, but lack detailed schema information about how tables relate to each other, as well as metadata like data types or integrity constraints. On the other hand, existing multi-table (or database schema) datasets are rather small and attribute-poor, leaving it unclear to what extent they actually represent typical real-world database schemas.In order to address these challenges, we present SchemaPile, a corpus of 221,171 database schemas, extracted from SQL files on GitHub. It contains 1.7 million tables with 10 million column definitions, 700 thousand foreign key relationships, seven million integrity constraints, and data content for more than 340 thousand tables. We conduct an in-depth analysis on the millions of schema metadata properties in our corpus, as well as its highly diverse language and topic distribution. In addition, we showcase the potential of {\textbackslash}corpus to improve a variety of data management applications, e.g., fine-tuning LLMs for schema-only foreign key detection, improving CSV header detection and evaluating multi-dialect SQL parsers. We publish the code and data for recreating SchemaPile and a permissively licensed subset SchemaPile-Perm.},
+	number = {3},
+	urldate = {2025-07-31},
+	journal = {Proc. ACM Manag. Data},
+	author = {Döhmen, Till and Geacu, Radu and Hulsebos, Madelon and Schelter, Sebastian},
+	year = {2024},
+	pages = {172:1--172:25},
+	file = {Full Text PDF:/Users/paul/Zotero/storage/D79E7FTS/Döhmen et al. - 2024 - SchemaPile A Large Collection of Relational Datab.pdf:application/pdf},
 }

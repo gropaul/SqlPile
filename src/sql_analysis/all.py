@@ -16,11 +16,10 @@ def all(download: bool = True) -> None:
     # load_schemapile_json_to_database(ask=False)
     # load_queries_to_database(ask=False)
     # add_tpch()
-    get_schemas_from_create_query()
+    # get_schemas_from_create_query()
     execute_repo_queries()
 
 
 
 if __name__ == "__main__":
-
     all(download=False)

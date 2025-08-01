@@ -59,8 +59,8 @@ def create_metric_plots_by_usage_type():
     with usage types on the x-axis and the metric values on the y-axis.
     Save each plot as a separate PDF file.
     """
-    # con = duckdb.connect(DATABASE_PATH, read_only=False)
-    con = duckdb.connect('/Users/paul/workspace/SqlPile/data/schemapile_29_07.duckdb')
+    con = duckdb.connect(DATABASE_PATH, read_only=False)
+    # con = duckdb.connect('/Users/paul/workspace/SqlPile/data/schemapile_29_07.duckdb')
 
     # Register the normalized_entropy function with DuckDB
     con.create_function("normalized_entropy", normalized_entropy, [str], float, type="native")

@@ -6,46 +6,35 @@ from tqdm import tqdm
 
 from src.config import DATABASE_PATH, logger
 import duckdb
-from typing import List, Dict, Any, Optional, Literal, Tuple
+from typing import List, Dict, Any, Optional
 
 from langchain_core.language_models import BaseLLM
 from pydantic import BaseModel, Field
 
 
-class ModelResult(BaseModel):
+class SemanticTypes(BaseModel):
     """Always use this tool to structure your response to the user."""
-    result: List[Tuple[str, str]] = Field(description="List of tuples (semantic_type, physical_type) for each column.")
-
-ModeOption = Literal['find_semantic_types', 'find_string_misuse']
+    types: List[str] = Field(description="List of semantic types for each column")
 
 
 SYSTEM_PROMPT = """
-You will be given multiple columns and their sample values from a database. For each column, determine:
+Based on the table name, column name, and sample values, determine the semantic type of each column.
+Every column must fit one of the types:
 
-1. Its **semantic type**, based on its name and sample values.  
-2. Its **ideal physical type** for storing it in a DBMS giving the best performance (`string`, `integer`, `float`, `boolean`, `timestamp`).
+1. **Name** – names of entities and persons, titles, labels
+2. **DateTime** – dates, timestamps, time-related fields  
+3. **Numeric** – amounts, counts, prices, scores, sizes  
+4. **Boolean** – yes/no flags, is*/has*, enabled states  
+5. **Category** – type, role, status, label, class, tag  
+6. **FullText** – descriptions, messages, summaries, notes, usually long text
+7. **Identifier** – id, uuid, code, hash, token, version  
+8. **Contact** – emails, phone, fax, mobile 
+9. **Location** – city, country, region, address, zip  
+10. **URL** – link, url, image path, icon, slug
+11. **Test** – columns that are not semantic, e.g. "test", "col"
 
-These are the semantic types you can choose from:
-
-1. **Name** – names of entities or persons, titles, labels  
-2. **DateTime** – dates, times, timestamps  
-3. **Numeric** – numeric values such as counts, prices, scores, sizes  
-4. **Boolean** – true/false flags, typically with prefixes like `is*`, `has*`, `enabled`  
-5. **Category** – discrete class-like values such as type, role, status, tag  
-6. **FullText** – free-form or long-form text like descriptions, messages, notes  
-7. **Identifier** – unique IDs such as uuid, hash, code, token, version  
-8. **Contact** – emails, phone numbers, fax, mobile  
-9. **Location** – cities, countries, regions, postal addresses, zip codes  
-10. **URL** – web links, slugs, image URLs, icon paths  
-11. **Test** – non-semantic placeholders like “test”, “col”, dummy data
-
-Do not use any other types
-
-Return a list of tuples (semantic_type, physical_type). Example:
-Column 1: `users.name` with values `["Alice", "Bob"]` 
-Column 2: `users.created_at` with values `["2023-01-01", "2023-01-02"]`
-Result:
-[("Name", "string"), ("DateTime", "timestamp")]
+You will be given multiple columns at once.
+Return *only* the list of semantic types in the same order as the columns were provided.
 """
 
 
@@ -61,8 +50,7 @@ def get_data() -> List[List[Dict[str, Any]]]:
     Returns:
         List of batches, where each batch contains dictionaries with table_name, column_name, and values.
     """
-    # con = duckdb.connect(DATABASE_PATH, read_only=True)
-    con = duckdb.connect('/Users/paul/workspace/SqlPile/data/schemapile_29_07.duckdb', read_only=True)
+    con = duckdb.connect(DATABASE_PATH, read_only=True)
     con.execute("""
                   CREATE TEMP VIEW column_usages_unnested AS
                   (
@@ -77,7 +65,7 @@ def get_data() -> List[List[Dict[str, Any]]]:
                    list(DISTINCT value)[:10] as "values"
             FROM (
                 FROM column_usages_unnested 
-                -- WHERE column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv')
+                WHERE column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv')
             )
                 JOIN values_often USING (column_id)
                 JOIN columns
@@ -85,7 +73,7 @@ def get_data() -> List[List[Dict[str, Any]]]:
                 JOIN TABLES on tables.id = columns.table_id
                 JOIN QUERIES on queries.id = query_id
             GROUP BY table_name, column_name
-            ORDER BY table_name
+            ORDER BY table_name, column_name
             """
 
     result = con.execute(query).fetchall()
@@ -94,7 +82,7 @@ def get_data() -> List[List[Dict[str, Any]]]:
 
 
     batches = []
-    MAX_CHARACTERS = 100
+
     for i in range(0, len(result), BATCH_SIZE):
         batch = result[i:i + BATCH_SIZE]
         json_data = []
@@ -105,9 +93,10 @@ def get_data() -> List[List[Dict[str, Any]]]:
             values_reduced = []
             total_characters = 0
 
-            while total_characters < MAX_CHARACTERS and values:
+            MAX_WIDTH = 100
+            while total_characters < MAX_WIDTH and values:
 
-                remaining_characters = MAX_CHARACTERS - total_characters
+                remaining_characters = MAX_WIDTH - total_characters
                 value = values.pop(0)
                 values_reduced.append(value[:remaining_characters])
                 total_characters += len(value)
@@ -129,7 +118,7 @@ def setup_model() -> BaseLLM:
         keep_alive=-1,
         timeout=60,
     )
-    model =  base.with_structured_output(ModelResult)
+    model =  base.with_structured_output(SemanticTypes)
 
     # Add retry with keyword args:
     retryable = model.with_retry(
@@ -141,62 +130,55 @@ def setup_model() -> BaseLLM:
 
 
 
-def get_messages_for_data(batch: List[Dict[str, Any]]) -> List[Dict[str, str]]:
 
-    columns_info = []
-    for i, column_data in enumerate(batch):
-        column_info = f"""Column {i + 1}:
-    Table: {column_data['table_name']}
-    Column: {column_data['column_name']}
-    Sample Values: {column_data['values'][:10]}
-    """
-        columns_info.append(column_info)
-
-    prompt = "Determine the semantic type and the ideal physical type for each of the following columns:\n\n" + "\n".join(columns_info)
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": prompt}
-    ]
-
-    return messages
-
-def run_prompt_on_batch(batch: List[Dict[str, Any]], model: BaseLLM) -> Tuple[List[Optional[str]], List[Optional[str]]]:
+def determine_semantic_types_batch(batch: List[Dict[str, Any]], model: BaseLLM) -> List[Optional[str]]:
     try:
         # Format the prompt with information about all columns in the batch
+        columns_info = []
+        for i, column_data in enumerate(batch):
+            column_info = f"""Column {i+1}:
+Table: {column_data['table_name']}
+Column: {column_data['column_name']}
+Sample Values: {column_data['values'][:10]}
+"""
+            columns_info.append(column_info)
 
-
-        messages = get_messages_for_data(batch)
+        prompt = "Determine the semantic type for each of the following columns:\n\n" + "\n".join(columns_info)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
         response = model.invoke(messages, think=False)
-        semantic_types, physical_types = zip(*response.result)
+        semantic_types = response.types
 
         # check if all semantic types are in the expected categories
         if not all(st in CATEGORIES for st in semantic_types):
             messages = messages + [
-                {"role": "assistant", "content": f"Invalid result detected: {set(semantic_types) - set(CATEGORIES)}. Please ensure all types are one of the following: {CATEGORIES}"}
+                {"role": "assistant", "content": f"Invalid semantic types detected: {set(semantic_types) - set(CATEGORIES)}. Please ensure all types are one of the following: {CATEGORIES}"}
             ]
             response = model.invoke(messages, think=False)
-            semantic_types, physical_types = zip(*response.result)
+        semantic_types = response.types
 
         # If the response is not a list, log an error and return None for each column
         if not all(isinstance(st, str) for st in semantic_types):
             logger.error(f"Invalid response format: {semantic_types}. Expected a list of strings.")
-            return [None] * len(batch), [None] * len(batch)
+            return [None] * len(batch)
 
         # Ensure we have the right number of types
-        if len(semantic_types) != len(batch) or len(physical_types) != len(batch):
-            logger.error(f"Mismatch in number of results: expected {len(batch)}, got {len(semantic_types)} semantic types and {len(physical_types)} physical types.")
-            return [None] * len(batch), [None] * len(batch)
+        if len(semantic_types) != len(batch):
+            logger.error(f"Mismatch in number of semantic types: expected {len(batch)}, got {len(semantic_types)}")
+            return [None] * len(batch)
 
         # Log the results
-        for i, (column_data, semantic_type, physical_type) in enumerate(zip(batch, semantic_types, physical_types)):
+        for i, (column_data, semantic_type) in enumerate(zip(batch, semantic_types)):
             logger.info(
-                f"Determined result for {column_data['table_name']}.{column_data['column_name']}: Values {column_data['values'][:5]}, Semantic Type: {semantic_type}, Ideal Physical Type: {physical_type}")
+                f"Determined semantic type for {column_data['table_name']}.{column_data['column_name']}: {semantic_type}")
 
-        return semantic_types, physical_types
+        return semantic_types
 
     except Exception as e:
-        logger.error(f"Error determining result for batch: {str(e)}")
-        return [None] * len(batch), [None] * len(batch)
+        logger.error(f"Error determining semantic types for batch: {str(e)}")
+        return [None] * len(batch)
 
 def process_batches(batches: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
 
@@ -207,29 +189,25 @@ def process_batches(batches: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]
         logger.info(f"Processing batch {batch_idx+1}/{len(batches)} ({len(batch)} columns)")
 
         # Process the entire batch in a single request using structured output
-        sematic_types, physical_types = run_prompt_on_batch(batch, model)
+        semantic_types = determine_semantic_types_batch(batch, model)
 
         # Add semantic types to the column data
-        for column_data, semantic_result, physical_type in zip(batch, sematic_types, physical_types):
+        for column_data, semantic_type in zip(batch, semantic_types):
             column_result = column_data.copy()
-            column_result['semantic_type'] = semantic_result
-            column_result['physical_type'] = physical_type
+            column_result['semantic_type'] = semantic_type
             results.append(column_result)
 
         save_results(results)
 
     return results
 
-def save_results(results: List[Dict[str, Any]]) -> None:
-
+def save_results(results: List[Dict[str, Any]], output_file: str = "semantic_types.csv"):
     # Convert results to DataFrame
     new_df = pd.DataFrame(results)
-    new_df = new_df[['column_ids', 'table_name', 'column_name', 'values', 'semantic_type', 'physical_type']].copy()
+    new_df = new_df[['column_ids', 'table_name', 'column_name', 'semantic_type']]
     new_df = new_df.explode('column_ids')
     new_df['column_ids'] = new_df['column_ids'].astype(str)
     new_df.rename(columns={'column_ids': 'column_id'}, inplace=True)
-
-    output_file = f"semantic_types.csv"
 
     if os.path.exists(output_file):
         existing_df = pd.read_csv(output_file)
@@ -240,7 +218,6 @@ def save_results(results: List[Dict[str, Any]]) -> None:
         final_df = new_df
 
     final_df.to_csv(output_file, index=False)
-
 
 
 BATCH_SIZE = 5

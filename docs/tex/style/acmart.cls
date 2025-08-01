@@ -446,7 +446,7 @@
     unless are languages are defined. \MessageBreak
     Please choose the languages in \string\documentclass
     \MessageBreak
-    (e.g. \string\documentclass[languages={french, english}]{acmart}),
+    (e.g. \string\documentclass[languages={french, english}]{acmart.cls}),
     \MessageBreak
     or delete the command.}%
   \fi}

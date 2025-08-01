@@ -5,16 +5,16 @@ from typing import List, Optional
 import duckdb
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH
+from src.config import DATABASE_PATH, get_con
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
 from src.sql_analysis.execution.models import Table, Column
-from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically, escape_for_insert, \
-    prepare_sql_statically_macro
+from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically, escape_for_insert
+from src.sql_analysis.execution.transform_insert import transform_insert_to_create
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, EXECUTABLE_QUERIES_TABLE_NAME, \
     REPO_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_USAGES_TABLE_NAME, \
-    TABLES_DATA_FILES_TABLE_NAME, QUERIES_ERROR_INSERT_TABLE_NAME
+    TABLES_DATA_FILES_TABLE_NAME, QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME
 from src.sql_analysis.plan_analysis.analyse_plans import analyse_plans
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
 
@@ -38,6 +38,9 @@ success_id_counter = 0
 
 n_failed_table_creations = 0
 n_successful_table_creations = 0
+
+n_failed_view_creations = 0
+n_successful_view_creations = 0
 
 n_failed_insertions = 0
 n_successful_insertions = 0
@@ -192,6 +195,20 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
             sandbox_con.execute(sql_prepared)
             n_successful_insertions += 1
         except Exception as e:
+
+            exception_message = str(e)
+            is_table_does_not_exist = 'Catalog Error: Table with name' in exception_message
+            if is_table_does_not_exist:
+                create_statement = transform_insert_to_create(sql_prepared)
+                if create_statement is not None:
+                    try:
+                        # Execute the create statement in the sandbox connection
+                        sandbox_con.execute(create_statement)
+                        logging.info(f"Created table from insert query: {create_statement}")
+                    except Exception as e_create:
+                        logging.error(f"Failed to create table from insert query: {e_create}")
+                        continue
+
             global n_failed_insertions
 
             con.execute(f"""
@@ -302,7 +319,8 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
             continue
 
 
-def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection, artificial_populated_ids: List[int]):
+def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
+                            artificial_populated_ids: List[int]):
     # get the columns that where recorded in the executable queries
     used_columns = con.execute(f"""
          SELECT {COLUMNS_TABLE_NAME}.id as column_id, column_name, table_name 
@@ -343,8 +361,48 @@ def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection
             continue
 
 
+def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+                 sandbox_con: duckdb.DuckDBPyConnection):
+    view_queries = con.execute(f"""
+        WITH repo_queries AS MATERIALIZED (
+            SELECT id, sql,
+            FROM queries
+            WHERE repo_id = ? AND type = 'CREATE'
+        )
+        SELECT id, sql, prepare_select_statically(sql) as sql_prepared
+        FROM repo_queries
+        WHERE is_create_view_udf(sql)
+    """, (repo_id,)).fetchall()
+
+    n_views = len(view_queries)
+    n_success = 0
+
+    for query_id, sql, sql_prepared in view_queries:
+        try:
+            # if there are multiple queries together, take the first one
+            if ';' in sql_prepared:
+                sql_prepared = sql_prepared.split(';')[0].strip()
+
+            # Execute the prepared SQL statement
+            sandbox_con.execute(sql_prepared)
+            n_success += 1
+
+            global n_successful_view_creations
+            n_successful_view_creations += 1
+
+        except Exception as e:
+            global n_failed_view_creations
+            con.execute(f"""
+                INSERT INTO {QUERIES_ERROR_CREATE_VIEW_TABLE_NAME} (query_id, error_message)
+                VALUES ({query_id}, '{escape_for_insert(str(e))}')
+            """)
+            n_failed_view_creations += 1
+    if n_views > 0:
+        logging.info(f"Processed {n_views} view creation queries in repo {repo_id} ({repo_url}), successfully created {n_success} views, failed to create {n_views - n_success} views.")
+
+
 def execute_repo_queries(repo_id: Optional[int] = None):
-    con = duckdb.connect(DATABASE_PATH, read_only=False)
+    con = get_con()
     sandbox_con = duckdb.connect()
 
     # Add all the macros from EXTRA_FUNCTIONS
@@ -362,8 +420,6 @@ def execute_repo_queries(repo_id: Optional[int] = None):
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
     """).fetchall()
-
-    con.execute(prepare_sql_statically_macro)
 
     # create executable_queries table if it doesn't exist
     con.execute(f"""
@@ -402,12 +458,18 @@ def execute_repo_queries(repo_id: Optional[int] = None):
     """)
 
     con.execute(f"""
+        CREATE OR REPLACE TABLE {QUERIES_ERROR_CREATE_VIEW_TABLE_NAME} (
+            query_id BIGINT,
+            error_message VARCHAR
+        )
+    """)
+
+    con.execute(f"""
         CREATE OR REPLACE TABLE {QUERIES_ERROR_INSERT_TABLE_NAME} (
             query_id BIGINT,
             error_message VARCHAR,
             )
     """)
-
 
     # Create a table to store the column values with strings
     con.execute(f"""
@@ -450,6 +512,8 @@ def execute_repo_queries(repo_id: Optional[int] = None):
 
             tables = create_tables(repo_id, repo_url, con, sandbox_con)
 
+            create_views(repo_id, repo_url, con, sandbox_con)
+
             populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
@@ -488,8 +552,11 @@ def execute_repo_queries(repo_id: Optional[int] = None):
     else:
         print("No errors occurred during execution")
 
+    if n_successful_view_creations > 0 or n_failed_view_creations > 0:
+        print(f"Successfully created {n_successful_view_creations} views, failed to create {n_failed_view_creations} views.")
+
     con.close()
 
 
 if __name__ == "__main__":
-    execute_repo_queries()
+    execute_repo_queries(repo_id=37927)
