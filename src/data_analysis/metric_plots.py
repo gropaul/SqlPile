@@ -96,8 +96,8 @@ def create_metric_plots_by_usage_type():
 
     # Now create the value_stats view
     con.execute("""
-        -- CREATE OR REPLACE TABLE value_stats AS
-        CREATE TABLE IF NOT EXISTS value_stats AS
+        CREATE OR REPLACE TABLE value_stats AS
+        -- CREATE TABLE IF NOT EXISTS value_stats AS
         WITH usages AS (
                 SELECT unnest(column_ids) as column_id, unifiy_usage_types(usage_type) as usage_type, expression
                 FROM column_usages

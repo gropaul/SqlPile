@@ -7,10 +7,11 @@ from tqdm import tqdm
 
 from src.config import DATABASE_PATH, get_con
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
+from src.sql_analysis.execution.fix_group_by import fix_group_by
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically, escape_for_insert
-from src.sql_analysis.execution.transform_insert import transform_insert_to_create
+from src.sql_analysis.execution.transform_insert import transform_insert_to_create, save_schema_from_insert_create
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, EXECUTABLE_QUERIES_TABLE_NAME, \
     REPO_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_USAGES_TABLE_NAME, \
@@ -143,7 +144,7 @@ def get_table_name_from_insert(sql: str) -> Optional[str]:
 
 
 def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
-                                 sandbox_con: duckdb.DuckDBPyConnection):
+                                 sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
     """
     Populate the tables with data from the repo.
     This function is called after the tables have been created.
@@ -159,6 +160,8 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
         WHERE repo_id = ? AND type = 'INSERT'
         ORDER BY length(sql)
     """, (repo_id,)).fetchall()
+
+    new_tables = []
 
     print(f"Found {len(insert_queries)} insert queries for repo {repo_id} ({repo_url})")
 
@@ -205,6 +208,9 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
                         # Execute the create statement in the sandbox connection
                         sandbox_con.execute(create_statement)
                         logging.info(f"Created table from insert query: {create_statement}")
+                        new_table = save_schema_from_insert_create(repo_id, create_statement, con, sandbox_con)
+                        if new_table is not None:
+                            new_tables.append(new_table)
                     except Exception as e_create:
                         logging.error(f"Failed to create table from insert query: {e_create}")
                         continue
@@ -216,6 +222,8 @@ def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDB
                 VALUES ({query_id}, '{escape_for_insert(str(e))}')
             """)
             n_failed_insertions += 1
+
+    return new_tables
 
 
 def populate_tables_with_files(repo_id: int, con: duckdb.DuckDBPyConnection,
@@ -278,6 +286,43 @@ def populate_empty_tables(tables: List[Table], sandbox_con: duckdb.DuckDBPyConne
     return ids
 
 
+def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+                  sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table], try_fix: bool) -> MockQueryResult:
+
+    result: MockQueryResult = try_to_mock_and_execute_query(sandbox_con, sql_prepared, tables)
+    if result.was_successful():
+        global success_id_counter
+        success_id_counter += 1
+        insert_query = f"""
+                        INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, repo_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, logical_plan_optimized_detailed, physical_plan)
+                        VALUES ({success_id_counter}, {query_id}, {repo_id}, '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}', 
+                        '{escape_for_insert(json.dumps(result.logical_plan))}', 
+                        '{escape_for_insert(json.dumps(result.logical_plan_optimized))}', 
+                        '{escape_for_insert(json.dumps(result.logical_plan_optimized_detailed))}',
+                        '{escape_for_insert(json.dumps(result.physical_plan))}')
+                    """
+        con.execute(insert_query)
+    else:
+        # try to fix group by errors
+        fixed_sql = fix_group_by(sql_prepared, str(result.error), sandbox_con)
+        if fixed_sql:
+            sql = fixed_sql
+            sql_prepared = fixed_sql
+            return execute_query(query_id, sql, sql_prepared, repo_id, repo_url,  con, sandbox_con, tables, try_fix=False)
+
+        global error_id_counter
+        error_id_counter += 1
+        con.execute(f"""
+             INSERT INTO {QUERIES_ERROR_SELECT_TABLE_NAME} (
+                 id, repo_id, repo_url, query_id, error_message, original_sql, executable_sql
+             ) VALUES (
+                 {error_id_counter}, {repo_id}, '{escape_for_insert(repo_url)}', {query_id}, 
+                 '{escape_for_insert(str(result.error))}', '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}'
+             )
+         """)
+
+    return result
+
 def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
                     tables: List[Table]):
     queries_deduped = con.execute(f"""
@@ -291,32 +336,7 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
     """, (repo_id,)).fetchall()
 
     for query_id, sql, sql_prepared in queries_deduped:
-        result: MockQueryResult = try_to_mock_and_execute_query(sandbox_con, sql_prepared, tables)
-
-        if result.was_successful():
-            global success_id_counter
-            success_id_counter += 1
-            insert_query = f"""
-                INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, repo_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, logical_plan_optimized_detailed, physical_plan)
-                VALUES ({success_id_counter}, {query_id}, {repo_id}, '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}', 
-                '{escape_for_insert(json.dumps(result.logical_plan))}', 
-                '{escape_for_insert(json.dumps(result.logical_plan_optimized))}', 
-                '{escape_for_insert(json.dumps(result.logical_plan_optimized_detailed))}',
-                '{escape_for_insert(json.dumps(result.physical_plan))}')
-            """
-            con.execute(insert_query)
-        else:
-            global error_id_counter
-            error_id_counter += 1
-            con.execute(f"""
-                INSERT INTO {QUERIES_ERROR_SELECT_TABLE_NAME} (
-                    id, repo_id, repo_url, query_id, error_message, original_sql, executable_sql
-                ) VALUES (
-                    {error_id_counter}, {repo_id}, '{escape_for_insert(repo_url)}', {query_id}, 
-                    '{escape_for_insert(str(result.error))}', '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}'
-                )
-            """)
-            continue
+        result = execute_query(query_id, sql, sql_prepared, repo_id, repo_url, con, sandbox_con, tables, try_fix=True)
 
 
 def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
@@ -512,9 +532,12 @@ def execute_repo_queries(repo_id: Optional[int] = None):
 
             tables = create_tables(repo_id, repo_url, con, sandbox_con)
 
+
+            new_tables = populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
+            tables.extend(new_tables)
+
             create_views(repo_id, repo_url, con, sandbox_con)
 
-            populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
@@ -559,4 +582,4 @@ def execute_repo_queries(repo_id: Optional[int] = None):
 
 
 if __name__ == "__main__":
-    execute_repo_queries(repo_id=37927)
+    execute_repo_queries(repo_id=None)

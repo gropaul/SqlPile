@@ -116,9 +116,6 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int, query_id: int =
                 min_usage_id += 1
 
 
-
-
-
 if __name__ == "__main__":
     con = duckdb.connect(DATABASE_PATH)
     query_id = 12177818

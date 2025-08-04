@@ -48,8 +48,19 @@ def generate_dataset_description():
     number_of_repos = con.execute("SELECT COUNT(DISTINCT repo_id) FROM queries").fetchone()[0]
 
     allowed = ["SELECT", "INSERT", "CREATE"]
-    number_of_queries_per_type = con.execute(
-        f"SELECT type, COUNT(*) as cnt FROM queries WHERE type in {allowed} GROUP BY type ORDER BY cnt DESC").fetchall()
+
+    number_of_queries_per_type = con.execute(f"""
+        with cnts AS (
+            SELECT repo_id, type, COUNT(DISTINCT sql) as repo_cnt
+            FROM queries
+            WHERE type in {allowed}
+            GROUP BY repo_id, type
+        )
+        SELECT type, SUM(repo_cnt) as sum
+        FROM cnts
+        GROUP BY type
+        ORDER BY sum DESC
+    """).fetchall()
 
     percentages_per_type = []
     for query_type, count in number_of_queries_per_type:
@@ -59,7 +70,7 @@ def generate_dataset_description():
         text_item = f"{number_formatted} `{query_type}`"
         percentages_per_type.append(text_item)
 
-    number_of_queries_per_type_str = join_list_with_and(percentages_per_type, final_word="statements")
+    number_of_queries_per_type_str = join_list_with_and(percentages_per_type, final_word="distinct statements per repository")
 
     # *** CREATE STATEMENTS ***
     number_of_create_statements = con.execute(f"""
