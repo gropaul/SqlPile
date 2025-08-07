@@ -324,14 +324,14 @@ def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo
     return result
 
 def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
-                    tables: List[Table]):
+                    tables: List[Table], query_id: Optional[int] = None):
     queries_deduped = con.execute(f"""
         SELECT MIN(id), sql, MIN(prepare_select_statically(sql)) as sql_perpared
         FROM queries
         WHERE 
             repo_id = ? AND 
-            type IN ('SELECT', 'WITH') AND
-            (id = 27602561 or True)  -- filter for a specific query or all queries
+            type IN ('SELECT', 'WITH') AND 
+            ({'queries.id = ' + str(query_id) if query_id else 'True'})
         GROUP BY sql
     """, (repo_id,)).fetchall()
 
@@ -421,7 +421,7 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
         logging.info(f"Processed {n_views} view creation queries in repo {repo_id} ({repo_url}), successfully created {n_success} views, failed to create {n_views - n_success} views.")
 
 
-def execute_repo_queries(repo_id: Optional[int] = None):
+def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] = None):
     con = get_con()
     sandbox_con = duckdb.connect()
 
@@ -435,7 +435,8 @@ def execute_repo_queries(repo_id: Optional[int] = None):
         JOIN queries ON repos.id = queries.repo_id
         WHERE 
             queries.type IN ('SELECT', 'WITH') 
-            and ({'repos.id = ' + str(repo_id) if repo_id is not None else 'True'})
+            and ({'queries.id = ' + str(query_id) if query_id else 'True'})
+            and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
@@ -541,7 +542,7 @@ def execute_repo_queries(repo_id: Optional[int] = None):
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
-            execute_queries(repo_id, repo_url, sandbox_con, con, tables)
+            execute_queries(repo_id, repo_url, sandbox_con, con, tables, query_id)
 
             analyse_plans(con, repo_id)
 
@@ -582,4 +583,4 @@ def execute_repo_queries(repo_id: Optional[int] = None):
 
 
 if __name__ == "__main__":
-    execute_repo_queries(repo_id=None)
+    execute_repo_queries(repo_id=2369, query_id=None)

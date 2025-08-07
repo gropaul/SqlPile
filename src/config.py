@@ -131,8 +131,8 @@ CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
 ;
 """
 
-def get_con(path: str = DATABASE_PATH) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(path)
+def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect(path, read_only=read_only)
 
     def udf_get_table_name_from_create(query: str) -> Optional[str]:
         # Remove extra whitespace and normalize casing for matching

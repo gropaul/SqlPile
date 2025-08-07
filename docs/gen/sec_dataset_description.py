@@ -16,7 +16,7 @@ and easy to use locally.
 
 In total we retrieved {number_of_queries} queries from {number_of_repos} repositories, 
 with {number_of_queries_per_type}. By parsing the `CREATE` SQL statements, we could extract 
-distinct {number_of_tables} tables with {number_of_columns} columns. In order to execute the queries 
+{number_of_tables} distinct tables with {number_of_columns} columns. In order to execute the queries 
 later in DuckDB, we unified the system specific column types into abstract types like `INTEGER`, `FLOAT`, 
 `TEXT` or `DATETIME` to then later map them to the DuckDB types. 
 
@@ -29,18 +29,18 @@ with a median of {median_n_rows} rows and a mean of {mean_n_rows} rows per table
 
 To analyze string usage in the examined repositories, we executed the scraped `SELECT` statements.
 Since queries are rarely written as static strings in the code, we first had to preprocess them by 
-replacing variables and applying minor transformations to make them executable in DuckDB. To then be able to track
-the columns through the operators, we implemented a special explain function\\footnote{{See \\url{{https://todo}}}} 
-that returns not only information on the operators used to execute the queries but also the 
-details on the expressions these use.
-
-This way, we where able to execute {select_success_percentage} of the `SELECT` statements resulting in a 
+replacing variables and applying minor transformations to make them executable in DuckDB. This way, we where 
+able to execute {select_success_percentage} of the `SELECT` statements resulting in a 
 total number of {select_success_n} statements we could retrieve query plans for. 
+
+To then be able to track the usage of columns through the operators, we implemented a special 
+explain function\\footnote{{See \\url{{https://todo}}}} that returns not only information on 
+the operators used to execute the queries but also the details on the expressions these use. 
 """
 
 
 def generate_dataset_description():
-    con = get_con()
+    con = get_con(read_only=True)
 
     number_of_tables = con.execute("SELECT COUNT(*) FROM tables").fetchone()[0]
     number_of_columns = con.execute("SELECT COUNT(*) FROM columns").fetchone()[0]
@@ -63,14 +63,16 @@ def generate_dataset_description():
     """).fetchall()
 
     percentages_per_type = []
-    for query_type, count in number_of_queries_per_type:
+    for (index, (query_type, count)) in enumerate(number_of_queries_per_type):
         percentage = (count / number_of_queries) * 100
         number_formatted = format_number(count)
         # text_item = f"{number_formatted} `{query_type}` ({percentage:.2f}%)"
         text_item = f"{number_formatted} `{query_type}`"
+        if index == 0:
+            text_item = f"{number_formatted} distinct `{query_type}`"
         percentages_per_type.append(text_item)
 
-    number_of_queries_per_type_str = join_list_with_and(percentages_per_type, final_word="distinct statements per repository")
+    number_of_queries_per_type_str = join_list_with_and(percentages_per_type, final_word="statements")
 
     # *** CREATE STATEMENTS ***
     number_of_create_statements = con.execute(f"""

@@ -8,7 +8,7 @@ from src.sql_analysis.tools.sql_types import BaseType, unify_type
 
 OperatorType = Literal['PROJECTION', 'FILTER', 'COMPARISON_JOIN', 'AGGREGATE', 'ORDER_BY', 'SEQ_SCAN']  # type: ignore
 ColumnUsageType = Literal[
-    'PROJECTION', 'FILTER', 'JOIN_KEY', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'TOP_N_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP', 'DISTINCT_KEY']  # type: ignore
+    'PROJECTION', 'FILTER', 'JOIN_KEY', 'JOIN_MATERIALIZATION', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'ORDER_MATERIALIZATION', 'TOP_N_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP', 'DISTINCT_KEY']  # type: ignore
 
 BOUND_COLUMN_REF_NAME = 'BOUND_REF'
 

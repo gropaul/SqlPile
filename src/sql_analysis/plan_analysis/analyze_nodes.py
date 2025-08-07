@@ -56,8 +56,9 @@ class Params:
         self.occurrences: List[CTEOccurrence] = ctes if ctes is not None else []
 
 
-def analyze_node(query_id: int, plan: Dict, tables: List[Table], cte_occurrence: List[CTEOccurrence], parent_node_id: str = '', child_index: int = 0) -> \
-Tuple[List[ColumnUsage], List[ColumnTrack]]:
+def analyze_node(query_id: int, plan: Dict, tables: List[Table], cte_occurrence: List[CTEOccurrence],
+                 parent_node_id: str = '', child_index: int = 0) -> \
+        Tuple[List[ColumnUsage], List[ColumnTrack]]:
     """
     Analyze a single node in the execution plan.
     """
@@ -65,7 +66,6 @@ Tuple[List[ColumnUsage], List[ColumnTrack]]:
     node_operator: OperatorType = plan['operator_type'].strip().upper()
 
     node_id: str = f"{parent_node_id}.{child_index}" if parent_node_id else str(child_index)
-
 
     children_tracks: List[List[ColumnTrack]] = []
     results: List[ColumnUsage] = []
@@ -93,6 +93,7 @@ Tuple[List[ColumnUsage], List[ColumnTrack]]:
         'AGGREGATE': analyze_aggregate,
         'DELIM_JOIN': analyze_join,
         'COMPARISON_JOIN': analyze_join,
+        'LOGICAL_ANY_JOIN': analyze_join,
         'UNION': analyze_union,
         'TOP_N': analyze_top_n,
         'LIMIT': analyze_limit,
@@ -204,6 +205,7 @@ def analyze_chunk_get(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTra
 
     return usages, my_tracks
 
+
 def analyze_projection(params: Params, usage_type: ColumnUsageType = 'PROJECTION') -> Tuple[
     List[ColumnUsage], List[ColumnTrack]]:
     query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
@@ -219,7 +221,8 @@ def analyze_projection(params: Params, usage_type: ColumnUsageType = 'PROJECTION
     for (column_index, projection) in enumerate(projections):
         # check if there are any children tracks that match the projection
         binding = TableColumnBinding(table_id=table_id, column_id=column_index)
-        track, usage = track_and_find_usage(projection, query_id, params.node_id, children_tracks, usage_type, binding=binding)
+        track, usage = track_and_find_usage(projection, query_id, params.node_id, children_tracks, usage_type,
+                                            binding=binding)
         my_tracks.append(track)
         usages.append(usage)
 
@@ -240,10 +243,27 @@ def analyze_order_by(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrac
     orders = to_expressions(plan.get('orders', []))
     for (column_index, order) in enumerate(orders):
         binding = TableColumnBinding(table_id=-1, column_id=column_index)
-        track, usage = track_and_find_usage(order, query_id, params.node_id, children_tracks, 'ORDER_KEY', binding=binding)
+        track, usage = track_and_find_usage(order, query_id, params.node_id, children_tracks, 'ORDER_KEY',
+                                            binding=binding)
+        usages.append(usage)
+
+
+    projection = get_projection(plan, 'projection_map')
+    children_tracks = map_tracks(children_tracks, projection)
+
+    # all the values need to be materialized during ordering
+    for child_track in children_tracks:
+        usage = ColumnUsage.from_column_track(child_track, query_id, params.node_id, 'ORDER_MATERIALIZATION')
         usages.append(usage)
 
     return usages, children_tracks
+
+
+def map_tracks(tracks: List[ColumnTrack], projection_map: List[int]) -> List[ColumnTrack]:
+    if len(projection_map) == 0:
+        return tracks
+    else:
+        return [tracks[index] for index in projection_map]
 
 
 def analyze_filter(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
@@ -263,6 +283,8 @@ def analyze_filter(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]
                                             'FILTER', binding=binding)
         usages.append(usage)
 
+    projection = get_projection(plan, 'projection_map')
+    children_tracks = map_tracks(children_tracks, projection)
     return usages, children_tracks
 
 
@@ -304,11 +326,14 @@ def analyze_aggregate(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTra
     return usages, my_tracks
 
 
+def get_projection(plan: Dict, key: str) -> List[int]:
+    string = plan['extra_info'].get(key, '')
+    return json.loads(string) if string else []
+
+
 def get_join_projections(plan: Dict) -> Tuple[List[int], List[int]]:
-    left_p_string = plan['extra_info'].get('left_projection_map', '')
-    left_p = json.loads(left_p_string) if left_p_string else []
-    right_p_string = plan['extra_info'].get('right_projection_map', '')
-    right_p = json.loads(right_p_string) if right_p_string else []
+    left_p = get_projection(plan, 'left_projection_map')
+    right_p = get_projection(plan, 'right_projection_map')
     return left_p, right_p
 
 
@@ -376,6 +401,11 @@ def analyze_join(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
     if join_type in ['RIGHT_SEMI', 'RIGHT_ANTI']:
         # For RIGHT_SEMI and RIGHT_ANTI joins, we project the right-hand side
         return usages, right_tracks
+
+    # the right tracks need to be materialized
+    for right_track in right_tracks:
+        usage = ColumnUsage.from_column_track(right_track, query_id, params.node_id, 'JOIN_MATERIALIZATION')
+        usages.append(usage)
 
     # For any other join, we project both sides
     return usages, left_tracks + right_tracks
@@ -468,14 +498,13 @@ def analyze_distinct(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrac
 
     for (column_index, target) in enumerate(distinct_targets):
         _, usage = track_and_find_usage(target, query_id, params.node_id, children_tracks,
-                                            'DISTINCT_KEY')
+                                        'DISTINCT_KEY')
         usages.append(usage)
 
     return usages, children_tracks
 
 
 def analyze_cross_product(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
-
     query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
 
     left_tracks, right_tracks = get_two_child_tracks(children_tracks)
@@ -487,7 +516,6 @@ def analyze_cross_product(params: Params) -> Tuple[List[ColumnUsage], List[Colum
 
 
 def analyze_window(params: Params) -> Tuple[List[ColumnUsage], List[ColumnTrack]]:
-
     query_id, plan, tables, children_tracks = params.query_id, params.plan, params.tables, params.children_tracks
 
     children_tracks = get_one_child_tracks(children_tracks)

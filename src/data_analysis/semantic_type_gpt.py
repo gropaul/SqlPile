@@ -31,7 +31,7 @@ Every column must fit one of the types:
 8. **Contact** – emails, phone, fax, mobile 
 9. **Location** – city, country, region, address, zip  
 10. **URL** – link, url, image path, icon, slug
-11. **Test** – columns that are not semantic, e.g. "test", "col"
+11. **Test** – column content/name that are not semantic, e.g. "test", "col", "val1"
 
 You will be given multiple columns at once.
 Return *only* the list of semantic types in the same order as the columns were provided.

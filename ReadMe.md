@@ -24,3 +24,9 @@ To set it up, follow these steps:
 ```bash
 poetry run python main.py
 ```
+
+## Build the Custom DuckDB
+
+1. In the DuckDB repo:
+   `BUILD_PYTHON=1 make release`
+2. In poetry `poetry install`
