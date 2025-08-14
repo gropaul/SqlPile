@@ -1,14 +1,15 @@
 import re
-from typing import Literal, List, Optional
+from typing import Literal, List, Optional, Tuple, Dict
 
 import duckdb
 
 from src.sql_analysis.execution.models import Column
+from src.sql_analysis.execution.prepare_sql_for_execution import escape_for_insert
 from src.sql_analysis.tools.sql_types import BaseType, unify_type
 
 OperatorType = Literal['PROJECTION', 'FILTER', 'COMPARISON_JOIN', 'AGGREGATE', 'ORDER_BY', 'SEQ_SCAN']  # type: ignore
 ColumnUsageType = Literal[
-    'PROJECTION', 'FILTER', 'JOIN_KEY', 'JOIN_MATERIALIZATION', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'ORDER_MATERIALIZATION', 'TOP_N_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP', 'DISTINCT_KEY']  # type: ignore
+    'PROJECTION', 'FILTER', 'JOIN_KEY', 'JOIN_MATERIALIZATION', 'GROUP_KEY', 'AGGREGATE', 'ORDER_KEY', 'ORDER_MATERIALIZATION', 'TOP_N_KEY', 'SCAN_FILTER', 'SCAN_LOOKUP', 'DISTINCT_KEY', 'WINDOW_EXPRESSION']  # type: ignore
 
 BOUND_COLUMN_REF_NAME = 'BOUND_REF'
 
@@ -136,6 +137,70 @@ class ColumnWithBinding(Column):
         return f"ColumnWithBinding(id={self.column_id}, name='{self.column_name}', base_type='{self.column_base_type}', table_binding={self.table_binding})"
 
 
+
+
+def remove_quotes(str: str) -> str:
+    """
+    Removes single and double quotes from the string.
+    This is useful for cleaning up expressions before storing them in JSON.
+    """
+    return str.replace('"', '').replace("'", '')
+
+
+class ExpressionHistoryElement:
+    def __init__(self, expression: str, expression_type: str, expression_class: str, return_type: str):
+        self.expression = expression
+        self.expression_type = expression_type
+        self.expression_class = expression_class
+        self.expression_return_type = return_type
+
+    @staticmethod
+    def from_expression_info(expression_info: ExpressionInfo) -> 'ExpressionHistoryElement':
+        return ExpressionHistoryElement(
+            expression=expression_info.expression,
+            expression_type=expression_info.expression_type,
+            expression_class=expression_info.expression_class,
+            return_type=expression_info.return_type
+        )
+
+    @staticmethod
+    def from_column(column: Column) -> 'ExpressionHistoryElement':
+        return ExpressionHistoryElement(
+            expression=column.column_name,
+            expression_type='BOUND_REF',
+            expression_class='BOUND_REF',
+            return_type=column.column_base_type
+        )
+
+    def to_json(self) -> dict:
+        return {
+            'expression': remove_quotes(self.expression),
+            'expression_type': remove_quotes(self.expression_type),
+            'expression_class': remove_quotes(self.expression_class),
+            'expression_return_type': remove_quotes(self.expression_return_type)
+        }
+
+
+
+
+class ColumnUsageHistory:
+
+    def __init__(self, column_id: int, history: List['ExpressionHistoryElement']):
+        self.column_id = column_id
+        self.history: List['ExpressionHistoryElement'] = history
+
+    def to_json(self) -> dict:
+        return {
+            'column_id': self.column_id,
+            'history': self.history_to_json()
+        }
+
+    def history_to_json(self) -> List[dict]:
+        """
+        Returns the history as a list of dictionaries.
+        """
+        return [element.to_json() for element in self.history]
+
 class ColumnTrack:
     def __init__(self, scanned_columns: List[Column], expression: ExpressionInfo, parents: List['ColumnTrack'],
                  base_type: BaseType, binding: TableColumnBinding):
@@ -190,6 +255,24 @@ class ColumnTrack:
             involved_columns.add(column.column_id)
         return sorted(list(involved_columns))
 
+    def get_all_involved_column_ids_detailed(self) -> List[ColumnUsageHistory]:
+        """
+        Returns a list of all column IDs together with their history of expression name and type.
+        """
+        # get all columns from parents and scanned columns
+        histories = []
+        for parent in self.parents:
+            current_history = ExpressionHistoryElement.from_expression_info(self.expression)
+            parent_histories = parent.get_all_involved_column_ids_detailed()
+            for history in parent_histories:
+                history.history.append(current_history)
+                histories.append(history)
+
+        for column in self.scanned_columns:
+            history_element = ExpressionHistoryElement.from_column(column)
+            histories.append(ColumnUsageHistory(column_id=column.column_id, history=[history_element]))
+        return histories
+
 
 def get_column_indices_references(expression: str) -> List[int]:
     """
@@ -211,14 +294,22 @@ class ColumnTrackExpressionMatch:
 
 
 class ColumnUsage:
-    def __init__(self, query_id: int, node_id: str, column_ids: List[int], expression: str, expression_result_type: str,
-                 usage_type: ColumnUsageType):
+    def __init__(self, query_id: int, node_id: str, column_ids: List[int], column_histories: List[ColumnUsageHistory], expression: str, expression_result_type: str,
+                 usage_type: ColumnUsageType, meta_data: Optional[dict] = None):
         self.query_id = query_id
         self.node_id = node_id
         self.column_ids = column_ids
+        self.column_id_histories = column_histories
         self.expression = expression
         self.expression_result_type = expression_result_type
         self.usage_type = usage_type
+        self.meta_data = meta_data if meta_data is not None else {}
+
+    def get_histories_as_json(self) -> List[dict]:
+        """
+        Returns the column histories as a list of dictionaries.
+        """
+        return [history.to_json() for history in self.column_id_histories]
 
     @staticmethod
     def from_column_track(
@@ -226,17 +317,22 @@ class ColumnUsage:
             query_id: int,
             node_id: str,
             usage_type: ColumnUsageType,
+            meta_data: Optional[Dict] = None
     ) -> 'ColumnUsage':
+
         return ColumnUsage(
             query_id=query_id,
             node_id=node_id,
             column_ids=match.get_all_involved_column_ids(),
+            column_histories=match.get_all_involved_column_ids_detailed(),
             expression=match.expression.expression,
             expression_result_type=match.base_type,
             usage_type=usage_type,
+            meta_data=meta_data
         )
 
     def __repr__(self):
         return f"ColumnUsage(query_id={self.query_id}, column_ids={self.column_ids}, " \
                f"expression='{self.expression}', expression_result_type='{self.expression_result_type}', " \
-               f"usage_type='{self.usage_type}')"
+               f"usage_type='{self.usage_type}', node_id='{self.node_id}', " \
+                f"meta_data={self.meta_data})"

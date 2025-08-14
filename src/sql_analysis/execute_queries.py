@@ -15,7 +15,8 @@ from src.sql_analysis.execution.transform_insert import transform_insert_to_crea
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key, EXECUTABLE_QUERIES_TABLE_NAME, \
     REPO_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_USAGES_TABLE_NAME, \
-    TABLES_DATA_FILES_TABLE_NAME, QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME
+    TABLES_DATA_FILES_TABLE_NAME, QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
+    COLUMN_USAGES_HISTORY_TABLE_NAME
 from src.sql_analysis.plan_analysis.analyse_plans import analyse_plans
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
 
@@ -286,9 +287,9 @@ def populate_empty_tables(tables: List[Table], sandbox_con: duckdb.DuckDBPyConne
     return ids
 
 
-def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo_url: str,
+                  con: duckdb.DuckDBPyConnection,
                   sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table], try_fix: bool) -> MockQueryResult:
-
     result: MockQueryResult = try_to_mock_and_execute_query(sandbox_con, sql_prepared, tables)
     if result.was_successful():
         global success_id_counter
@@ -308,7 +309,8 @@ def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo
         if fixed_sql:
             sql = fixed_sql
             sql_prepared = fixed_sql
-            return execute_query(query_id, sql, sql_prepared, repo_id, repo_url,  con, sandbox_con, tables, try_fix=False)
+            return execute_query(query_id, sql, sql_prepared, repo_id, repo_url, con, sandbox_con, tables,
+                                 try_fix=False)
 
         global error_id_counter
         error_id_counter += 1
@@ -322,6 +324,7 @@ def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo
          """)
 
     return result
+
 
 def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
                     tables: List[Table], query_id: Optional[int] = None):
@@ -418,7 +421,8 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             """)
             n_failed_view_creations += 1
     if n_views > 0:
-        logging.info(f"Processed {n_views} view creation queries in repo {repo_id} ({repo_url}), successfully created {n_success} views, failed to create {n_views - n_success} views.")
+        logging.info(
+            f"Processed {n_views} view creation queries in repo {repo_id} ({repo_url}), successfully created {n_success} views, failed to create {n_views - n_success} views.")
 
 
 def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] = None):
@@ -501,16 +505,32 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
     """)
 
     create_usages_table_query = f"""
-           CREATE OR REPLACE TABLE {COLUMN_USAGES_TABLE_NAME} (
-               id INTEGER,
-               query_id INTEGER,
-               node_id VARCHAR,
-               column_ids INTEGER[],
-               expression VARCHAR,
-               expression_result_type VARCHAR,
-               usage_type VARCHAR)
+        CREATE OR REPLACE TABLE {COLUMN_USAGES_TABLE_NAME} (
+            id INTEGER,
+            query_id INTEGER,
+            node_id VARCHAR,
+            column_ids INTEGER[],
+            expression VARCHAR,
+            expression_result_type VARCHAR,
+            usage_type VARCHAR,
+            meta_data JSON
+        )
        """
     con.execute(create_usages_table_query)
+
+    create_usage_history_table_query = f"""
+        CREATE OR REPLACE TABLE {COLUMN_USAGES_HISTORY_TABLE_NAME} (
+            usage_id INTEGER,
+            column_id INTEGER,
+            history STRUCT(
+                    expression VARCHAR,
+                    expression_type VARCHAR,
+                    expression_class VARCHAR,
+                    expression_result_type VARCHAR
+                )[]
+            )
+    """
+    con.execute(create_usage_history_table_query)
 
     error_count = 0
     success_count = 0
@@ -532,7 +552,6 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
                 logging.error("Not all tables have been deleted")
 
             tables = create_tables(repo_id, repo_url, con, sandbox_con)
-
 
             new_tables = populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
             tables.extend(new_tables)
@@ -577,10 +596,11 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
         print("No errors occurred during execution")
 
     if n_successful_view_creations > 0 or n_failed_view_creations > 0:
-        print(f"Successfully created {n_successful_view_creations} views, failed to create {n_failed_view_creations} views.")
+        print(
+            f"Successfully created {n_successful_view_creations} views, failed to create {n_failed_view_creations} views.")
 
     con.close()
 
 
 if __name__ == "__main__":
-    execute_repo_queries(repo_id=2369, query_id=None)
+    execute_repo_queries(repo_id=40976, query_id=None)

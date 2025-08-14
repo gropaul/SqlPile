@@ -5,30 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-from src.config import PLOTS_DIR, DATABASE_PATH
-
-
-def usage_type_to_operator(usage_type: str) -> str:
-    usage_to_operator_map = {
-        'TOP_N_KEY': 'ORDER BY',
-        'SCAN_LOOKUP': 'SCAN',
-        'SCAN_FILTER': 'SCAN_FILTER',
-        'PROJECTION': 'PROJECTION',
-        'ORDER_KEY': 'ORDER BY',
-        'JOIN_KEY': 'JOIN',
-        'GROUP_KEY': 'GROUP',
-        'DISTINCT_KEY': 'GROUP',
-        'FILTER': 'FILTER',
-        'AGGREGATE': 'AGGREGATE',
-        'WINDOW_EXPRESSION': 'WINDOW',
-    }
-
-    if usage_type not in usage_to_operator_map:
-        raise ValueError(
-            f"Unknown usage type: '{usage_type}'. Known types: {list(usage_to_operator_map.keys())}"
-        )
-
-    return usage_to_operator_map[usage_type]
+from src.config import PLOTS_DIR, DATABASE_PATH, get_con
 
 
 def get_operator_stats():
@@ -36,8 +13,7 @@ def get_operator_stats():
     Create a view with the number of operators in a query
     """
 
-    con = duckdb.connect(DATABASE_PATH, read_only=True)
-    con.create_function("usage_type_to_operator", usage_type_to_operator, [str], str, type="native")
+    con = get_con()
 
     # get the number of queries per type
     df = con.execute("""

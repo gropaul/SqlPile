@@ -78,7 +78,7 @@ SOURCE_CODE_FILE_EXTENSIONS = [
 ]
 
 PREPARE_SQL_STATICALLY_MACRO = """
-CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
+CREATE OR REPLACE TEMP MACRO prepare_select_statically(sql) AS
     sql
     -- backticks → double quotes
     .replace('`', '"')
@@ -90,23 +90,22 @@ CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
     -- transform ${x} → #{x}
     .regexp_replace('\\$\\{(\\w+)\\}', '#{\\1}', 'g')
     -- transform quoted date: 'YYYY - MM - DD' → 'YYYY-MM-DD'
-    .regexp_replace('''(\d{4})\s*-\s*(\d{2})\s*-\s*(\d{2})''', '''\\1-\\2-\\3''', 'g')
+    .regexp_replace('''(\\d{4})\\s*-\\s*(\\d{2})\\s*-\\s*(\\d{2})''', '''\\1-\\2-\\3''', 'g')
 
     -- transform quoted timestamp: 'YYYY - MM - DD HH:MM:SS' → 'YYYY-MM-DD HH:MM:SS'
-    .regexp_replace('''(\d{4})\s*-\s*(\d{2})\s*-\s*(\d{2})\s+(\d{2}:\d{2}:\d{2})''', '''\\1-\\2-\\3 \\4''', 'g')
+    .regexp_replace('''(\\d{4})\\s*-\\ss*(\\d{2})\\s*-\\s*(\\d{2})\\s+(\\d{2}:\\d{2}:\\d{2})''', '''\\1-\\2-\\3 \\4''', 'g')
 
     -- remove JOIN FETCH clauses: from owner left join fetch owner.pets -> from owner left join pets
-    .regexp_replace('(?i)(left|right|inner|outer)?\s*join\s+fetch\s+\w+\.(\w+)', '\\1 join \\2', 'g')
+    .regexp_replace('(?i)(left|right|inner|outer)?\\s*join\\s+fetch\\s+\\w+\\.(\\w+)', '\\1 join \\2', 'g')
 
     -- remove INSERT IGNORE and REPLACE it with INSERT
     .replace('insert ignore', 'insert')
-    -- function renames
-    .replace('date_format', 'strftime')
 
     -- date stuff 
-    .replace('to_timestamp', 'strptime')
-    .replace('to_date', 'strptime')
-
+      .regexp_replace('(?i)(date_format)(\s*\()', 'strftime\2', 'g')
+      .regexp_replace('(?i)(to_timestamp)(\s*\()', 'strptime\2', 'g')
+      .regexp_replace('(?i)(to_date)(\s*\()', 'strptime\2', 'g')
+  
     -- Replace common Java-style or MySQL-style format strings with DuckDB-style
     .replace('yyyy - mm - dd', '%Y - %m - %d')
     .replace('yyyy-mm-dd', '%Y-%m-%d')
@@ -130,6 +129,7 @@ CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
                     'g')
 ;
 """
+
 
 def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(path, read_only=read_only)
@@ -179,12 +179,39 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
 
         return bool(pattern.match(cleaned_query))
 
+    def usage_type_to_operator(usage_type: str) -> str:
+        usage_to_operator_map = {
+            'TOP_N_KEY': 'ORDER_BY',
+            'SCAN_LOOKUP': 'SCAN',
+            'SCAN_FILTER': 'SCAN_FILTER',
+            'PROJECTION': 'PROJECTION',
+            'ORDER_KEY': 'ORDER BY',
+            'JOIN_KEY': 'JOIN',
+            'GROUP_KEY': 'GROUP',
+            'DISTINCT_KEY': 'GROUP',
+            'FILTER': 'FILTER',
+            'AGGREGATE': 'AGGREGATE',
+            'WINDOW_EXPRESSION': 'WINDOW',
+            'JOIN_MATERIALIZATION': 'JOIN',
+            'ORDER_MATERIALIZATION': 'ORDER_BY',
+        }
+
+        if usage_type not in usage_to_operator_map:
+            raise ValueError(
+                f"Unknown usage type: '{usage_type}'. Known types: {list(usage_to_operator_map.keys())}"
+            )
+
+        return usage_to_operator_map[usage_type]
+
     # register the UDF
     con.create_function("get_table_name_udf", udf_get_table_name_from_create, null_handling="special")
     con.create_function("is_create_view_udf", udf_is_create_view, null_handling="special")
+    con.create_function("usage_type_to_operator", usage_type_to_operator, [str], str, type="native")
+
     con.execute(PREPARE_SQL_STATICALLY_MACRO)
 
     return con
+
 
 # Configure logging
 def setup_logging():

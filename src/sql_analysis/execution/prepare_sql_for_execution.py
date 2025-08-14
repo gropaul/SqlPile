@@ -15,9 +15,14 @@ def prepare_select_statically(sql: str) -> str:
     sql = sql.replace('= =', '=')
 
     # ddb date format is called 'strftime'
-    sql = sql.replace('date_format', 'strftime')
-    sql = sql.replace('to_timestamp', 'strptime')
-    sql = sql.replace('to_date', 'strptime')
+    pattern = r'\b(date_format|to_timestamp|to_date)\b(?=\s*\()'
+    replacements = {
+        'date_format': 'strftime',
+        'to_timestamp': 'strptime',
+        'to_date': 'strptime'
+    }
+
+    sql = re.sub(pattern, lambda m: replacements[m.group(1)], sql)
 
     # replace the 'yyyy - mm - dd h:m:s' to '%Y - %m - %d %H:%M:%S'
 
@@ -49,5 +54,6 @@ def prepare_select_statically(sql: str) -> str:
 def escape_for_insert(sql: Optional[str]) -> Optional[str]:
     if sql is None:
         return None
+    sql.replace('"', "'")  # Replace double quotes with single quotes for SQL compatibility
     # Escape single quotes by replacing them with two single quotes
     return sql.replace("'", "''")

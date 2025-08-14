@@ -1,15 +1,18 @@
 import os
 
 import duckdb
+from typing import Literal
 
 from src.config import DATABASE_PATH, DATA_DIR
 from src.sql_analysis.load_schemapile_json_to_ddb import TABLES_DATA_FILES_TABLE_NAME
 
 
-def add_tpch():
+Benchmark = Literal['tpc-h', 'tpc-ds']
+
+def add_tpc(benchmark: Benchmark):
 
     con = duckdb.connect(DATABASE_PATH)
-    tpch_dir = os.path.join(DATA_DIR, 'tpc', 'tpc-h')
+    tpch_dir = os.path.join(DATA_DIR, 'tpc', benchmark)
     queries_path = os.path.join(tpch_dir, 'queries.csv')
     schemas_path = os.path.join(tpch_dir, 'schema.sql')
 
@@ -24,8 +27,8 @@ def add_tpch():
     all_queries = creates + selects
     query_types = ['CREATE'] * len(creates) + ['SELECT'] * len(selects)
 
-    repo_name = '3rd-party-tpc-h'
-    repo_url = 'https://github.com/3rd-party/3rd-party-tpc-h'
+    repo_name = f'3rd-party-{benchmark}'
+    repo_url = f'https://github.com/3rd-party/3rd-party-{benchmark}'
 
     # check if the repo already exists
     repo_exists = con.execute(f"""
@@ -90,4 +93,5 @@ def add_tpch():
 
 
 if __name__ == "__main__":
-    add_tpch()
+    add_tpc('tpc-h')
+    add_tpc('tpc-ds')

@@ -96,14 +96,22 @@ def create_metric_plots_by_usage_type():
 
     # Now create the value_stats view
     con.execute("""
-        CREATE OR REPLACE TABLE value_stats AS
         -- CREATE TABLE IF NOT EXISTS value_stats AS
+        CREATE OR REPLACE TABLE value_stats AS
         WITH usages AS (
-                SELECT unnest(column_ids) as column_id, unifiy_usage_types(usage_type) as usage_type, expression
-                FROM column_usages
+                SELECT id, unnest(column_ids) as column_id, usage_type, expression
+                FROM column_usages 
+                WHERE meta_data.right_table_is_chunk_get is not True 
+                ORDER BY column_id
+                
             ),
+        usages_filtered AS (
+          SELECT history.column_id, usage_type, expression FROM usages 
+          JOIN column_usage_history history ON history.column_id = usages.column_id AND history.usage_id = usages.id
+          WHERE len(list_distinct(list_transform(history[:-2], x -> x.expression_class))) <= 1
+        ),
         usages_aggs AS (
-          PIVOT usages
+          PIVOT usages_filtered
           ON usage_type
           USING ifnull(LIST(expression), []) as USAGE_EXPRESSIONS
         ), 
@@ -154,7 +162,7 @@ def create_metric_plots_by_usage_type():
            SELECT column_id as column_id_llm, semantic_type as semantic_type_llm 
            FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv'
          ) AS st ON st.column_id_llm = columns.id
-          ORDER BY value_aggs.column_id;
+        ORDER BY value_aggs.column_id;
     """)
 
     print("Value stats view created successfully.")

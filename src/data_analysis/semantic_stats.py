@@ -38,7 +38,6 @@ SEMANTIC_RULES: List[Tuple[str, List[str]]] = [
 ]
 
 
-
 def column_name_to_semantic_type_syntactic(column_name: str) -> Optional[str]:
     column_name = column_name.lower()
 

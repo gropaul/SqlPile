@@ -61,20 +61,25 @@ def get_results(con: duckdb.DuckDBPyConnection, usage_types: List[str], group_co
     for usage in usage_types:
         query = f"""
             WITH unnested_ids AS (
-                SELECT id, query_id, unnest(column_ids) AS column_id, unifiy_usage_types(usage_type) as usage_type, expression
+                SELECT id, query_id, unnest(column_ids) AS column_id, unifiy_usage_types(usage_type) as usage_type, expression, meta_data
                 FROM column_usages
             )
             SELECT 
                 usage_type, {group_column}, 
-                COUNT(column_id) as column_cnt, 
-                COUNT(DISTINCT column_id) as column_distinct_cnt, 
+                COUNT(unnested_ids.column_id) as column_cnt, 
+                COUNT(DISTINCT unnested_ids.column_id) as column_distinct_cnt, 
                 COUNT(DISTINCT query_id) as query_cnt, 
                 COUNT(DISTINCT repo_id) as repo_cnt
             FROM unnested_ids
             JOIN columns ON columns.id = unnested_ids.column_id 
             JOIN queries q on q.id = query_id
+            JOIN column_usage_history history ON history.column_id = unnested_ids.column_id AND history.usage_id = unnested_ids.id
             {join_clause}
-            WHERE usage_type = '{usage}' AND ({where_clause})
+            WHERE 
+                usage_type = '{usage}' AND 
+                ({where_clause}) AND 
+                meta_data.right_table_is_chunk_get is not True AND 
+                len(list_distinct(list_transform(history[:-2], x -> x.expression_class))) <= 1
             GROUP BY all 
             ORDER BY usage_type, column_cnt DESC;
         """
@@ -343,5 +348,6 @@ if __name__ == "__main__":
 
     column_physical_type_usage_plot(con, usage_types)
     column_semantic_type_sato_usage_plot(con, usage_types)
-    column_semantic_type_syntactic_usage_plot(con, usage_types)
     column_semantic_type_llm_usage_plot(con, usage_types)
+    column_semantic_type_syntactic_usage_plot(con, usage_types)
+

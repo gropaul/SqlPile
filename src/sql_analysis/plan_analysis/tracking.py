@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional
 
 from src.config import logger
 from src.sql_analysis.plan_analysis.models import ExpressionInfo, ColumnTrack, ColumnTrackExpressionMatch, ColumnUsage, \
@@ -17,7 +17,7 @@ def get_column_bindings(expression: ExpressionInfo) -> List[ExpressionInfo]:
 
     return column_bindings
 
-def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTrack]) -> ColumnTrackExpressionMatch:
+def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTrack], usage: ColumnUsageType) -> ColumnTrackExpressionMatch:
     expression_column_bindings = get_column_bindings(expression)
     bound_tracks = []
 
@@ -25,7 +25,7 @@ def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTr
     for binding in expression_column_bindings:
         # check if the binding id exists in the tracks
         if len(tracks) <= binding.binding.column_id:
-            logger.error(f"Binding column id {binding.binding.column_id} is out of bounds for tracks length {len(tracks)}")
+            logger.error(f"For {usage}: Binding column id {binding.binding.column_id} is out of bounds for tracks length {len(tracks)}")
             continue
         bound_tracks.append(tracks[binding.binding.column_id])
 
@@ -36,8 +36,8 @@ def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTr
 
 
 def track_and_find_usage(expression: ExpressionInfo, query_id: int, node_id: str, children_tracks: List[ColumnTrack],
-                         usage: ColumnUsageType, binding: TableColumnBinding = TableColumnBinding.empty()) -> Tuple[ColumnTrack, ColumnUsage]:
-    match: ColumnTrackExpressionMatch = match_tracks_to_expression(expression, children_tracks)
+                         usage: ColumnUsageType, binding: TableColumnBinding = TableColumnBinding.empty(), meta_data: Optional[Dict] = None) -> Tuple[ColumnTrack, ColumnUsage]:
+    match: ColumnTrackExpressionMatch = match_tracks_to_expression(expression, children_tracks, usage)
     _, projection_base_type = unify_type(expression.return_type)
 
     track = ColumnTrack(
@@ -52,7 +52,8 @@ def track_and_find_usage(expression: ExpressionInfo, query_id: int, node_id: str
         match=track,
         query_id=query_id,
         node_id=node_id,
-        usage_type=usage
+        usage_type=usage,
+        meta_data=meta_data if meta_data is not None else {},
     )
 
     return track, column_usage

@@ -117,4 +117,4 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
 
 
 if __name__ == "__main__":
-    get_schemas_from_create_query(repo_id=None)
+    get_schemas_from_create_query(repo_id=40976)
