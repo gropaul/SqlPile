@@ -5,9 +5,8 @@ import duckdb
 import pandas as pd
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH, logger, QUERIES_DIR_PARTITIONED
-from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_TABLE_NAME, REPO_TABLE_NAME, \
-    FILES_META_DATA_TABLE_NAME, FILES_TABLE_NAME
+from src.config import DATABASE_PATH, logger, QUERIES_DIR_PARTITIONED, REPO_TABLE_NAME, FILES_TABLE_NAME, \
+    FILES_META_DATA_TABLE_NAME, QUERIES_TABLE_NAME
 
 
 def get_all_parquet_files(root: str) -> List[str]:

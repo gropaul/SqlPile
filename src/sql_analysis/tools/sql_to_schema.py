@@ -4,6 +4,8 @@ from typing import List
 from sqloxide import parse_sql
 from tree_sitter_language_pack import get_parser
 
+from src.sql_analysis.execution.models import Table
+
 
 @dataclass
 class ColumnInfo:

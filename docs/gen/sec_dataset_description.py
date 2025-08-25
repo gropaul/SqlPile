@@ -1,10 +1,8 @@
 import os.path
 
 from docs.gen.utils import format_number, join_list_with_and, format_latex_string
-from src.config import GENERATED_SECTIONS_DIR, get_con
+from src.config import GENERATED_SECTIONS_DIR, get_con, QUERIES_TABLE_NAME
 import duckdb
-
-from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_TABLE_NAME
 
 # the section name is the filename without the extension
 SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")

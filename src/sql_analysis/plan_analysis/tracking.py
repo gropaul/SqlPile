@@ -21,7 +21,6 @@ def match_tracks_to_expression(expression: ExpressionInfo, tracks: List[ColumnTr
     expression_column_bindings = get_column_bindings(expression)
     bound_tracks = []
 
-
     for binding in expression_column_bindings:
         # check if the binding id exists in the tracks
         if len(tracks) <= binding.binding.column_id:

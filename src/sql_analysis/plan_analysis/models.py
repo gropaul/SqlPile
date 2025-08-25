@@ -192,10 +192,10 @@ class ColumnUsageHistory:
     def to_json(self) -> dict:
         return {
             'column_id': self.column_id,
-            'history': self.history_to_json()
+            'history': self.history_to_dict()
         }
 
-    def history_to_json(self) -> List[dict]:
+    def history_to_dict(self) -> List[dict]:
         """
         Returns the history as a list of dictionaries.
         """

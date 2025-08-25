@@ -21,11 +21,19 @@ DATABASE_PATH = os.path.join(DATA_DIR, 'schemapile.duckdb')
 TMP_DIR = os.path.join(DATA_DIR, "tmp")
 DATABASE_TMP_DIR = os.path.join(TMP_DIR, "databases")
 GENERATED_SECTIONS_DIR = os.path.join(ROOT, "docs", "tex", "gen")
+LATEX_ASSETS_DIR = os.path.join(ROOT, "docs", "tex", "assets")
+
+QUERY_RUN_TIMEOUT_SECONDS = 3 # Timeout for running queries in seconds
+
+TPC_DATA_DIR = os.path.join(DATA_DIR, "tpc")
+SQL_STORM_DATA_DIR = os.path.join(DATA_DIR, "sql_storm")
+SQL_STORM_REPO_DIR = os.path.join(ROOT, "external", "SQLStorm")
 
 # config
 ONLY_SCRAPE_SELECT_QUERIES = False
 CHARACTERS_BEFORE_AND_AFTER_QUERY = 400
 HEADER_N_LINES = 30  # Number of header lines to keep for each file that contains SQL queries
+MAX_VALUES_TO_SAVE_PER_COLUMN = 1000  # Maximum number of values to save per column in the database
 
 RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing
@@ -35,7 +43,8 @@ PROCESS_ZIPPED_REPOS = False
 LOG_TO_FILE = False  # Whether to log to a file or not
 
 # create all directories if they do not exist
-DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR_RAW, TMP_DIR, DATABASE_TMP_DIR, GENERATED_SECTIONS_DIR]
+DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR_RAW, TMP_DIR, DATABASE_TMP_DIR, GENERATED_SECTIONS_DIR,
+        LATEX_ASSETS_DIR, TPC_DATA_DIR, SQL_STORM_DATA_DIR]
 
 for directory in DIRS:
     if not os.path.exists(directory):
@@ -134,6 +143,55 @@ CREATE OR REPLACE TEMP MACRO prepare_select_statically(sql) AS
 def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(path, read_only=read_only)
 
+    def format_number_as_percentage(value: float) -> str:
+        """Format a number as a percentage with two decimal places."""
+        if value is None:
+            return "NULL"
+        return f"{value * 100:.2f}%"
+
+    # Register the custom function to format numbers as percentages
+    con.create_function("as_percentage", format_number_as_percentage, [float], str, type="native")
+
+    def unifiy_usage_types(usage_type: str) -> str:
+        usage_to_operator_map = {
+            'TOP_N_KEY': 'Order Key',
+            'SCAN_LOOKUP': 'Scan',
+            'SCAN_FILTER': 'Filter',  # When changing, make sure, Filtered Scan > Scan
+            'PROJECTION': 'Projection',
+            'ORDER_KEY': 'Order Key',
+            'JOIN_KEY': 'Join Key',
+            'GROUP_KEY': 'Group Key',
+            'DISTINCT_KEY': 'Group Key',
+            'FILTER': 'Filter',
+            'AGGREGATE': 'Aggregate',  # When changing, make sure, Ungrouped Aggregate > Grouped Aggregate
+            'WINDOW_EXPRESSION': 'Window Function',
+            'JOIN_MATERIALIZATION': 'Payload Column',
+            'ORDER_MATERIALIZATION': 'Payload Column',
+        }
+
+        if usage_type not in usage_to_operator_map:
+            raise ValueError(
+                f"Unknown usage type: '{usage_type}'. Known types: {list(usage_to_operator_map.keys())}"
+            )
+        return usage_to_operator_map[usage_type]
+
+    con.create_function(
+        "unifiy_usage_types",
+        unifiy_usage_types,
+        null_handling='SPECIAL',
+    )
+
+    def get_repo_origin(repo_url: str) -> str:
+
+        if repo_url.startswith("https://github.com/3rd-party/3rd-party-tpc"):
+            return "TPC"
+        elif repo_url.startswith("https://github.com/3rd-party/3rd-party-sql-storm"):
+            return "SQLStorm"
+        else:
+            return "SqlPile"
+
+    con.create_function("get_repo_origin", get_repo_origin, [str], str, type="native")
+
     def udf_get_table_name_from_create(query: str) -> Optional[str]:
         # Remove extra whitespace and normalize casing for matching
         cleaned_query = re.sub(r'\s+', ' ', query.strip()).lower()
@@ -181,19 +239,19 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
 
     def usage_type_to_operator(usage_type: str) -> str:
         usage_to_operator_map = {
-            'TOP_N_KEY': 'ORDER_BY',
-            'SCAN_LOOKUP': 'SCAN',
-            'SCAN_FILTER': 'SCAN_FILTER',
-            'PROJECTION': 'PROJECTION',
-            'ORDER_KEY': 'ORDER BY',
-            'JOIN_KEY': 'JOIN',
-            'GROUP_KEY': 'GROUP',
-            'DISTINCT_KEY': 'GROUP',
-            'FILTER': 'FILTER',
-            'AGGREGATE': 'AGGREGATE',
-            'WINDOW_EXPRESSION': 'WINDOW',
-            'JOIN_MATERIALIZATION': 'JOIN',
-            'ORDER_MATERIALIZATION': 'ORDER_BY',
+            'TOP_N_KEY': 'Order By',
+            'SCAN_LOOKUP': 'Scan',
+            'SCAN_FILTER': 'Filtered Scan',  # When changing, make sure, Filtered Scan > Scan
+            'PROJECTION': 'Projection',
+            'ORDER_KEY': 'Order By',
+            'JOIN_KEY': 'Join',
+            'GROUP_KEY': 'Grouped Aggregate',
+            'DISTINCT_KEY': 'Grouped Aggregate',
+            'FILTER': 'Filter',
+            'AGGREGATE': 'Ungrouped Aggregate',  # When changing, make sure, Ungrouped Aggregate > Grouped Aggregate
+            'WINDOW_EXPRESSION': 'Window Function',
+            'JOIN_MATERIALIZATION': 'Join',
+            'ORDER_MATERIALIZATION': 'Order By',
         }
 
         if usage_type not in usage_to_operator_map:
@@ -210,6 +268,26 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
 
     con.execute(PREPARE_SQL_STATICALLY_MACRO)
 
+    con.execute("""
+                CREATE OR REPLACE TEMP VIEW values_often AS
+                WITH filtered_values AS (
+                    SELECT column_id, value
+                    FROM column_values
+                    WHERE value != 'example text' 
+                        AND value != 'None'
+                        AND length(value) > 0
+                        AND value IS NOT NULL
+                ),
+                often AS (
+                    SELECT column_id
+                    FROM filtered_values
+                    GROUP BY column_id
+                    HAVING COUNT(value) > 0
+                )
+                SELECT column_id, value
+                FROM filtered_values
+                WHERE column_id IN (SELECT column_id FROM often);
+        """)
     return con
 
 
@@ -243,3 +321,20 @@ def setup_logging():
 
 # Initialize logger
 logger = setup_logging()
+REPO_TABLE_NAME = 'repos'
+REPO_META_DATA_FILES_TABLE_NAME = 'repos_meta_data'
+FILES_TABLE_NAME = 'files'
+FILES_META_DATA_TABLE_NAME = 'repo_meta_data_files'
+TABLES_TABLE_NAME = 'tables'
+TABLES_DATA_FILES_TABLE_NAME = 'table_data_files'
+COLUMNS_TABLE_NAME = 'columns'
+COLUMN_VALUES_TABLE_NAME = 'column_values'
+COLUMN_VALUES_COUNT_TABLE_NAME = 'column_values_count'
+COLUMN_USAGES_TABLE_NAME = 'column_usages'
+COLUMN_USAGES_HISTORY_TABLE_NAME = 'column_usage_history'
+QUERIES_TABLE_NAME = 'queries'
+EXECUTABLE_QUERIES_TABLE_NAME = 'queries_executable'
+QUERIES_ERROR_SELECT_TABLE_NAME = 'queries_error_select'
+QUERIES_ERROR_CREATE_TABLE_NAME = 'queries_error_create'
+QUERIES_ERROR_CREATE_VIEW_TABLE_NAME = 'queries_error_create_view'
+QUERIES_ERROR_INSERT_TABLE_NAME = 'queries_error_insert'

@@ -2,12 +2,12 @@ import json
 from typing import List, Dict
 
 import duckdb
+import pandas as pd
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH, logger
+from src.config import DATABASE_PATH, logger, COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import escape_for_insert
-from src.sql_analysis.load_schemapile_json_to_ddb import COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME
 from src.sql_analysis.plan_analysis.analyze_nodes import analyze_node
 
 
@@ -45,12 +45,12 @@ def initialize_tables(table_structs: List[Dict]) -> List[Table]:
 
 def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int, query_id: int = None):
 
-    min_usage_id = con.execute(f"""
+    current_usage_id = con.execute(f"""
         SELECT MIN(id) + 1 FROM {COLUMN_USAGES_TABLE_NAME}
     """).fetchone()[0]
 
-    if min_usage_id is None:
-        min_usage_id = 0
+    if current_usage_id is None:
+        current_usage_id = 0
 
     plans_query = f"""
         SELECT 
@@ -98,37 +98,57 @@ def analyse_plans(con: duckdb.DuckDBPyConnection , repo_id: int, query_id: int =
         if not queries:
             logger.warning(f"No queries found for repo ID: {repo_id}")
             continue
+        n_queries = len(queries)
 
-        for query in queries:
+
+
+        for query_index, query in enumerate(queries):
             query_id = query['query_id']
             plan = json.loads(query['plan'])
-            logger.info(f"Analyzing query ID: {query_id}, Repo ID: {repo_id}, SQL: {query['sql']}")
+            logger.info(f"Analyzing query ID: {query_id} ({query_index + 1}/{n_queries}) in repo ID: {repo_id}: {query['sql']}")
             column_usages, tracks = analyze_node(query_id, plan, tables_parsed, [], )
+
+            history_rows = []
+            column_usages_row = []
 
             # Insert results into the COLUMN_USAGES_TABLE_NAME
             for column_usage in column_usages:
-                # logger.info(f"Query ID: {id}, Operator: {result.usage_type}, Expression: {result.expression}, Columns: {result.column_ids}")
-                insert_query = f"""
-                    INSERT INTO {COLUMN_USAGES_TABLE_NAME} ( id, query_id, node_id, column_ids, expression, expression_result_type, usage_type, meta_data)
-                    VALUES (
-                        {min_usage_id}, {query_id}, '{column_usage.node_id}', {json.dumps(column_usage.column_ids)}, 
-                        '{escape_for_insert(column_usage.expression)}', '{column_usage.expression_result_type}', '{column_usage.usage_type}', 
-                        '{json.dumps(column_usage.meta_data)}'
-                    )
-                """
-                con.execute(insert_query)
-
+                column_usages_row.append({
+                    "id": current_usage_id,
+                    "query_id": query_id,
+                    "node_id": column_usage.node_id,
+                    "column_ids": json.dumps(column_usage.column_ids),
+                    "expression": escape_for_insert(column_usage.expression),
+                    "expression_result_type": column_usage.expression_result_type,
+                    "usage_type": column_usage.usage_type,
+                    "meta_data": json.dumps(column_usage.meta_data)
+                })
                 for history in column_usage.column_id_histories:
-                    history_string = str(history.history_to_json()).replace('"', "'")
-                    insert_history_query = f"""
-                        INSERT INTO {COLUMN_USAGES_HISTORY_TABLE_NAME} (usage_id, column_id, history)
-                        VALUES (
-                             {min_usage_id},{history.column_id}, {history_string}
-                        )
-                    """
-                    con.execute(insert_history_query)
+                    history_rows.append({
+                        "usage_id": current_usage_id,
+                        "column_id": history.column_id,
+                        "history": history.history_to_dict()
+                    })
 
-                min_usage_id += 1
+                current_usage_id += 1
+
+
+            column_usages_df = pd.DataFrame(column_usages_row, columns=["id", "query_id", "node_id", "column_ids", "expression", "expression_result_type", "usage_type", "meta_data"])
+            insert_query = f"""
+                                INSERT INTO {COLUMN_USAGES_TABLE_NAME} ( id, query_id, node_id, column_ids, expression, expression_result_type, usage_type, meta_data)
+                                SELECT * FROM column_usages_df
+                            """
+            con.execute(insert_query)
+
+            history_df = pd.DataFrame(history_rows, columns=["usage_id", "column_id", "history"])
+            insert_history_query = f"""
+                               INSERT INTO {COLUMN_USAGES_HISTORY_TABLE_NAME} (usage_id, column_id, history)
+                               SELECT * FROM history_df
+                           """
+            con.execute(insert_history_query)
+
+
+
 
 
 if __name__ == "__main__":

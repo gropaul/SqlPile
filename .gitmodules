@@ -1,3 +1,6 @@
 [submodule "tools/tree-sitter-java"]
 	path = tools/tree-sitter-java
 	url = https://github.com/tree-sitter/tree-sitter-java
+[submodule "external/SQLStorm"]
+	path = external/SQLStorm
+	url = https://github.com/SQL-Storm/SQLStorm

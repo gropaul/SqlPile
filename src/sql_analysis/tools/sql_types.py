@@ -109,7 +109,7 @@ def unify_type(raw_type: str) -> Tuple[str, BaseType]:
     t = raw_type.strip().lower()
 
     # handle "number" type (see https://www.ibm.com/docs/en/db2-warehouse?topic=compatability-number)
-    if t == 'number' or t == 'numeric' or t == 'decimal':
+    if t == 'number' or t == 'numeric':
         return t, 'Int'
 
     # if there is a precistion scale, try to cast it
@@ -176,3 +176,8 @@ def unify_type(raw_type: str) -> Tuple[str, BaseType]:
 
     # --- fallback ---
     return "OTHER", "OTHER"
+
+
+def test_decimal():
+    type = 'DECIMAL(7,2)'
+    canonical, base_type = unify_type(type)

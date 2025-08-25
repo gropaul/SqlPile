@@ -1,10 +1,14 @@
 import json
-from typing import Literal, List, Optional, Dict
+import logging
+import threading
+from typing import Literal, List, Optional, Dict, Any
 
 import duckdb
 from sqloxide import parse_sql, mutate_expressions
 
+from src.config import QUERY_RUN_TIMEOUT_SECONDS
 from src.sql_analysis.execution.models import Table
+from src.sql_analysis.execution.utils import execute_with_timeout
 
 MockType = Literal['int', 'float', 'str']
 
@@ -58,6 +62,9 @@ def visit_placeholders_turn_null(expr):
 
     return expr
 
+
+
+
 def try_to_mock_and_execute_query( sandbox_con: duckdb.DuckDBPyConnection, sql: str, tables: List[Table]) -> MockQueryResult:
     original_successful_query = None
     executed_query = None
@@ -83,7 +90,7 @@ def try_to_mock_and_execute_query( sandbox_con: duckdb.DuckDBPyConnection, sql: 
         executed_query = nulled_sql
 
         sql = f"{setting_queries}; EXPLAIN (FORMAT JSON) {executed_query};"
-        plans = sandbox_con.execute(sql).fetchall()
+        plans = execute_with_timeout(sandbox_con, sql, timeout=QUERY_RUN_TIMEOUT_SECONDS)
 
         # dict_keys(['logical_plan', 'logical_opt', 'logical_opt_detailed', 'physical_plan'])
         logical_plan_json = json.loads(plans[0][1])[0]

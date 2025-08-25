@@ -46,6 +46,7 @@
 %%
 \documentclass[sigconf,natbib=false]{style/acmart}
 \usepackage{biblatex}
+\usepackage[capitalise,nameinlink]{cleveref}
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
 \AtBeginDocument{%
@@ -191,9 +192,6 @@ Workbooks\footnote{\url{https://public.tableau.com}} that 48.8\% of all data typ
 
 However, up to now there is no detailed quantitative analysis on the performance implications of this strings in \acp{DBMS}.
 
-
-
-
 \section{Data Collection}
 The query and schema information for our dataset was collected from public GitHub repositories.
 We used the the list of GitHub repositories published by Döhmen et al.~\cite{dohmen_schemapile_2024} that were known to contain Schema Definitions.
@@ -201,6 +199,13 @@ While Döhmen et al. focused on extracting Schemainformation from database dumps
 we extracted every types of SQL statment from both SQL Files and Source Code files.
 
 \input{gen/sec_dataset_description}
+
+\section{Logical Type Analysis}
+\input{gen/sec_logical_analysis}
+
+
+\section{Semantic Type Analysis}
+\input{gen/sec_logical_analysis}
 
 \section{What types of strings are used?}
 

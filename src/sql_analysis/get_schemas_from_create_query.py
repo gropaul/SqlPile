@@ -4,11 +4,63 @@ from typing import Optional
 import duckdb
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH, get_con
-from src.sql_analysis.load_schemapile_json_to_ddb import TABLES_TABLE_NAME, COLUMNS_TABLE_NAME, QUERIES_TABLE_NAME
+from src.config import get_con, TABLES_TABLE_NAME, COLUMNS_TABLE_NAME, QUERIES_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
-from src.sql_analysis.tools.sql_to_schema import parse_create_table, clean_identifier
+from src.sql_analysis.tools.sql_to_schema import parse_create_table, clean_identifier, TableSchema
 from src.sql_analysis.tools.sql_types import unify_type
+
+
+def save_table_in_db(con: duckdb.DuckDBPyConnection, repo_id: int, table_schema: TableSchema) -> Optional[int]:
+
+    # insert the table schema into the database
+    # columns:    id, repo_id, table_name, table_name_clean, file_url
+    table_id = con.execute(f"SELECT MAX(id) FROM {TABLES_TABLE_NAME}").fetchone()[0]
+    table_id = table_id + 1 if table_id is not None else 0
+
+    column_id = con.execute(f"SELECT MAX(id) FROM {COLUMNS_TABLE_NAME}").fetchone()[0]
+    column_id = column_id + 1 if column_id is not None else 0
+
+    table_name_clean = clean_identifier(table_schema.table_name)
+
+    # check if the table already exists
+    existing_table = con.execute(f"""
+        SELECT id FROM {TABLES_TABLE_NAME} 
+        WHERE repo_id = ? AND table_name_clean = ?
+    """, (repo_id, table_name_clean)).fetchone()
+
+    if existing_table is not None:
+        return None
+
+    con.execute(f"""
+                    INSERT INTO {TABLES_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (table_id, repo_id, table_schema.table_name, table_name_clean, None))
+
+    for column in table_schema.columns:
+
+        column_name = column.name
+        column_table_index = column.table_index
+        column_type_original = column.type
+        column_type, base_type = unify_type(column_type_original)
+        semantic_type = get_column_semantic_type(column_name, base_type)
+
+
+        con.execute(f"""
+                        INSERT INTO {COLUMNS_TABLE_NAME} (
+                            id, table_id, column_name, column_table_index, column_type, column_base_type,
+                            column_type_original, semantic_type, is_unique, is_nullable,
+                            is_indexed, is_primary_key
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+            column_id, table_id, column_name, column_table_index, column_type, base_type,
+            column_type_original, semantic_type, column.is_primary_key,
+            True, False, False
+        ))
+
+        column_id = column_id + 1
+
+    return table_id
+
 
 def get_schemas_from_create_query(repo_id: Optional[int] = None):
 
@@ -59,50 +111,7 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
                                                              unit="query"):
         try:
             table_schema = parse_create_table(sql)
-
-            table_name_clean = clean_identifier(table_schema.table_name)
-
-            # check if the table already exists
-            existing_table = con.execute(f"""
-                SELECT id FROM {TABLES_TABLE_NAME} 
-                WHERE repo_id = ? AND table_name_clean = ?
-            """, (repo_id, table_name_clean)).fetchone()
-
-            if existing_table is not None:
-                continue
-
-            n_new_tables += 1
-
-            # insert the table schema into the database
-            # columns:    id, repo_id, table_name, table_name_clean, file_url
-            table_id = max_tables_id + n_new_tables
-            con.execute(f"""
-                INSERT INTO {TABLES_TABLE_NAME} (id, repo_id, table_name, table_name_clean, file_url)
-                VALUES (?, ?, ?, ?, ?)
-            """, (table_id, repo_id, table_schema.table_name, table_name_clean, None))
-
-            for column in table_schema.columns:
-                # columns: id,table_id,column_name,column_type,column_base_type,column_type_original,semantic_type,is_unique,is_nullable,is_indexed,is_primary_key
-                n_new_columns += 1
-                column_name = column.name
-                column_table_index = column.table_index
-                column_type_original = column.type
-                column_type, base_type = unify_type(column_type_original)
-                semantic_type = get_column_semantic_type(column_name, base_type)
-
-                column_id = max_columns_id + n_new_columns
-
-                con.execute(f"""
-                    INSERT INTO {COLUMNS_TABLE_NAME} (
-                        id, table_id, column_name, column_table_index, column_type, column_base_type,
-                        column_type_original, semantic_type, is_unique, is_nullable,
-                        is_indexed, is_primary_key
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    column_id, table_id, column_name, column_table_index, column_type, base_type,
-                    column_type_original, semantic_type, column.is_primary_key,
-                    True, False, False
-                ))
+            save_table_in_db(con, repo_id, table_schema)
 
         except Exception as e:
             con.execute(f"""
@@ -117,4 +126,4 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
 
 
 if __name__ == "__main__":
-    get_schemas_from_create_query(repo_id=40976)
+    get_schemas_from_create_query(repo_id=40982)

@@ -75,7 +75,7 @@ def analyze_node(query_id: int, plan: Dict, tables: List[Table], cte_occurrence:
         results.extend(child_results)
         children_tracks.append(child_tracks)
 
-        if node_operator == 'CTE':
+        if node_operator == 'CTE' or node_operator == 'REC_CTE':
             # add a cte occurrence if this is a CTE node
             cte_id = plan.get('extra_info', {}).get('Table Index', -1)
             cte = CTEOccurrence(cte_id=cte_id, cte_tracks=children_tracks[0])
@@ -94,9 +94,11 @@ def analyze_node(query_id: int, plan: Dict, tables: List[Table], cte_occurrence:
         'DELIM_JOIN': analyze_join,
         'COMPARISON_JOIN': analyze_join,
         'LOGICAL_ANY_JOIN': analyze_join,
+        'ANY_JOIN': analyze_join,
         'TOP_N': analyze_top_n,
         'LIMIT': analyze_limit,
         'CTE': analyze_cte,
+        'REC_CTE': analyze_cte,
         'CTE_SCAN': analyze_cte_scan,
         'DISTINCT': analyze_distinct,
         'CROSS_PRODUCT': analyze_cross_product,

@@ -5,10 +5,9 @@ import re
 import textwrap
 from typing import Optional, List
 import duckdb
-from src.config import get_con
+from src.config import get_con, TABLES_TABLE_NAME, COLUMNS_TABLE_NAME
 from src.sql_analysis.execution.models import Table, Column
 from src.sql_analysis.execution.prepare_sql_for_execution import escape_for_insert
-from src.sql_analysis.load_schemapile_json_to_ddb import COLUMNS_TABLE_NAME, TABLES_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_types import unify_type
 

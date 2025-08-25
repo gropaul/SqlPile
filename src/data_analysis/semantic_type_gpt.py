@@ -4,7 +4,7 @@ import pandas as pd
 from langchain_ollama import ChatOllama
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH, logger
+from src.config import DATABASE_PATH, logger, get_con
 import duckdb
 from typing import List, Dict, Any, Optional
 
@@ -43,14 +43,13 @@ CATEGORIES = [
     "FullText", "Identifier", "Email", "PhoneNumber", "Location", "URL"
 ]
 
-def get_data() -> List[List[Dict[str, Any]]]:
+def get_data(con: duckdb.DuckDBPyConnection) -> List[List[Dict[str, Any]]]:
     """
     Retrieve column data from the database and organize it into batches.
 
     Returns:
         List of batches, where each batch contains dictionaries with table_name, column_name, and values.
     """
-    con = duckdb.connect(DATABASE_PATH, read_only=True)
     con.execute("""
                   CREATE TEMP VIEW column_usages_unnested AS
                   (
@@ -59,27 +58,27 @@ def get_data() -> List[List[Dict[str, Any]]]:
                   )
                   """)
     query = """
-            SELECT list(DISTINCT column_id) as column_ids,
-                   table_name,
-                   column_name,
-                   list(DISTINCT value)[:10] as "values"
+            SELECT 
+                list(DISTINCT column_id) as column_ids,
+                table_name,
+                column_name,
+                list(DISTINCT value)[:10] as "values"
             FROM (
                 FROM column_usages_unnested 
-                WHERE column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv')
+                WHERE column_id NOT IN (
+                     SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv'
+                )
             )
-                JOIN values_often USING (column_id)
-                JOIN columns
-            on (values_often.column_id = columns.id)
-                JOIN TABLES on tables.id = columns.table_id
-                JOIN QUERIES on queries.id = query_id
-            GROUP BY table_name, column_name
-            ORDER BY table_name, column_name
+            JOIN values_often USING (column_id)
+            JOIN columns ON values_often.column_id = columns.id
+            JOIN tables ON tables.id = columns.table_id
+            GROUP BY tables.repo_id, table_name, column_name
+            ORDER BY tables.repo_id, table_name, column_name
             """
 
     result = con.execute(query).fetchall()
 
     # Create batches of 20 rows
-
 
     batches = []
 
@@ -89,13 +88,17 @@ def get_data() -> List[List[Dict[str, Any]]]:
         for row in batch:
             column_ids, table_name, column_name, values = row
 
+            # if values is None or len(values) == 0:
+            if not values or len(values) == 0:
+                logger.warning(f"No values found for {table_name}.{column_name}. Skipping this column.")
+                continue
+
             # only add values until there a maximum of 150 characters
             values_reduced = []
             total_characters = 0
 
             MAX_WIDTH = 100
             while total_characters < MAX_WIDTH and values:
-
                 remaining_characters = MAX_WIDTH - total_characters
                 value = values.pop(0)
                 values_reduced.append(value[:remaining_characters])
@@ -225,7 +228,8 @@ MODEL = 'qwen3:8b'
 
 if __name__ == "__main__":
     logger.info("Starting semantic type determination")
-    batches = get_data()
+    con = get_con(read_only=True)
+    batches = get_data(con)
     logger.info(f"Retrieved {len(batches)} batches with a total of {sum(len(batch) for batch in batches)} columns")
 
     results = process_batches(batches)

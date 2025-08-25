@@ -12,9 +12,8 @@ from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
 from sqloxide import parse_sql
 
-from src.config import DATABASE_PATH, logger
+from src.config import DATABASE_PATH, logger, QUERIES_ERROR_SELECT_TABLE_NAME
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically
-from src.sql_analysis.load_schemapile_json_to_ddb import QUERIES_ERROR_SELECT_TABLE_NAME
 
 SYSTEM_PROMPT = """
 Construct a valid sql query from this code. If there are parameters (e.g. $1, %s, :param, etc.), replace them with example values.

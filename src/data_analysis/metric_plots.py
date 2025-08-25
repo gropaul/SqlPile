@@ -71,22 +71,7 @@ def create_metric_plots_by_usage_type():
         null_handling='SPECIAL',
     )
 
-    # First, make sure the values_often view exists
-    con.execute("""
-                CREATE OR REPLACE VIEW values_often AS
-                WITH often AS (SELECT column_id
-                               FROM column_values
-                               GROUP BY column_id
-                               HAVING COUNT(DISTINCT value) > 5
-                                   OR COUNT(value) > 10)
-                SELECT column_values.column_id, column_values.value
-                FROM column_values
-                WHERE column_values.column_id IN (SELECT column_id FROM often)
-                  AND value != 'example text'
-                  and value != 'None'
-                  and len(value) > 0
-                ;
-                """)
+    # First, make sure the values_often view exist
 
     count = con.execute("""
                         SELECT COUNT(*)

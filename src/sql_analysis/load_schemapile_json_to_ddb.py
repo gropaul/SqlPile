@@ -4,28 +4,12 @@ import os
 import duckdb
 import tqdm
 
-from src.config import DATABASE_PATH, SCHEMAPILE_DIR
+from src.config import DATABASE_PATH, SCHEMAPILE_DIR, REPO_TABLE_NAME, TABLES_TABLE_NAME, COLUMNS_TABLE_NAME, \
+    EXECUTABLE_QUERIES_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_to_schema import clean_identifier
 from src.sql_analysis.tools.sql_types import unify_type
 from src.sql_scraping.analyse_repo import get_repo_name_and_url
-
-REPO_TABLE_NAME = 'repos'
-REPO_META_DATA_FILES_TABLE_NAME = 'repos_meta_data'
-FILES_TABLE_NAME = 'files'
-FILES_META_DATA_TABLE_NAME = 'repo_meta_data_files'
-TABLES_TABLE_NAME = 'tables'
-TABLES_DATA_FILES_TABLE_NAME = 'table_data_files'
-COLUMNS_TABLE_NAME = 'columns'
-COLUMN_VALUES_TABLE_NAME = 'column_values'
-COLUMN_USAGES_TABLE_NAME = 'column_usages'
-COLUMN_USAGES_HISTORY_TABLE_NAME = 'column_usage_history'
-QUERIES_TABLE_NAME = 'queries'
-EXECUTABLE_QUERIES_TABLE_NAME = 'queries_executable'
-QUERIES_ERROR_SELECT_TABLE_NAME = 'queries_error_select'
-QUERIES_ERROR_CREATE_TABLE_NAME = 'queries_error_create'
-QUERIES_ERROR_CREATE_VIEW_TABLE_NAME = 'queries_error_create_view'
-QUERIES_ERROR_INSERT_TABLE_NAME = 'queries_error_insert'
 
 repo_id_counter = 0
 table_id_counter = 0

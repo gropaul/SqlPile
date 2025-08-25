@@ -3,6 +3,10 @@ from typing import Optional
 import duckdb
 import re
 
+from src.config import QUERY_RUN_TIMEOUT_SECONDS
+from src.sql_analysis.execution.utils import execute_with_timeout
+
+
 def wrap_any_value(sql: str, column_name: str, count: int = 1) -> str:
     """
     Replace the first occurrence of <alias>.column_name  *or* column_name
@@ -45,7 +49,7 @@ def fix_group_by(sql: str, error: str, sandbox_con: duckdb.DuckDBPyConnection, d
 
     # try to execute the modified SQL
     try:
-        sandbox_con.execute(sql)
+        execute_with_timeout(sandbox_con, sql, timeout=QUERY_RUN_TIMEOUT_SECONDS)
         return sql
     except Exception as e:
         return fix_group_by(sql, str(e), sandbox_con, depth + 1)

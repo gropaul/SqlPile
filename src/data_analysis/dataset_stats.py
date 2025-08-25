@@ -1,4 +1,5 @@
 import os
+from typing import Literal
 
 import duckdb
 import matplotlib.pyplot as plt
@@ -7,13 +8,38 @@ import seaborn as sns
 
 from src.config import PLOTS_DIR, DATABASE_PATH, get_con
 
+OutputFormat = Literal['markdown', 'latex']
 
-def get_operator_stats():
+
+def format_df(
+        df: pd.DataFrame,
+        output_format: OutputFormat = 'markdown',
+        label: str = '',
+        caption: str = ''
+) -> str:
+    """
+    Format a DataFrame to a string in the specified output format.
+    """
+    if output_format == 'markdown':
+        return df.to_markdown(index=False, tablefmt="pipe")
+    elif output_format == 'latex':
+        df = df.rename(columns={c: f"\\textbf{{{c}}}" for c in df.columns})
+
+        return df.to_latex(index=False,
+                           caption=caption,
+
+                           label=label,
+                           float_format="%.3f",
+                           column_format='l' + 'c' * (len(df.columns) - 1),
+                           escape=False)
+    else:
+        raise ValueError(f"Unsupported output format: {output_format}")
+
+
+def get_query_type_query(con: duckdb.DuckDBPyConnection, output_format: OutputFormat = 'markdown') -> str:
     """
     Create a view with the number of operators in a query
     """
-
-    con = get_con()
 
     # get the number of queries per type
     df = con.execute("""
@@ -29,40 +55,106 @@ def get_operator_stats():
 
     # create a nice md table
     df = df.round(2)
-    md_table_query_types = df.to_markdown(index=False, tablefmt="pipe")
+    table_query_types = format_df(df, output_format)
 
-    df = con.execute("""
-                     WITH ops AS (SELECT query_id, node_id, usage_type_to_operator(usage_type) AS op
-                                  FROM column_usages
-                                  GROUP BY query_id, node_id, usage_type),
-                          op_counts AS (SELECT query_id, op, COUNT(*) as op_count
-                                        FROM ops
-                                        GROUP BY query_id, op),
-                          queries_count AS (SELECT COUNT(DISTINCT query_id) as query_count
-                                            FROM op_counts)
-                     SELECT oc.op                             as "Operator",
-                            SUM(oc.op_count)                  as "Total Operator Count",
-                            COUNT(DISTINCT oc.query_id)       as "Query Count with Operator",
-                            SUM(oc.op_count) / qc.query_count as "Avg Count per Query"
-                     FROM op_counts oc
-                              CROSS JOIN queries_count qc
-                     GROUP BY oc.op, qc.query_count
-                     ORDER BY #4 DESC;
-                     """).df()
+    return table_query_types
+
+
+def get_operator_table(con: duckdb.DuckDBPyConnection, output_format: OutputFormat = 'markdown',
+                       label: str = 'tab-number-of-operators',
+                       caption: str = 'Distribution of Operator Types in Queries') -> str:
+    query = """
+            WITH node_counts_per_query AS (SELECT query_id,
+                                                  node_id,
+                                                  repos.repo_url LIKE 'https://github.com/3rd-party/3rd-party-%' as is_3rd_pary,
+                                                  MIN(usage_type_to_operator(usage_type))                        AS op
+                                           FROM column_usages
+                                                    JOIN queries ON query_id = queries.id
+                                                    JOIN repos ON queries.repo_id = repos.id
+                                           GROUP BY query_id, node_id, is_3rd_pary),
+                 node_counts AS (SELECT query_id, op, is_3rd_pary, COUNT(*) as op_count
+                                 FROM node_counts_per_query
+                                 GROUP BY query_id, op, is_3rd_pary),
+                 queries_count AS (SELECT is_3rd_pary, COUNT(DISTINCT query_id) as query_count
+                                   FROM node_counts
+                                   GROUP BY is_3rd_pary),
+                 aggregates AS (SELECT oc.op,
+                                       oc.is_3rd_pary,
+                                       CAST(SUM(oc.op_count) as INT)     as op_count,
+                                       COUNT(DISTINCT oc.query_id)       as query_count,
+                                       SUM(oc.op_count) / qc.query_count as op_per_query
+                                FROM node_counts oc
+                                         JOIN queries_count qc ON oc.is_3rd_pary = qc.is_3rd_pary
+                                GROUP BY oc.op, qc.query_count, oc.is_3rd_pary
+                                ORDER BY 3 DESC),
+                 pivoted AS (
+                PIVOT aggregates
+            ON is_3rd_pary
+                USING MIN(op_count) as op_count, MIN(query_count) as query_count, MIN(op_per_query) as op_per_query
+            ORDER BY false_op_per_query
+            DESC)
+            SELECT op                 AS "Operator",
+                   false_op_per_query AS "SqlPile",
+                   true_op_per_query  AS "TPC-[H, DS]"
+            FROM pivoted;
+
+            """
+
+    df = con.execute(query).df()
 
     # create a nice md table
-    df = df.round(2)
+    df = df.round(4)
 
-    md_table_operators = df.to_markdown(index=False, tablefmt="pipe")
+    table_operators = format_df(df, output_format, label, caption)
+    return table_operators
 
-    return md_table_query_types, md_table_operators
+
+def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputFormat = 'markdown',
+                          label: str = 'tab-number-of-operators',
+                          caption: str = 'Distribution of Operator Types in Queries') -> str:
+    query = """
+            WITH column_counts AS (SELECT column_base_type,
+                                          repos.repo_url LIKE 'https://github.com/3rd-party/3rd-party-%' as is_3rd_pary,
+                                          COUNT(*)                                                       AS column_count
+                                   FROM columns
+                                            JOIN TABLES ON columns.table_id = tables.id
+                                            JOIN REPOS ON tables.repo_id = repos.id
+                                   GROUP BY column_base_type, is_3rd_pary),
+                columns_total_count AS (SELECT is_3rd_pary, SUM(column_count) as total_count
+                                    FROM column_counts
+                                    GROUP BY is_3rd_pary),
+                counts_aggregated AS (SELECT cc.column_base_type,
+                                          cc.is_3rd_pary,
+                                            cc.column_count AS column_count,
+                                            cc.column_count / ctc.total_count AS column_perc
+                                      FROM column_counts cc
+                                                  JOIN columns_total_count ctc ON cc.is_3rd_pary = ctc.is_3rd_pary
+                                    WHERE column_perc > 0.01
+                                    ORDER BY cc.column_base_type, cc.is_3rd_pary
+                ),
+                pivoted AS (
+                    PIVOT counts_aggregated
+                    ON is_3rd_pary
+                    USING MIN(column_count) as column_count, MIN(column_perc) as column_perc
+                    ORDER BY false_column_perc DESC
+                )
+            SELECT column_base_type AS "Logical Type",
+                        as_percentage(false_column_perc) AS "SqlPile",
+                        as_percentage(true_column_perc)  AS "TPC-[H, DS]"
+            FROM pivoted
+            """
 
 
-def create_queries_per_repo_plot() -> str:
+
+    df = con.execute(query).df()
+    table_operators = format_df(df, output_format, label, caption)
+    return table_operators
+
+
+def create_queries_per_repo_plot(con: duckdb.DuckDBPyConnection) -> str:
     """
     Create a violin plot showing the number of queries per repo
     """
-    con = duckdb.connect(DATABASE_PATH, read_only=True)
 
     # Get the number of queries per repo
     df = con.execute("""
@@ -90,11 +182,10 @@ def create_queries_per_repo_plot() -> str:
     return plot_path
 
 
-def get_table_stats():
+def get_table_stats(con: duckdb.DuckDBPyConnection) -> str:
     """
     Generate statistics on tables, columns, and values
     """
-    con = duckdb.connect(DATABASE_PATH, read_only=True)
 
     # Calculate average tables per repo
     avg_tables_per_repo = con.execute("""
@@ -140,9 +231,7 @@ def get_table_stats():
     return md_table_stats
 
 
-def get_value_number_stats():
-    con = duckdb.connect(DATABASE_PATH, read_only=True)
-
+def get_value_number_stats(con: duckdb.DuckDBPyConnection) -> str:
     stats = con.execute("""
                         WITH cnts AS (SELECT column_id, COUNT(*) as cnt, COUNT(DISTINCT value) as distinct_cnt
                                       FROM column_values
@@ -218,9 +307,11 @@ def get_usages_informations():
 
 
 if __name__ == "__main__":
-    tb_1, tb_2 = get_operator_stats()
-    plot_path = create_queries_per_repo_plot()
-    table_stats = get_table_stats()
+    con = get_con('/Users/paul/workspace/SqlPile/data/schemapile_tmp.duckdb')
+
+    tb_1, tb_2 = get_query_type_query(con)
+    plot_path = create_queries_per_repo_plot(con)
+    table_stats = get_table_stats(con)
 
     path = os.path.join(PLOTS_DIR, 'dataset_stats.md')
     plot_path = plot_path.replace(PLOTS_DIR, '.').replace('\\', '/')

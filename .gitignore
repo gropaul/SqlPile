@@ -8,3 +8,5 @@ __pycache__/
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+/src/sql_analysis/add_3rd_party/tpc-ds/
+/src/sql_analysis/add_3rd_party/tpc-h/
