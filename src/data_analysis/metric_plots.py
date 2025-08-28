@@ -145,7 +145,7 @@ def create_metric_plots_by_usage_type():
         JOIN tables ON columns.table_id = tables.id
         LEFT JOIN (
            SELECT column_id as column_id_llm, semantic_type as semantic_type_llm 
-           FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv'
+           FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_sqlpile.csv'
          ) AS st ON st.column_id_llm = columns.id
         ORDER BY value_aggs.column_id;
     """)

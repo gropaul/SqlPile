@@ -66,36 +66,37 @@ def get_operator_table(con: duckdb.DuckDBPyConnection, output_format: OutputForm
     query = """
             WITH node_counts_per_query AS (SELECT query_id,
                                                   node_id,
-                                                  repos.repo_url LIKE 'https://github.com/3rd-party/3rd-party-%' as is_3rd_pary,
-                                                  MIN(usage_type_to_operator(usage_type))                        AS op
+                                                  get_repo_origin(repos.repo_url) as repo_origin,
+                                                  MIN(usage_type_to_operator(usage_type))  AS op
                                            FROM column_usages
                                                     JOIN queries ON query_id = queries.id
                                                     JOIN repos ON queries.repo_id = repos.id
-                                           GROUP BY query_id, node_id, is_3rd_pary),
-                 node_counts AS (SELECT query_id, op, is_3rd_pary, COUNT(*) as op_count
+                                           GROUP BY query_id, node_id, repo_origin),
+                 node_counts AS (SELECT query_id, op, repo_origin, COUNT(*) as op_count
                                  FROM node_counts_per_query
-                                 GROUP BY query_id, op, is_3rd_pary),
-                 queries_count AS (SELECT is_3rd_pary, COUNT(DISTINCT query_id) as query_count
+                                 GROUP BY query_id, op, repo_origin),
+                 queries_count AS (SELECT repo_origin, COUNT(DISTINCT query_id) as query_count
                                    FROM node_counts
-                                   GROUP BY is_3rd_pary),
+                                   GROUP BY repo_origin),
                  aggregates AS (SELECT oc.op,
-                                       oc.is_3rd_pary,
+                                       oc.repo_origin,
                                        CAST(SUM(oc.op_count) as INT)     as op_count,
                                        COUNT(DISTINCT oc.query_id)       as query_count,
                                        SUM(oc.op_count) / qc.query_count as op_per_query
                                 FROM node_counts oc
-                                         JOIN queries_count qc ON oc.is_3rd_pary = qc.is_3rd_pary
-                                GROUP BY oc.op, qc.query_count, oc.is_3rd_pary
+                                         JOIN queries_count qc ON oc.repo_origin = qc.repo_origin
+                                GROUP BY oc.op, qc.query_count, oc.repo_origin
                                 ORDER BY 3 DESC),
                  pivoted AS (
                 PIVOT aggregates
-            ON is_3rd_pary
+            ON repo_origin
                 USING MIN(op_count) as op_count, MIN(query_count) as query_count, MIN(op_per_query) as op_per_query
-            ORDER BY false_op_per_query
+            ORDER BY SqlPile_op_per_query
             DESC)
             SELECT op                 AS "Operator",
-                   false_op_per_query AS "SqlPile",
-                   true_op_per_query  AS "TPC-[H, DS]"
+                   SqlPile_op_per_query AS "SqlPile",
+                    SQLStorm_op_per_query AS "SQLStorm",
+                   TPC_op_per_query  AS "TPC-[H, DS]"
             FROM pivoted;
 
             """
@@ -109,38 +110,43 @@ def get_operator_table(con: duckdb.DuckDBPyConnection, output_format: OutputForm
     return table_operators
 
 
+def test_get_operator_table():
+    con = get_con(read_only=True)
+    print(get_operator_table(con, 'latex'))  # type: ignore
+
 def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputFormat = 'markdown',
                           label: str = 'tab-number-of-operators',
                           caption: str = 'Distribution of Operator Types in Queries') -> str:
     query = """
             WITH column_counts AS (SELECT column_base_type,
-                                          repos.repo_url LIKE 'https://github.com/3rd-party/3rd-party-%' as is_3rd_pary,
-                                          COUNT(*)                                                       AS column_count
+                                          get_repo_origin(repos.repo_url) as repo_origin,
+                                          COUNT(*)                        AS column_count
                                    FROM columns
                                             JOIN TABLES ON columns.table_id = tables.id
                                             JOIN REPOS ON tables.repo_id = repos.id
-                                   GROUP BY column_base_type, is_3rd_pary),
-                columns_total_count AS (SELECT is_3rd_pary, SUM(column_count) as total_count
-                                    FROM column_counts
-                                    GROUP BY is_3rd_pary),
-                counts_aggregated AS (SELECT cc.column_base_type,
-                                          cc.is_3rd_pary,
-                                            cc.column_count AS column_count,
-                                            cc.column_count / ctc.total_count AS column_perc
-                                      FROM column_counts cc
-                                                  JOIN columns_total_count ctc ON cc.is_3rd_pary = ctc.is_3rd_pary
-                                    WHERE column_perc > 0.01
-                                    ORDER BY cc.column_base_type, cc.is_3rd_pary
-                ),
-                pivoted AS (
-                    PIVOT counts_aggregated
-                    ON is_3rd_pary
-                    USING MIN(column_count) as column_count, MIN(column_perc) as column_perc
-                    ORDER BY false_column_perc DESC
+                                   GROUP BY column_base_type, repo_origin),
+                 columns_total_count AS (SELECT repo_origin, SUM(column_count) as total_count
+                                         FROM column_counts
+                                         GROUP BY repo_origin),
+                 counts_aggregated AS (SELECT cc.column_base_type,
+                                              cc.repo_origin,
+                                              cc.column_count                   AS column_count,
+                                              cc.column_count / ctc.total_count AS column_perc
+                                       FROM column_counts cc
+                                                JOIN columns_total_count ctc ON cc.repo_origin = ctc.repo_origin
+                                       WHERE column_perc > 0.01
+                                       ORDER BY cc.column_base_type, cc.repo_origin),
+                 pivoted AS (
+                PIVOT counts_aggregated
+            ON repo_origin
+                USING MIN(column_count) as column_count, MIN(column_perc) as column_perc
+            ORDER BY SqlPile_column_perc
+            DESC
                 )
-            SELECT column_base_type AS "Logical Type",
-                        as_percentage(false_column_perc) AS "SqlPile",
-                        as_percentage(true_column_perc)  AS "TPC-[H, DS]"
+            SELECT column_base_type                 AS "Logical Type",
+                   as_percentage(SqlPile_column_perc) AS "SqlPile",
+                 as_percentage(SQLStorm_column_perc)  AS "SQLStorm",
+                   as_percentage(TPC_column_perc)  AS "TPC-[H, DS]",
             FROM pivoted
             """
 
@@ -150,6 +156,10 @@ def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputF
     table_operators = format_df(df, output_format, label, caption)
     return table_operators
 
+
+def test_get_column_type_table():
+    con = get_con(read_only=True)
+    print(get_column_type_table(con, 'latex'))  # type: ignore
 
 def create_queries_per_repo_plot(con: duckdb.DuckDBPyConnection) -> str:
     """

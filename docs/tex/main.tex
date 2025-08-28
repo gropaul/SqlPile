@@ -50,8 +50,8 @@
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
 \AtBeginDocument{%
-  \providecommand\BibTeX{{%
-    Bib\TeX}}}
+    \providecommand\BibTeX{{%
+        Bib\TeX}}}
 
 %% Rights management information.  This information is sent to you
 %% when you complete the rights form.  These commands have SAMPLE
@@ -64,7 +64,7 @@
 \acmDOI{XXXXXXX.XXXXXXX}
 %% These commands are for a PROCEEDINGS abstract or paper.
 \acmConference[SIGMOD '26]{ACM SIGMOD/PODS Conference}{May 31--June 5,
-  2026}{Bengaluru, India}
+    2026}{Bengaluru, India}
 
 \acmISBN{978-1-4503-XXXX-X/2018/06}
 
@@ -101,9 +101,9 @@
 %%
 %% Bibliography style
 \RequirePackage[
-  datamodel=acmdatamodel,
-  style=acmnumeric,
-  ]{biblatex}
+    datamodel=acmdatamodel,
+    style=acmnumeric,
+]{biblatex}
 
 %% import acronyms
 \usepackage[nolist]{acronym}
@@ -112,8 +112,6 @@
 \begin{acronym}
 \acro{DBMS}{Database Management System}
 \end{acronym}
-
-
 
 
 %% Declare bibliography sources (one \addbibresource command per source)
@@ -148,7 +146,7 @@
 %% The abstract is a short summary of the work to be presented in the
 %% article.
 \begin{abstract}
-  Todo
+Todo
 \end{abstract}
 
 %%
@@ -157,12 +155,12 @@
 %%
 \begin{CCSXML}
 <ccs2012>
-   <concept>
-       <concept_id>10002951.10002952.10003212.10003214</concept_id>
-       <concept_desc>Information systems~Database performance evaluation</concept_desc>
-       <concept_significance>300</concept_significance>
-       </concept>
- </ccs2012>
+<concept>
+<concept_id>10002951.10002952.10003212.10003214</concept_id>
+<concept_desc>Information systems~Database performance evaluation</concept_desc>
+<concept_significance>300</concept_significance>
+</concept>
+</ccs2012>
 \end{CCSXML}
 
 \ccsdesc[300]{Information systems~Database performance evaluation}
@@ -181,7 +179,9 @@
 %% information and builds the first part of the formatted document.
 \maketitle
 
+
 \section{Introduction}
+\label{sec:introduction}
 Recent real-world studies show that variable-sized strings are one of the most used column
 types in \acp{DBMS}.
 For example, van Renen et al~\cite{van_renen_why_2024} showed that 52.1\% of all columns in the
@@ -192,7 +192,19 @@ Workbooks\footnote{\url{https://public.tableau.com}} that 48.8\% of all data typ
 
 However, up to now there is no detailed quantitative analysis on the performance implications of this strings in \acp{DBMS}.
 
-\section{Data Collection}
+Our contributions are as follows:
+\begin{itemize}
+\item A public dataset of real-world schemas, queries and query plans
+\item A pipeline to create such a dataset from SQL files and source code
+\item An analysis of the logical and semantic types of strings in real-world queries for both storage and query processing
+\item A benchmark for string storage and execution
+\item Based on our findings, we aime to provide recommendations for future research
+\end{itemize}
+
+
+\section{Data Collection}\label{sec:data-collection}
+
+\subsection{SQLPile Dataset}\label{subsec:sqlpile-dataset}
 The query and schema information for our dataset was collected from public GitHub repositories.
 We used the the list of GitHub repositories published by Döhmen et al.~\cite{dohmen_schemapile_2024} that were known to contain Schema Definitions.
 While Döhmen et al. focused on extracting Schemainformation from database dumps that where stored as SQL Files in the repository,
@@ -200,30 +212,123 @@ we extracted every types of SQL statment from both SQL Files and Source Code fil
 
 \input{gen/sec_dataset_description}
 
-\section{Logical Type Analysis}
+\begin{itemize}
+\item We also added SQLStorm and TPC-[H, DS] as benchmarks to compare against
+\end{itemize}
+
+\subsection{Kaggle Datasets}\label{subsec:kaggle-datasets}
+As SQLPile does only contain data from table dumps and is therefore very limited, we also analyzed datasets from Kaggle.
+These are datasets that are mostly for analytical workloads and contain both the data and the schema.
+
+\begin{itemize}
+\item How many tables, rows, columns
+\item How did we get the queries? (from kernels, from external sources)
+\end{itemize}
+
+
+\section{Semantic Type Determination}\label{sec:semantic-type-determination}
+Strings are a catch-all storage type; their semantics depend on how they are used.
+To recover those semantics, we used an instruction-following LLM (Qwen3.5 via Ollama, \texttt{qwen3:8b}) with structured output to assign a single semantic label to every string-typed column.
+For each candidate column we collected up to ten \emph{distinct, non-empty} sample values.
+To keep the prompt compact and comparable across columns, the concatenated examples per column were truncated to a maximum length of \(\leq 100\) characters. Columns were processed in mini-batches of \(B=5\) to amortize model overhead while keeping responses aligned.
+
+We use and report twelve semantic types in total which are listed in \cref{tab:semantic-types-list}
+along with the description we provided to the model.
+
+\begin{table}
+\caption{Semantic types for string columns and their model descriptions.}
+\label{tab:semantic-types-list}
+\begin{tabular}{lp{0.32\textwidth}}
+\toprule
+\textbf{Type} & \textbf{Type Description} \\
+\midrule
+\texttt{Name}           & Names of entities and persons, titles, labels \\
+\texttt{DateTime}       & Dates, timestamps, time-related columns  \\
+\texttt{Numeric}        & E.g.\ amounts, counts, prices, scores, sizes  \\
+\texttt{Boolean}        & Yes/no flags, is*/has*, enabled states \\
+\texttt{Category}       & Type, role, status, label, class, tag \\
+\texttt{FullText}       & Descriptions, messages, summaries, notes, comments \\
+\texttt{Identifier}     & Id, uuid, code, hash, token, version \\
+\texttt{Contact}        & Emails, phone, fax, mobile \\
+\texttt{Location}       & City, country, region, address, zip  \\
+\texttt{URL}             & Link, url, image path, icon, slug \\
+\texttt{Semistructured} & Formats like \texttt{JSON}, \texttt{CSV}, or simple lists \\
+\texttt{Test}           & Column with content or name that are for testing (e.g., \texttt{test}, \texttt{col}, \texttt{val1}). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We have one system message that is used for all batches:
+\begin{quote}\small
+\texttt{Based on the table name, column name, and sample values, determine the semantic type of each column.
+Every column must fit one of the types:}\\
+\texttt{<type\_1>} \texttt{<type\_1\_description>}\\
+\(\dots\)\\
+\texttt{<type\_N>} \texttt{<type\_N\_description>}\\
+\texttt{You will be given multiple columns at once.
+Return *only* the list of semantic types in the same order as the columns were provided.}
+\end{quote}
+
+Each batch is rendered into a single user message of the form:
+\begin{quote}\small
+\texttt{Determine the semantic type for each of the following columns:}\\
+\texttt{Column 1:}\\
+\texttt{Table: <table\_name>}\\
+\texttt{Column: <column\_name>}\\
+\texttt{Sample Values: [v\_1,\dots,v\_k]}\\
+\(\dots\)\\
+\texttt{Column N: \dots}
+\end{quote}
+
+
+\caption{Semantic types used for string columns and their intended interpretation.}
+\label{tab:semantic-types}
+\end{table}
+
+\section{Storage}\label{sec:storage}
+
+
+
+\section{Query Processing}\label{sec:query-processing}
+
+\begin{itemize}
+\item Describe what we did to execute the queries
+\item Move parts from the dataset description here
+\end{itemize}
+
+\subsection{Logical Type Analysis}\label{subsec:logical-type-analysis}
 \input{gen/sec_logical_analysis}
 
-
-\section{Semantic Type Analysis}
-\input{gen/sec_logical_analysis}
-
-\section{What types of strings are used?}
-
-\section{SELECT}
-
-\section{FROM}
-
-\section{JOIN}
-
-\section{WHERE}
-
-\section{GROUP BY}
-
-\section{ORDER BY}
+\subsection{Semantic Type Analysis}\label{subsec:semantic-type-analysis}
+\input{gen/sec_semantic_analysis}
 
 
-\section{Related Work}
+\section{Benchmark for String}\label{sec:benchmark-for-string}
+\begin{itemize}
+- Based on the analysis, we created a benchmark for strings.
+- What columns compress how well with which compression algorithm?
+- What are the expensive parts for e.g. a join operation of a int64 compared to a string?
+\end{itemize}}
 
+\section{Limitations}\label{sec:limitations}
+\begin{itemize}
+\item SQLPile contains a lot of simple queries. Many queries come not from suffisticated industrial applications, but
+from small personal projects.
+\item We only have a limited number of queries with joins and aggregations.
+\item While SQLPile contains mainly OLTP queries and schemas, kaggle are OLAP/ML datasets. We assume the properties of strings with
+the same semantic type are similar in both workloads.
+\end{itemize}
+
+\section{Recommendations for future Research}\label{sec:recommendations-for-future-research}
+
+\begin{itemize}
+\item Strings are a catch it all type. We should not treat them as a single type, but accept that with differnt
+semantics come different properties that need to be treated differently.
+\item It is worth to do this, as strings are a significant part of the data stored and processed in DBMS.
+\end{itemize}
+
+
+\section{Related Work}\label{sec:related-work}
 
 
 %% The acknowledgments section

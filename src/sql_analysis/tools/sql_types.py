@@ -1,22 +1,7 @@
 import re
 from typing import Tuple, Literal
 
-prefixes = [
-    'signed', 'unsigned', 'u'
-]
-
-suffixes = [
-    'unsigned', 'signed', 'u'
-]
-size_types = {
-    'Int8':  [ 'int1', 'int8',  'tinyint', 'bit',],
-    'Int16': [ 'int2', 'int16', 'smallint','smallserial'],
-    'Int24': [ 'int3', 'int24', 'mediumint'],
-    'Int32': [ 'int',  'int4',  'int32', 'integer', 'int', 'serial'],
-    'Int64': [ 'int8', 'int64', 'bigint', 'bigserial', 'long'],
-}
-
-_CANONICALS = (
+_INT_CANONICALS = (
     (r'\b(bit|bitsigned|bitu|bitunsigned|int1|int1signed|int1u|int1unsigned|int8|int8signed|int8u|int8unsigned|signedbit|signedint1|signedint8|signedtinyint|signedtinyinteger|signedtinyserial|tinyint|tinyinteger|tinyintegersigned|tinyintegeru|tinyintegerunsigned|tinyintsigned|tinyintu|tinyintunsigned|tinyserial|tinyserialsigned|tinyserialu|tinyserialunsigned|ubit|uint1|uint8|unsignedbit|unsignedint1|unsignedint8|unsignedtinyint|unsignedtinyinteger|unsignedtinyserial|utinyint|utinyinteger|utinyserial)\b', 'Int8', 'UInt8'),
     (r'\b(int16|int16signed|int16u|int16unsigned|int2|int2signed|int2u|int2unsigned|signedint16|signedint2|signedsmallint|signedsmallinterger|signedsmallserial|smallint|smallinterger|smallintergersigned|smallintergeru|smallintergerunsigned|smallintsigned|smallintu|smallintunsigned|smallserial|smallserialsigned|smallserialu|smallserialunsigned|uint16|uint2|unsignedint16|unsignedint2|unsignedsmallint|unsignedsmallinterger|unsignedsmallserial|usmallint|usmallinterger|usmallserial)\b', 'Int16', 'UInt16'),
     (r'\b(int24|int24signed|int24u|int24unsigned|int3|int3signed|int3u|int3unsigned|mediumint|mediuminterger|mediumintergersigned|mediumintergeru|mediumintergerunsigned|mediumintsigned|mediumintu|mediumintunsigned|signedint24|signedint3|signedmediumint|signedmediuminterger|uint24|uint3|umediumint|umediuminterger|unsignedint24|unsignedint3|unsignedmediumint|unsignedmediuminterger)\b', 'Int24', 'UInt24'),
@@ -25,9 +10,16 @@ _CANONICALS = (
     (r'\b(bigint128|bigint128signed|bigint128u|bigint128unsigned|hugeint|hugeinteger|hugeintegersigned|hugeintegeru|hugeintegerunsigned|hugeintsigned|hugeintu|hugeintunsigned|int128|int128signed|int128u|int128unsigned|signedbigint128|signedhugeint|signedhugeinteger|signedint128|ubigint128|uhugeint|uhugeinteger|uint128|unsignedbigint128|unsignedhugeint|unsignedhugeinteger|unsignedint128)\b', 'Int128', 'UInt128'),
 )
 
+_FLOAT_CANONICALS = (
+    (r'\b(binary16|binary16signed|binary16u|binary16unsigned|float16|float16signed|float16u|float16unsigned|float2|float2signed|float2u|float2unsigned|fp16|fp16signed|fp16u|fp16unsigned|half|half_float|half_floatsigned|half_floatu|half_floatunsigned|halffloat|halffloatsigned|halffloatu|halffloatunsigned|halfprecision|halfprecisionsigned|halfprecisionu|halfprecisionunsigned|halfsigned|halfu|halfunsigned|signedbinary16|signedfloat16|signedfloat2|signedfp16|signedhalf|signedhalf_float|signedhalffloat|signedhalfprecision|ubinary16|ufloat16|ufloat2|ufp16|uhalf|uhalf_float|uhalffloat|uhalfprecision|unsignedbinary16|unsignedfloat16|unsignedfloat2|unsignedfp16|unsignedhalf|unsignedhalf_float|unsignedhalffloat|unsignedhalfprecision)\b', 'Float16', 'UFloat16'),
+    (r'\b(binary32|binary32signed|binary32u|binary32unsigned|float|float32|float32signed|float32u|float32unsigned|float4|float4signed|float4u|float4unsigned|floatsigned|floatu|floatunsigned|fp32|fp32signed|fp32u|fp32unsigned|real|realsigned|realu|realunsigned|signedbinary32|signedfloat|signedfloat32|signedfloat4|signedfp32|signedreal|signedsingle|signedsingleprecision|single|singleprecision|singleprecisionsigned|singleprecisionu|singleprecisionunsigned|singlesigned|singleu|singleunsigned|ubinary32|ufloat|ufloat32|ufloat4|ufp32|unsignedbinary32|unsignedfloat|unsignedfloat32|unsignedfloat4|unsignedfp32|unsignedreal|unsignedsingle|unsignedsingleprecision|ureal|usingle|usingleprecision)\b', 'Float32', 'UFloat32'),
+    (r'\b(binary64|binary64signed|binary64u|binary64unsigned|double|doubleprecision|doubleprecisionsigned|doubleprecisionu|doubleprecisionunsigned|doublesigned|doubleu|doubleunsigned|float64|float64signed|float64u|float64unsigned|float8|float8signed|float8u|float8unsigned|fp64|fp64signed|fp64u|fp64unsigned|signedbinary64|signeddouble|signeddoubleprecision|signedfloat64|signedfloat8|signedfp64|ubinary64|udouble|udoubleprecision|ufloat64|ufloat8|ufp64|unsignedbinary64|unsigneddouble|unsigneddoubleprecision|unsignedfloat64|unsignedfloat8|unsignedfp64)\b', 'Float64', 'UFloat64'),
+    (r'\b(binary80|binary80signed|binary80u|binary80unsigned|extendedprecision|extendedprecisionsigned|extendedprecisionu|extendedprecisionunsigned|float80|float80signed|float80u|float80unsigned|longdouble|longdoublesigned|longdoubleu|longdoubleunsigned|signedbinary80|signedextendedprecision|signedfloat80|signedlongdouble|ubinary80|uextendedprecision|ufloat80|ulongdouble|unsignedbinary80|unsignedextendedprecision|unsignedfloat80|unsignedlongdouble)\b', 'Float80', 'UFloat80'),
+    (r'\b(binary128|binary128signed|binary128u|binary128unsigned|float128|float128signed|float128u|float128unsigned|fp128|fp128signed|fp128u|fp128unsigned|quad|quadruple|quadruplesigned|quadrupleu|quadrupleunsigned|quadsigned|quadu|quadunsigned|signedbinary128|signedfloat128|signedfp128|signedquad|signedquadruple|ubinary128|ufloat128|ufp128|unsignedbinary128|unsignedfloat128|unsignedfp128|unsignedquad|unsignedquadruple|uquad|uquadruple)\b', 'Float128', 'UFloat128'),
+)
+
 _TEXT_VARYING  = re.compile(r'\b(char[ _]?varying|string|longvarchar|varchar|character|charactervarying|longtext|nvarchar|varchar2|nvarchar2|text|clob)\b')
 _TEXT_FIXED = re.compile(r'\b(char|nchar|bpchar|mediumtext|tinytext|character varying)\b')
-_FLOATING      = re.compile(r'\b(float|float4|float8|double|doubleprecision|double\s+precision|real|decimal|dec|numeric|number)\b')
 _BOOLEAN       = re.compile(r'\b(bool|boolean|boolean_char)\b')
 _DATE_TIME     = re.compile(r'\b(date|time|datetime|datetime2|time_stamp|timestamp|timestamptz|smalldatetime|timetz|interval)\b')
 _BINARY        = re.compile(r'\b(blob|binary|varbinary|bytea|image|longblob|mediumblob|tinyblob)\b')
@@ -132,13 +124,14 @@ def unify_type(raw_type: str) -> Tuple[str, BaseType]:
     unsigned = "unsigned" in t or t[0] == 'u' # basic unsigned detection
 
     # --- integer families ---
-    for pattern, signed_name, unsigned_name in _CANONICALS:
+    for pattern, signed_name, unsigned_name in _INT_CANONICALS:
         if re.search(pattern, t):
             return unsigned_name if unsigned else signed_name, "Int"
 
     # --- floating point / fixed-point numbers ---
-    if _FLOATING.search(t):
-        return "Float", "Float"
+    for pattern, signed_name, unsigned_name in _FLOAT_CANONICALS:
+        if re.search(pattern, t):
+            return unsigned_name if unsigned else signed_name, "Float"
 
     # --- enum / set types ---
     if _ENUM_TYPE.search(t):

@@ -1,5 +1,5 @@
 import os
-
+import re
 from docs.gen.utils import get_figure, format_latex_string
 from src.config import get_con, LATEX_ASSETS_DIR, GENERATED_SECTIONS_DIR
 from src.data_analysis.usage_plots import column_physical_type_usage_plot, column_semantic_type_llm_usage_plot
@@ -8,11 +8,16 @@ from src.data_analysis.usage_plots import column_physical_type_usage_plot, colum
 SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
 section = """
-As strings can be used as a catch it all type, depending on what the user is storing, the properties of the string can 
-be very different. To analyze strings depending on their what they are used for, we used the `{MODEL_NAME}` model to 
-determine the semantic type of each column based on the table and column name and a sample of the values in the column.
+In the following, we will discuss how which semantic type is used in which operator for different benchmarks (TPC-H, TPC-DS, SQLStorm).
 
 {figure_column_semantic_type_usage}
+
+- Describe which semantic type is used in which operator. Go through operator by operator.
+- Highlight the differences between the different benchmarks (TPC-H, TPC-DS, SQLStorm)
+- Mention that boolean and numeric are merged to other types. 
+- Create a table with examples of the semantic type and how often it occured. Maybe add like a 2nd level of detail, e.g., for location: city, country, address, ...
+- What type of expressions are used for which operator and semantic type? 
+- What is the difference between the expressions in the different benchmarks?
 """
 
 

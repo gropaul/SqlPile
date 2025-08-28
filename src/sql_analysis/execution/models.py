@@ -1,7 +1,9 @@
-from typing import List
+from typing import List, Literal
 
 from src.sql_analysis.tools.sql_types import BaseType
 
+
+ExecutionMode = Literal['replace', 'append']
 
 class Column:
     def __init__(self, column_id: int, column_name: str, column_base_type: BaseType):

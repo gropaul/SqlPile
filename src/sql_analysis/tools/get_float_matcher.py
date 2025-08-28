@@ -1,17 +1,13 @@
-
-
-
-def matcher():
+def float_matcher():
     prefixes = ['signed', 'unsigned', 'u']
     suffixes = ['unsigned', 'signed', 'u']
 
     size_types = {
-        'Int8': ['int1', 'int8', 'tinyint', 'bit', 'tinyinteger', 'tinyserial'],
-        'Int16': ['int2', 'int16', 'smallint', 'smallinterger', 'smallserial'],
-        'Int24': ['int3', 'int24', 'mediumint', 'mediuminterger'],
-        'Int32': ['int', 'int4', 'int32', 'integer', 'serial'],
-        'Int64': ['int8', 'int64', 'bigint', 'biginteger', 'bigserial', 'long'],
-        'Int128': ['int128', 'bigint128', 'hugeint', 'hugeinteger'],
+        'Float16': ['float2', 'float16', 'half', 'halfprecision', 'halffloat', 'half_float', 'binary16', 'fp16'],
+        'Float32': ['float', 'float4', 'float32', 'real', 'single', 'singleprecision', 'binary32', 'fp32'],
+        'Float64': ['double', 'float8', 'float64', 'doubleprecision', 'binary64', 'fp64'],
+        'Float80':  ['float80', 'longdouble', 'extendedprecision', 'binary80'],
+        'Float128': ['float128', 'quad', 'quadruple', 'binary128', 'fp128'],
     }
 
     def generate_aliases(base):
@@ -35,8 +31,8 @@ def matcher():
             for alias in aliases:
                 norm = alias.lower()
                 if (
-                        norm.startswith('unsigned') or norm.startswith('u') or
-                        norm.endswith('unsigned') or norm.endswith('u')
+                    norm.startswith('unsigned') or norm.startswith('u') or
+                    norm.endswith('unsigned') or norm.endswith('u')
                 ):
                     all_unsigned.add(norm)
                 else:
@@ -47,13 +43,12 @@ def matcher():
         canonical_map.append((pattern, signed_name, unsigned_name))
 
     # Display the result like a Python tuple literal
-    print("_INT_CANONICALS = (")
+    print("_FLOAT_CANONICALS = (")
     for pattern, signed, unsigned in canonical_map:
         print(f"    (r'{pattern}', '{signed}', '{unsigned}'),")
     print(")")
 
 
 if __name__ == "__main__":
-    matcher()
-    # This will print the _CANONICALS tuple in the desired format
-    # You can redirect this output to a file or use it directly in your code
+    float_matcher()
+    # This will print the _FLOAT_CANONICALS tuple in the same format

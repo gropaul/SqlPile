@@ -1,3 +1,4 @@
+import colorsys
 import os
 import os.path
 from typing import List, Optional
@@ -69,6 +70,7 @@ def get_data_for_usage(con: duckdb.DuckDBPyConnection, group_column: str, where_
                 WITH unnested_ids AS (
                     SELECT id, query_id, unnest(column_ids) AS column_id, unifiy_usage_types(usage_type) as usage_type, expression, meta_data
                     FROM column_usages
+                    -- USING SAMPLE 5%
                 ), 
                base AS (
                   SELECT
@@ -171,11 +173,11 @@ def get_results(con: duckdb.DuckDBPyConnection, group_column: str, where_clause:
     """)
 
     for usage in usage_types:
-        usage_result = get_data_for_usage( con, group_column, where_clause, join_clause, usage)
+        usage_result = get_data_for_usage(con, group_column, where_clause, join_clause, usage)
         all_results[usage] = usage_result
 
     # create one result for all usage types
-    all_results['All'] = get_data_for_usage( con, group_column, where_clause, join_clause, None)
+    all_results['All'] = get_data_for_usage(con, group_column, where_clause, join_clause, None)
 
     return all_results
 
@@ -195,30 +197,66 @@ def column_semantic_type_sato_usage_plot(con: duckdb.DuckDBPyConnection,
     # create_stacked_bar_plot(all_results, 'repo_cnt', dir)
 
 
-def darken_color(color, amount=1.3):
-    import matplotlib.colors as mcolors
-    c = mcolors.to_rgb(color)
-    return tuple(max(min(x / amount, 1.0), 0.0) for x in c)
+def hsv_to_hex(h: float, s: float, v: float) -> str:
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return "#{:02X}{:02X}{:02X}".format(int(round(r * 255)),
+                                        int(round(g * 255)),
+                                        int(round(b * 255)))
+
+
+def generate_colors(n: int, brightness: float = 0.8, saturation: float = 0.9):
+    """
+    n: number of colors
+    brightness: HSV 'value' in [0,1] (same for all colors)
+    saturation: HSV 'saturation' in [0,1] (same for all colors)
+    """
+    if n <= 0:
+        return []
+    # Equally space hues on [0,1)
+    step = 1.0 / n
+    return [hsv_to_hex(i * step, saturation, brightness) for i in range(n)]
+
+
+def generate_colors_from_cmap(n: int, cmap_name: str = "Dark2"):
+    """
+    Generate `n` colors from a given qualitative colormap (like Dark2).
+    """
+    cmap = plt.get_cmap(cmap_name)
+    return [cmap(i) for i in range(n)]
 
 
 def create_stacked_bar_plot(all_results, count_type, output_dir):
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
     """
     Create a stacked bar plot for the given count type, showing percentages.
 
     Args:
-        all_results: Dictionary with usage_type as key and query results as value
+        all_results: Dictionary with usage_type as key:
+            {
+                'Filter': [
+                    ('Filter', 'SqlPile', 'Text', 0.5, 0.4),
+                    ('Filter', 'TPC-H', 'Int', 0.3, 0.4 ),
+                    ...
+                ],
+                'Join': [
+                    ('Join', 'SqlPile', 'Text', 0.6, 0.5),
+                    ('Join', 'TPC-H', 'Int', 0.4, 0.5 ),
+                    ...
+                ],
+            }
         count_type: The type of count to plot ('column_cnt', 'query_cnt', or 'repo_cnt')
         output_dir: Directory to save the plot
     """
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     # Map count_type to index in the result tuple
     count_indices = {
         'column_cnt': 3,  # Index of column_cnt in the result tuple
         'column_distinct_cnt': 4,  # Index of column_cnt in the result tuple
         'query_cnt': 5,  # Index of query_cnt in the result tuple
-        'repo_cnt': 6  # Index of repo_cnt in the result tuple
+        'repo_cnt': 6,  # Index of repo_cnt in the result tuple
+        'first': 3  # Index of column_cnt in the result tuple
     }
 
     percentage_index = count_indices[count_type]
@@ -256,6 +294,8 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
     handles_all = []
     labels_all = []
 
+    all_group_types_filtered = []
+
     for index, (data_usage_type, ax) in enumerate(zip(all_usage_types, axes)):
         n_data_sources = len(all_data_sources)
 
@@ -272,27 +312,36 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
             for row in relevant_rows:
                 group_type = row[2]
                 percentage = row[percentage_index]
+                if percentage is None:
+                    percentage = 0.0
                 if percentage < 0.03:  # less than 1%
                     other_sum += percentage
                 else:
                     percentages_per_type[group_type][data_source_index] = percentage
                 percentage_sum += percentage
 
-            percentages_per_type[OTHER_KEY][data_source_index] = other_sum
+            # there might be already some other sum, so we can't assign but have to add
+            existing_sum = percentages_per_type.get(OTHER_KEY, np.zeros(n_data_sources))[data_source_index]
+            percentages_per_type[OTHER_KEY][data_source_index] = existing_sum + other_sum
 
             # assert abs(percentage_sum - 1.0) < 0.01, (
             #     f"Percentage sum for {data_source} in {data_usage_type} is not 100%: {percentage_sum}"
             # )
+            if abs(percentage_sum - 1.0) >= 0.01:
+                print(f"Warning: Percentage sum for {data_source} in {data_usage_type} is not 100%: {percentage_sum}")
             print(f"Enable assert again!!! ")
 
         # kick percentages out where the max is below 0.03
         for group_type in list(percentages_per_type.keys()):
             if np.max(percentages_per_type[group_type]) < 0.03 and group_type != OTHER_KEY:
                 del percentages_per_type[group_type]
+            else:
+                if group_type not in all_group_types_filtered:
+                    all_group_types_filtered.append(group_type)
 
         bar_height = 0.7  # smaller than 0.6 → slimmer boxes
 
-        left = np.zeros(n_data_sources)
+        lefts = np.zeros(n_data_sources)
 
         ax.invert_yaxis()
         ax.xaxis.set_visible(False)
@@ -303,23 +352,25 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
             spine.set_visible(False)
 
         for group_type, percentages in percentages_per_type.items():
-            color, hatch = get_group_type_color_and_hatch(group_type)
+            color, hatch = get_group_type_color_and_hatch(group_type, all_group_types_filtered)
             p = ax.barh(
                 all_data_sources,  # y-axis labels are the data sources
                 percentages,
                 height=bar_height,
                 label=group_type,
-                left=left,
+                left=lefts,
                 color=color,
             )
-            left += percentages
-            format_percent = lambda x: f"{round(x * 100)}\%" if x > 0.015 else ""  # format for percentages
-            ax.bar_label(p, label_type='center', fontsize=10, labels=[format_percent(x) for x in percentages],
+
+            format_percent = lambda percentage, left: f"{round(percentage * 100)}\%" if percentage > 0.015 and left + (percentage / 2) > 0.15 else ""  # format for percentages
+            labels = [format_percent(percentage, left) for percentage, left in zip(percentages, lefts)]
+            ax.bar_label(p, label_type='center', fontsize=10, labels=labels,
                          color='white',
                          padding=0, weight='bold', rotation=0)
 
             # Remove default y-axis tick labels
             ax.set_yticks([])
+            lefts += percentages
 
             # Add custom labels inside the bars, aligned right from y-axis
             for i, source in enumerate(all_data_sources):
@@ -332,10 +383,15 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
                 handles_all.append(h)
                 labels_all.append(l)
 
-    fig.suptitle('c', color='white', fontsize=15)  # hide the super title, but we need space for the legend
+    n_cols = 5 if len(handles_all) == 5 else 4
+    n_rows = (len(handles_all) + n_cols - 1) // n_cols
+    title_size = 15 * n_rows
+
+    fig.suptitle('c', color='white', fontsize=title_size)  # hide the super title, but we need space for the legend
 
     fig.legend(handles_all, labels_all, loc='upper center', bbox_to_anchor=(0.5, 1.0),
-               ncol=5, fontsize=10, borderaxespad=0., alignment='center')
+               ncol=n_cols, fontsize=10, borderaxespad=0., alignment='center')
+
     # save as pdf
     output_file = os.path.join(output_dir, f"{count_type}.{OUTPUT_FORMAT}")
     plt.savefig(output_file, format=OUTPUT_FORMAT, bbox_inches='tight', dpi=300)
@@ -373,7 +429,14 @@ def unify_llm_type(semantic_type: Optional[str]) -> str:
     if semantic_type in ['Email', 'PhoneNumber']:
         return 'Contact'
 
+    # Boolean and Numeric to Other
+    if semantic_type in ['Boolean', 'Numeric']:
+        return 'Other'
+
     return semantic_type if semantic_type else 'Unknown'
+
+
+print('Warning: Boolean and Numeric are transformed to Other. Mention this in the text!')
 
 
 def column_semantic_type_llm_usage_plot(con: duckdb.DuckDBPyConnection, output_dir: str = PLOTS_DIR):
@@ -385,11 +448,11 @@ def column_semantic_type_llm_usage_plot(con: duckdb.DuckDBPyConnection, output_d
     all_results = get_results(
         con, "unify_llm_type(semantic_type_llm)",
         "(group_column != 'Test' or group_column is null) and column_base_type = 'Text'",
-        "JOIN (SELECT column_id as column_id_llm, semantic_type as semantic_type_llm FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types.csv') AS st ON st.column_id_llm = c.id"
+        "JOIN (SELECT column_id as column_id_llm, semantic_type as semantic_type_llm FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_sqlpile.csv') AS st ON st.column_id_llm = c.id"
     )
 
     # Create stacked bar plot for column counts
-    dir = os.path.join(output_dir, 'column_usage', 'physical_type')
+    dir = os.path.join(output_dir, 'column_usage', 'semantic_type_llm')
     create_stacked_bar_plot(all_results, 'column_cnt', dir)
     # create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
     # create_stacked_bar_plot(all_results, 'query_cnt', dir)
@@ -399,48 +462,17 @@ def column_semantic_type_llm_usage_plot(con: duckdb.DuckDBPyConnection, output_d
 OUTPUT_FORMAT = 'pdf'
 
 
-def get_group_type_color_and_hatch(usage_type: str) -> tuple:
-    """
-    Get a color and hatch pattern for the given column type. DateTime, Flot, Int, Other
-    """
-    color_map = {
-        'DateTime': '#E76F51',  # Warm terracotta
-        'Float': '#2A9D8F',  # Teal green
-        'Int': '#264653',  # Deep navy
-        'Text': '#c94b71',  # Soft pink
-        'Other': '#44509c',  # Soft orange
+def get_group_type_color_and_hatch(usage_type: str, all_types: List[str] = None):
+    n = len(all_types) if all_types else 10
 
-        'Unknown': '#495057',  # Dark neutral grey
-        'FullText': '#c94b71',  # Dark orange
-        'Identifier': '#6a4c93',  # Deep purple
-        'Label': '#b8860b',  # Dark goldenrod
-        'Category': '#1b7a6e',  # Dark teal
-        'Name': '#14213d',  # Very dark navy
-        'URL': '#b23a28',  # Dark terracotta red
-        'Contact': '#7b2cbf',  # Rich violet
-        'Location': '#006d77',  # Deep blue-green
-        'Boolean': '#cc5803',  # Burnt orange
-        'Numeric': '#155d27',  # Deep forest green
-    }
+    index = all_types.index(usage_type) if all_types and usage_type in all_types else 0
+    # colors = generate_colors(n, brightness=0.6, saturation=0.8)
+    colors = generate_colors_from_cmap(8)
 
-    hatch_map = {
-        'DateTime': '///',  # Diagonal lines
-        'Float': '\\\\',  # Backward diagonal lines
-        'Int': 'xx',  # Crosshatch
-        'Text': '--',  # Dashes
-        'Other': '',  # No hatch for Other
-    }
-
-    # if not in color map return a random color
-    if usage_type not in color_map:
-        print(f"Warning: Usage type '{usage_type}' not found in color map. Using random color.")
-        import random
-        # set the seed to the type to get a consistent color for the same type
-        random.seed(usage_type)
-        random_color = f'#{random.randint(0, 0xFFFFFF):06x}'  # Generate a random hex color
-        return random_color, ''  # No hatch for random colors
-
-    return color_map[usage_type], hatch_map.get(usage_type, '')  # Default to no hatch if not specified
+    hatches = ['', '//', '\\\\', 'xx', '++', 'oo', '**', '....', '|||', '---']
+    hatch = hatches[index % len(hatches)]
+    color = colors[index % len(colors)]
+    return color, hatch
 
 
 def get_group_type_order(usage_type: str) -> int:
@@ -448,13 +480,23 @@ def get_group_type_order(usage_type: str) -> int:
     Get an order for the given column type. This is used to sort the column types in the plot.
     """
     order_map = {
+        # Logic Types
         'DateTime': 2,
         'Float': 1,
         'Int': 0,
         'Text': 4,
         'Other': 3,
+
+        # Semantic Types
+        'Name': 0,
+        'Location': 1,
+        'FullText': 5,
+        'Identifier': 4,
+        'Category': 6,
+        'Contact': 7,
     }
-    return order_map.get(usage_type, 5)  # Default to 5 for unknown types
+
+    return order_map.get(usage_type, 99)  # Default to 5 for unknown types
 
 
 if __name__ == "__main__":

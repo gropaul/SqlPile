@@ -40,10 +40,45 @@ the operators used to execute the queries but also the details on the expression
 def generate_dataset_description():
     con = get_con(read_only=True)
 
-    number_of_tables = con.execute("SELECT COUNT(*) FROM tables").fetchone()[0]
-    number_of_columns = con.execute("SELECT COUNT(*) FROM columns").fetchone()[0]
-    number_of_queries = con.execute("SELECT COUNT(*) FROM queries").fetchone()[0]
-    number_of_repos = con.execute("SELECT COUNT(DISTINCT repo_id) FROM queries").fetchone()[0]
+    con.execute("""
+                CREATE OR REPLACE TEMP VIEW external_repos AS
+                SELECT *
+                FROM repos
+                WHERE lower(get_repo_origin(repo_url)) != 'sqlpile'
+                """
+                )
+    con.execute("""
+                CREATE OR REPLACE TEMP VIEW external_tables AS
+                SELECT *
+                FROM tables
+                WHERE repo_id IN (SELECT id FROM external_repos)
+                """)
+    con.execute("""
+                CREATE OR REPLACE TEMP VIEW external_columns AS
+                SELECT *
+                FROM columns
+                WHERE table_id IN (SELECT id FROM external_tables)
+                """)
+    con.execute(f"""
+                CREATE OR REPLACE TEMP VIEW external_queries AS
+                SELECT *
+                FROM {QUERIES_TABLE_NAME}
+                WHERE repo_id IN (SELECT id FROM external_repos)
+                """)
+
+    number_of_tables = con.execute(
+        "SELECT COUNT(*) FROM tables WHERE id NOT IN (SELECT ID FROM external_tables)").fetchone()[0]
+    number_of_columns = con.execute(
+        "SELECT COUNT(*) FROM columns WHERE id NOT IN (SELECT ID FROM external_columns)").fetchone()[0]
+    number_of_queries = con.execute(
+        "SELECT COUNT(*) FROM queries WHERE id NOT IN (SELECT ID FROM external_queries)").fetchone()[0]
+    number_of_repos = con.execute(
+        "SELECT COUNT(DISTINCT repo_id) FROM queries WHERE id NOT IN (SELECT ID FROM external_queries)").fetchone()[0]
+
+    print(f"Number of tables: {number_of_tables}")
+    print(f"Number of columns: {number_of_columns}")
+    print(f"Number of queries: {number_of_queries}")
+    print(f"Number of repos: {number_of_repos}")
 
     allowed = ["SELECT", "INSERT", "CREATE"]
 
@@ -51,7 +86,9 @@ def generate_dataset_description():
         with cnts AS (
             SELECT repo_id, type, COUNT(DISTINCT sql) as repo_cnt
             FROM queries
-            WHERE type in {allowed}
+            WHERE 
+                type in {allowed}
+                AND id NOT IN (SELECT ID FROM external_queries)
             GROUP BY repo_id, type
         )
         SELECT type, SUM(repo_cnt) as sum
@@ -60,24 +97,28 @@ def generate_dataset_description():
         ORDER BY sum DESC
     """).fetchall()
 
+    print(f"Number of queries per type: {number_of_queries_per_type}")
+
     percentages_per_type = []
     for (index, (query_type, count)) in enumerate(number_of_queries_per_type):
         percentage = (count / number_of_queries) * 100
-        number_formatted = format_number(count)
-        # text_item = f"{number_formatted} `{query_type}` ({percentage:.2f}%)"
-        text_item = f"{number_formatted} `{query_type}`"
-        if index == 0:
-            text_item = f"{number_formatted} distinct `{query_type}`"
-        percentages_per_type.append(text_item)
+    number_formatted = format_number(count)
+    # text_item = f"{number_formatted} `{query_type}` ({percentage:.2f}%)"
+    text_item = f"{number_formatted} `{query_type}`"
+    if index == 0:
+        text_item = f"{number_formatted} distinct `{query_type}`"
+    percentages_per_type.append(text_item)
 
     number_of_queries_per_type_str = join_list_with_and(percentages_per_type, final_word="statements")
 
     # *** CREATE STATEMENTS ***
     number_of_create_statements = con.execute(f"""
-        WITH create_queries as MATERIALIZED(
+        WITH create_queries as (
             SELECT sql
-            FROM {QUERIES_TABLE_NAME}  
-            WHERE type = 'CREATE'
+            FROM queries
+            WHERE 
+                type = 'CREATE'
+                AND id NOT IN (SELECT ID FROM external_queries)
         )
         SELECT (get_table_name_udf(sql) is Null) AS has_table_name, COUNT(*)
         FROM create_queries
@@ -85,57 +126,67 @@ def generate_dataset_description():
       """).fetchall()
 
     number_of_create_view_statements = con.execute(f"""
-        WITH create_queries as MATERIALIZED(
+        WITH create_queries as (
             SELECT sql
-            FROM {QUERIES_TABLE_NAME}  
-            WHERE type = 'CREATE'
+            FROM queries
+            WHERE 
+                type = 'CREATE'
+                AND id NOT IN (SELECT ID FROM external_queries)
         )
         SELECT COUNT(*)
         FROM create_queries
         WHERE is_create_view_udf(sql)
         """).fetchone()[0]
 
-    number_of_view_errors = con.execute(f"SELECT COUNT(*) FROM queries_error_create_view").fetchone()[0]
-    percentage_view_queries = ((number_of_create_view_statements - number_of_view_errors) / number_of_create_view_statements) * 100
+    number_of_view_errors = con.execute(f"SELECT COUNT(*) FROM queries_error_create_view WHERE query_id NOT IN (SELECT id FROM external_queries)").fetchone()[0]
+    percentage_view_queries = ((
+                                       number_of_create_view_statements - number_of_view_errors) / number_of_create_view_statements) * 100
     percentage_view_queries = f"{percentage_view_queries:.2f}%"
 
     parsable, not_parsable = number_of_create_statements[0][1], number_of_create_statements[1][1]
-    parsable -= number_of_create_view_statements # remove the create view statements from the parsable count
+    parsable -= number_of_create_view_statements  # remove the create view statements from the parsable count
 
-    second_parsing_error_count = con.execute("SELECT COUNT(*) FROM queries_parsing_error").fetchone()[0]
+    second_parsing_error_count = con.execute("SELECT COUNT(*) FROM queries_parsing_error WHERE query_id NOT IN (SELECT id FROM external_queries)").fetchone()[0]
     parsable -= second_parsing_error_count
     not_parsable += second_parsing_error_count
     percentage_create_table = (parsable / (parsable + not_parsable)) * 100
     percentage_create_table = f"{percentage_create_table:.2f}%"
 
+    print(f"Number of CREATE statements: {parsable} parsable, {not_parsable} not parsable")
+
     # *** INSERT STATEMENTS ***
-    number_of_inserts = con.execute("SELECT COUNT(*) FROM queries WHERE type = 'INSERT'").fetchone()[0]
-    number_of_failed_inserts = con.execute("SELECT COUNT(*) FROM queries_error_insert").fetchone()[0]
+    number_of_inserts = con.execute("SELECT COUNT(*) FROM queries WHERE type = 'INSERT' AND repo_id NOT IN (SELECT id FROM external_repos)").fetchone()[0]
+    number_of_failed_inserts = con.execute("SELECT COUNT(*) FROM queries_error_insert WHERE query_id NOT IN (SELECT id FROM external_queries)").fetchone()[0]
 
     percentage_insert_statements = (number_of_inserts - number_of_failed_inserts) / number_of_inserts * 100
     percentage_insert_statements = f"{percentage_insert_statements:.2f}%"
 
+    print(f"Number of INSERT statements: {number_of_inserts} total, {number_of_failed_inserts} failed")
+
     # *** Number of tables with values ***
     table_with_more_then_100_rows, tables_with_data, median_n_rows, mean_n_rows = con.execute(f"""
-        WITH columns_with_values AS MATERIALIZED (
+        WITH columns_with_values AS  (
             SELECT column_id, COUNT(*) as value_count
             FROM column_values
             GROUP BY column_id
         ),
         table_value_cnts AS (
             SELECT MIN(table_name) as table_name, MIN(value_count) > 100 as more_then_100,  MIN(value_count) > 0 as has_values, MIN(value_count) as n_values
-            FROM tables 
+            FROM tables
             JOIN columns ON columns.table_id = tables.id
             JOIN columns_with_values on columns_with_values.column_id = columns.id
+            WHERE tables.id NOT IN (SELECT ID FROM external_tables)
             GROUP BY tables.id
         )
         SELECT SUM(more_then_100), SUM(has_values), MEDIAN(n_values), round(AVG(n_values),2)
         FROM table_value_cnts
         """).fetchone()
 
+    print(f"Tables with more then 100 rows: {table_with_more_then_100_rows}")
+
     # queries_count
-    select_success_n = con.execute("SELECT COUNT(*) FROM queries_executable").fetchone()[0]
-    select_error_n = con.execute("SELECT COUNT(*) FROM queries_error_select").fetchone()[0]
+    select_success_n = con.execute("SELECT COUNT(*) FROM queries_executable WHERE query_id NOT IN (SELECT id FROM external_queries)").fetchone()[0]
+    select_error_n = con.execute("SELECT COUNT(*) FROM queries_error_select WHERE query_id NOT IN (SELECT id FROM external_queries)").fetchone()[0]
 
     select_success_percentage = (select_success_n / (select_success_n + select_error_n)) * 100
     select_success_percentage = f"{select_success_percentage:.2f}%"

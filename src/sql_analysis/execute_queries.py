@@ -1,23 +1,23 @@
 import json
 import logging
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 import duckdb
 from tqdm import tqdm
 
 from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, REPO_TABLE_NAME, TABLES_TABLE_NAME, \
-    TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, COLUMN_VALUES_TABLE_NAME, COLUMN_VALUES_COUNT_TABLE_NAME, \
-    COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, EXECUTABLE_QUERIES_TABLE_NAME, \
+    TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, COLUMN_VALUES_TABLE_NAME, TABLE_VALUES_COUNT_TABLE_NAME, \
+    COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
-    QUERIES_ERROR_INSERT_TABLE_NAME
+    QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME
+from src.sql_analysis.execution.create_tables import create_base_tables
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 from src.sql_analysis.execution.fix_group_by import fix_group_by
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
-from src.sql_analysis.execution.models import Table, Column
+from src.sql_analysis.execution.models import Table, Column, ExecutionMode
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically, escape_for_insert
 from src.sql_analysis.execution.transform_insert import transform_insert_to_create, save_schema_from_insert_create
 from src.sql_analysis.get_schemas_from_create_query import save_table_in_db
-from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key
 from src.sql_analysis.plan_analysis.analyse_plans import analyse_plans
 from src.sql_analysis.tools.sql_to_schema import parse_create_table
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
@@ -36,26 +36,44 @@ def quote(column_name: str) -> str:
     return column_name
 
 
-# Counter for error IDs
-error_id_counter = 0
-success_id_counter = 0
-
-n_failed_table_creations = 0
-n_successful_table_creations = 0
-
 n_failed_view_creations = 0
 n_successful_view_creations = 0
 
 n_failed_insertions = 0
 n_successful_insertions = 0
 
-n_column_usage_insertions = 0
-
 EXCLUDED_REPOS = [16340]
 
 
-def create_tables(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
-                  sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
+class IDManager:
+    def __init__(self, con: duckdb.DuckDBPyConnection):
+        error_id_res = con.execute(f"SELECT MAX(id) FROM {QUERIES_ERROR_SELECT_TABLE_NAME}").fetchone()
+        self.error_id = error_id_res[0] if error_id_res and error_id_res[0] is not None else 0
+
+        success_id_res = con.execute(f"SELECT MAX(id) FROM {QUERIES_EXECUTABLE_TABLE_NAME}").fetchone()
+        self.success_id = success_id_res[0] if success_id_res and success_id_res[0] is not None else 0
+
+        self.n_success = 0
+        self.n_error = 0
+
+
+    def get_success_id(self) -> int:
+        self.success_id += 1
+        self.n_success += 1
+        return self.success_id
+
+    def get_error_id(self) -> int:
+        self.error_id += 1
+        self.n_error += 1
+        return self.error_id
+
+
+
+
+
+
+def create_sandbox_tables(repo_id: int, con: duckdb.DuckDBPyConnection,
+                          sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
     tables_with_columns = con.execute("""
                                       SELECT table_id,
                                              FIRST(table_name),
@@ -298,14 +316,13 @@ def populate_empty_tables(tables: List[Table], sandbox_con: duckdb.DuckDBPyConne
 
 def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo_url: str,
                   con: duckdb.DuckDBPyConnection,
-                  sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table], try_fix: bool) -> MockQueryResult:
+                  sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table], id_manager: IDManager) -> MockQueryResult:
     result: MockQueryResult = try_to_mock_and_execute_query(sandbox_con, sql_prepared, tables)
     if result.was_successful():
-        global success_id_counter
-        success_id_counter += 1
+        success_id = id_manager.get_success_id()
         insert_query = f"""
-                        INSERT INTO {EXECUTABLE_QUERIES_TABLE_NAME} (id, query_id, repo_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, logical_plan_optimized_detailed, physical_plan)
-                        VALUES ({success_id_counter}, {query_id}, {repo_id}, '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}', 
+                        INSERT INTO {QUERIES_EXECUTABLE_TABLE_NAME} (id, query_id, repo_id, original_sql, executable_sql, logical_plan, logical_plan_optimized, logical_plan_optimized_detailed, physical_plan)
+                        VALUES ({success_id}, {query_id}, {repo_id}, '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}', 
                         '{escape_for_insert(json.dumps(result.logical_plan))}', 
                         '{escape_for_insert(json.dumps(result.logical_plan_optimized))}', 
                         '{escape_for_insert(json.dumps(result.logical_plan_optimized_detailed))}',
@@ -318,16 +335,15 @@ def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo
         if fixed_sql:
             sql = fixed_sql
             sql_prepared = fixed_sql
-            return execute_query(query_id, sql, sql_prepared, repo_id, repo_url, con, sandbox_con, tables,
-                                 try_fix=False)
+            return execute_query(query_id, sql, sql_prepared, repo_id, repo_url, con, sandbox_con, tables, id_manager)
 
-        global error_id_counter
-        error_id_counter += 1
+
+        error_id = id_manager.get_error_id()
         con.execute(f"""
              INSERT INTO {QUERIES_ERROR_SELECT_TABLE_NAME} (
                  id, repo_id, repo_url, query_id, error_message, original_sql, executable_sql
              ) VALUES (
-                 {error_id_counter}, {repo_id}, '{escape_for_insert(repo_url)}', {query_id}, 
+                 {error_id}, {repo_id}, '{escape_for_insert(repo_url)}', {query_id}, 
                  '{escape_for_insert(str(result.error))}', '{escape_for_insert(sql)}', '{escape_for_insert(result.executable_sql)}'
              )
          """)
@@ -336,23 +352,64 @@ def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo
 
 
 def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
-                    tables: List[Table], query_id: Optional[int] = None):
+                    tables: List[Table], id_manager: IDManager, query_id: Optional[int] = None):
     logging.info(f"Executing queries for repo {repo_id} ({repo_url}). Loading queries...")
     queries_deduped = con.execute(f"""
         SELECT MIN(id), sql, MIN(prepare_select_statically(sql)) as sql_perpared
         FROM queries
         WHERE 
-            repo_id = ? AND 
-            type IN ('SELECT', 'WITH') AND 
-            ({'queries.id = ' + str(query_id) if query_id else 'True'})
+            repo_id = ? 
+            AND type IN ('SELECT', 'WITH') 
+            AND ({'queries.id = ' + str(query_id) if query_id else 'True'}) 
+            AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids)
         GROUP BY sql
     """, (repo_id,)).fetchall()
     # logging.warning('Number of queries is limited to 5000 per repo for now.')
     logging.info(f"Found {len(queries_deduped)} unique queries to execute for repo {repo_id} ({repo_url})")
 
     for query_id, sql, sql_prepared in tqdm(queries_deduped, desc="Executing queries", unit="query"):
-        execute_query(query_id, sql, sql_prepared, repo_id, repo_url, con, sandbox_con, tables, try_fix=True)
+        execute_query(query_id, sql, sql_prepared, repo_id, repo_url, con, sandbox_con, tables, id_manager)
 
+
+def get_tables_from_create_statements(repo_id: int, con: duckdb.DuckDBPyConnection):
+
+    create_queries = con.execute(f"""
+    WITH distrinct_queries AS (
+        SELECT sql, id, repo_id, type
+        FROM {QUERIES_TABLE_NAME}
+        WHERE 
+            repo_id = {repo_id}
+            AND type = 'CREATE' 
+            AND not is_create_view_udf(sql)
+    )
+    SELECT sql, get_table_name_udf(sql) AS query_table_name, queries.id, queries.repo_id
+    FROM distrinct_queries AS queries
+    WHERE query_table_name IS NOT NULL
+      AND repo_id = {repo_id}
+      AND query_table_name IS NOT NULL 
+      AND NOT EXISTS (
+        FROM tables 
+        WHERE 
+            tables.repo_id = {repo_id}
+            AND lower(tables.table_name_clean) = query_table_name
+      ) 
+    ORDER BY repo_id
+    """).fetchall()
+
+    if not create_queries:
+        logging.info(f"No new CREATE TABLE queries found for repo {repo_id}")
+        return
+
+    for sql, table_name, query_id, repo_id in tqdm(create_queries, desc="Processing CREATE TABLE queries", unit="query"):
+        try:
+            table_schema = parse_create_table(sql)
+            save_table_in_db(con, repo_id, table_schema)
+
+        except Exception as e:
+            con.execute(f"""
+                INSERT INTO queries_parsing_error (repo_id, query_id, sql, error_message)
+                VALUES (?, ?, ?, ?)
+            """, (repo_id, query_id, sql, str(e)))
 
 def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
                             artificial_populated_ids: List[int]):
@@ -390,16 +447,33 @@ def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection
                     INSERT INTO {quote(COLUMN_VALUES_TABLE_NAME)} (column_id, value)
                     SELECT * FROM values_arrow
                 """)
-                con.execute(f"""
-                    INSERT INTO {quote(COLUMN_VALUES_COUNT_TABLE_NAME)} (column_id, count)
-                    VALUES ({column_id}, {values_count})
-                """)
             except Exception as e:
                 print(f"Failed to insert values' for column ID {column_id}: {e}")
                 continue
 
         except Exception as e:
             print(f"Failed to execute query for column {column_name} in table {table_name}: {e}")
+            continue
+
+
+def save_table_counts(repo_id: int, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection):
+    table_counts = con.execute(f"""
+        SELECT id, table_name_clean 
+        FROM {TABLES_TABLE_NAME} 
+        WHERE 
+            repo_id = {repo_id}
+            AND id NOT IN (SELECT table_id FROM {TABLE_VALUES_COUNT_TABLE_NAME})
+    """).fetchall()
+
+    for (table_id, table_name) in table_counts:
+        try:
+            count = sandbox_con.execute(f"SELECT COUNT(*) FROM {quote(table_name)}").fetchone()[0]
+            con.execute(f"""
+                INSERT INTO {TABLE_VALUES_COUNT_TABLE_NAME} (table_id, count)
+                VALUES ({table_id}, {count})
+            """)
+        except Exception as e:
+            print(f"Failed to get count for table {table_name} with ID {table_id}: {e}")
             continue
 
 
@@ -444,9 +518,12 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             f"Processed {n_views} view creation queries in repo {repo_id} ({repo_url}), successfully created {n_success} views, failed to create {n_views - n_success} views.")
 
 
-def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] = None):
+
+
+def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, query_id: Optional[int] = None):
     con = get_con()
 
+    create_base_tables(con, mode)
 
     repos = con.execute(f"""
         SELECT repos.id, repos.repo_url, COUNT(queries.id) AS query_count
@@ -457,106 +534,16 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
+            and queries.id NOT IN (SELECT query_id FROM executed_queries_ids)
         GROUP BY repos.id, repos.repo_url
         HAVING COUNT(queries.id) > 0
         ORDER BY repos.id DESC -- from recently added to oldest
     """).fetchall()
 
     # create executable_queries table if it doesn't exist
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {EXECUTABLE_QUERIES_TABLE_NAME} (
-            id BIGINT {primary_key()},
-            query_id BIGINT,
-            repo_id BIGINT,
-            original_sql VARCHAR,
-            executable_sql VARCHAR,
-            logical_plan JSON,
-            logical_plan_optimized JSON,
-            logical_plan_optimized_detailed JSON,
-            physical_plan JSON
-        )
-    """)
 
-    # create error table if it doesn't exist
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {QUERIES_ERROR_SELECT_TABLE_NAME} (
-            id BIGINT {primary_key()},
-            repo_id BIGINT {foreign_key(REPO_TABLE_NAME, 'id')},
-            repo_url VARCHAR,
-            query_id BIGINT,
-            error_message VARCHAR,
-            original_sql VARCHAR,
-            executable_sql VARCHAR,
-        )
-    """)
+    id_manager = IDManager(con)
 
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {QUERIES_ERROR_CREATE_TABLE_NAME} (
-            table_id BIGINT,
-            table_name VARCHAR,
-            error_message VARCHAR
-        )
-    """)
-
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {QUERIES_ERROR_CREATE_VIEW_TABLE_NAME} (
-            query_id BIGINT,
-            error_message VARCHAR
-        )
-    """)
-
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {QUERIES_ERROR_INSERT_TABLE_NAME} (
-            query_id BIGINT,
-            error_message VARCHAR,
-            )
-    """)
-
-    # Create a table to store the column values with strings
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {COLUMN_VALUES_TABLE_NAME} (
-            column_id BIGINT,
-            value VARCHAR,
-        )
-    """)
-
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {COLUMN_VALUES_COUNT_TABLE_NAME} (
-            column_id BIGINT,
-            count INTEGER
-        )
-    """)
-
-    create_usages_table_query = f"""
-        CREATE OR REPLACE TABLE {COLUMN_USAGES_TABLE_NAME} (
-            id INTEGER,
-            query_id INTEGER,
-            node_id VARCHAR,
-            column_ids INTEGER[],
-            expression VARCHAR,
-            expression_result_type VARCHAR,
-            usage_type VARCHAR,
-            meta_data JSON
-        )
-       """
-    con.execute(create_usages_table_query)
-
-    create_usage_history_table_query = f"""
-        CREATE OR REPLACE TABLE {COLUMN_USAGES_HISTORY_TABLE_NAME} (
-            usage_id INTEGER,
-            column_id INTEGER,
-            history STRUCT(
-                    expression VARCHAR,
-                    expression_type VARCHAR,
-                    expression_class VARCHAR,
-                    expression_result_type VARCHAR
-                )[]
-            )
-    """
-    con.execute(create_usage_history_table_query)
-
-    error_count = 0
-    success_count = 0
 
     with tqdm(repos, desc="Processing repositories", unit="repo") as pbar:
         for repo_id, repo_url, cnt in pbar:
@@ -567,7 +554,9 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
             for function in EXTRA_FUNCTIONS:
                 sandbox_con.execute(function)
 
-            tables = create_tables(repo_id, repo_url, con, sandbox_con)
+            get_tables_from_create_statements(repo_id, con)
+
+            tables = create_sandbox_tables(repo_id, con, sandbox_con)
 
             new_tables = populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
             tables.extend(new_tables)
@@ -577,19 +566,20 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
-            execute_queries(repo_id, repo_url, sandbox_con, con, tables, query_id)
+            execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
 
             analyse_plans(con, repo_id)
 
             save_used_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
+            save_table_counts(repo_id, con, sandbox_con)
 
             # Close the sandbox connection, save progress, and checkpoint
             con.execute("CHECKPOINT;")
             sandbox_con.close()
 
             # Update counts
-            error_count = con.execute(f"SELECT COUNT(*) FROM {QUERIES_ERROR_SELECT_TABLE_NAME}").fetchone()[0]
-            success_count = con.execute(f"SELECT COUNT(*) FROM {EXECUTABLE_QUERIES_TABLE_NAME}").fetchone()[0]
+            error_count = id_manager.n_error
+            success_count = id_manager.n_success
             total = success_count + error_count
 
             # Dynamically update tqdm description
@@ -601,10 +591,6 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
             })
 
 
-
-    # Print the failed table creation statistics
-    print(
-        f"Failed to create {n_failed_table_creations} tables, successfully created {n_successful_table_creations} tables.")
     if n_failed_insertions > 0:
         print(
             f"Failed to insert {n_failed_insertions} rows into tables, successfully inserted {n_successful_insertions} rows.")
@@ -622,5 +608,7 @@ def execute_repo_queries(repo_id: Optional[int] = None, query_id: Optional[int] 
     con.close()
 
 
+
+
 if __name__ == "__main__":
-    execute_repo_queries(repo_id=None, query_id=None)
+    execute_repo_queries(mode='replace', repo_id=None, query_id=None)

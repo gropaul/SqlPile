@@ -33,7 +33,7 @@ SQL_STORM_REPO_DIR = os.path.join(ROOT, "external", "SQLStorm")
 ONLY_SCRAPE_SELECT_QUERIES = False
 CHARACTERS_BEFORE_AND_AFTER_QUERY = 400
 HEADER_N_LINES = 30  # Number of header lines to keep for each file that contains SQL queries
-MAX_VALUES_TO_SAVE_PER_COLUMN = 1000  # Maximum number of values to save per column in the database
+MAX_VALUES_TO_SAVE_PER_COLUMN = 5000  # Maximum number of values to save per column in the database
 
 RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing
@@ -151,6 +151,14 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
 
     # Register the custom function to format numbers as percentages
     con.create_function("as_percentage", format_number_as_percentage, [float], str, type="native")
+
+    con.execute("""
+                  CREATE TEMP VIEW column_usages_unnested AS
+                  (
+                  SELECT *, unnest(column_ids) AS column_id
+                  FROM column_usages
+                  )
+                  """)
 
     def unifiy_usage_types(usage_type: str) -> str:
         usage_to_operator_map = {
@@ -323,17 +331,21 @@ def setup_logging():
 logger = setup_logging()
 REPO_TABLE_NAME = 'repos'
 REPO_META_DATA_FILES_TABLE_NAME = 'repos_meta_data'
+
 FILES_TABLE_NAME = 'files'
 FILES_META_DATA_TABLE_NAME = 'repo_meta_data_files'
+
 TABLES_TABLE_NAME = 'tables'
 TABLES_DATA_FILES_TABLE_NAME = 'table_data_files'
+TABLE_VALUES_COUNT_TABLE_NAME = 'table_values_count'
+
 COLUMNS_TABLE_NAME = 'columns'
 COLUMN_VALUES_TABLE_NAME = 'column_values'
-COLUMN_VALUES_COUNT_TABLE_NAME = 'column_values_count'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
 COLUMN_USAGES_HISTORY_TABLE_NAME = 'column_usage_history'
+
 QUERIES_TABLE_NAME = 'queries'
-EXECUTABLE_QUERIES_TABLE_NAME = 'queries_executable'
+QUERIES_EXECUTABLE_TABLE_NAME = 'queries_executable'
 QUERIES_ERROR_SELECT_TABLE_NAME = 'queries_error_select'
 QUERIES_ERROR_CREATE_TABLE_NAME = 'queries_error_create'
 QUERIES_ERROR_CREATE_VIEW_TABLE_NAME = 'queries_error_create_view'

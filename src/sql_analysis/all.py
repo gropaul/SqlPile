@@ -20,7 +20,7 @@ def all(download: bool = True) -> None:
     # add_tpc('tpc-ds')
     # add_sql_storm_stack_overflow()
     # get_schemas_from_create_query()
-    execute_repo_queries()
+    execute_repo_queries(mode='replace')
 
 
 

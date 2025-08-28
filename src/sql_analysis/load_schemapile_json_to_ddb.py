@@ -5,7 +5,7 @@ import duckdb
 import tqdm
 
 from src.config import DATABASE_PATH, SCHEMAPILE_DIR, REPO_TABLE_NAME, TABLES_TABLE_NAME, COLUMNS_TABLE_NAME, \
-    EXECUTABLE_QUERIES_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME
+    QUERIES_EXECUTABLE_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME
 from src.sql_analysis.tools.semantic_type import get_column_semantic_type
 from src.sql_analysis.tools.sql_to_schema import clean_identifier
 from src.sql_analysis.tools.sql_types import unify_type
@@ -147,7 +147,7 @@ def load_schemapile_json_to_database(ask: bool = True) -> None:
     # Drop the tables cascadingly if they exist
     con.execute(f"""
         DROP TABLE IF EXISTS {QUERIES_ERROR_SELECT_TABLE_NAME} CASCADE;
-        DROP TABLE IF EXISTS {EXECUTABLE_QUERIES_TABLE_NAME} CASCADE;
+        DROP TABLE IF EXISTS {QUERIES_EXECUTABLE_TABLE_NAME} CASCADE;
         DROP TABLE IF EXISTS {QUERIES_ERROR_CREATE_TABLE_NAME} CASCADE;
         DROP TABLE IF EXISTS {COLUMNS_TABLE_NAME} CASCADE;
         DROP TABLE IF EXISTS {TABLES_TABLE_NAME} CASCADE;

@@ -1,6 +1,4 @@
-from typing import List
-
-from src.config import SQL_STORM_DATA_DIR, SQL_STORM_REPO_DIR, get_con, DATA_DIR
+from src.config import SQL_STORM_DATA_DIR, SQL_STORM_REPO_DIR, get_con
 import requests
 import os
 import tarfile
@@ -18,7 +16,7 @@ class StackOverflowDownloadResult:
 
 
 def download_stackoverflow_data() -> StackOverflowDownloadResult:
-    output_dir = SQL_STORM_DATA_DIR
+    output_dir = os.path.join(SQL_STORM_DATA_DIR, 'stackoverflow')
     # download the schema from https://db.in.tum.de/~schmidt/data/stackoverflow_schema.sql
     schema_url = 'https://db.in.tum.de/~schmidt/data/stackoverflow_schema.sql'
     schema_path = os.path.join(output_dir, 'schema_stackoverflow.sql')
@@ -107,7 +105,7 @@ def add_sql_storm_job():
     imdb_schema = requests.get(imdb_url_schema).text
     imdb_load = requests.get(imdb_url_load).text
 
-    imdb_db_path = os.path.join(DATA_DIR, 'imdb', 'imdb.duckdb')
+    imdb_db_path = os.path.join(SQL_STORM_DATA_DIR, 'imdb', 'imdb.duckdb')
     os.makedirs(os.path.dirname(imdb_db_path), exist_ok=True)
     con = duckdb.connect(imdb_db_path)
 
@@ -115,7 +113,7 @@ def add_sql_storm_job():
         con.execute(imdb_schema)
         con.execute(imdb_load)
 
-    export_path = os.path.join(DATA_DIR, 'imdb', 'imdb')
+    export_path = os.path.join(SQL_STORM_DATA_DIR, 'imdb', 'imdb')
     con.execute(f"EXPORT DATABASE '{export_path}' (FORMAT PARQUET, OVERWRITE TRUE)")
 
     schemas_path = os.path.join(export_path, 'schema.sql')
