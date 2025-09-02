@@ -57,6 +57,7 @@ def base_type_to_duckdb_type(base_type: BaseType) -> str:
     elif base_type == "ARRAY":
         return "ARRAY"  # DuckDB supports array types
     else:
+        print(f"Warning: Unrecognized base type '{base_type}', defaulting to 'OTHER'")
         return "OTHER"  # Fallback for unrecognized types
 
 def base_type_to_example_value(base_type: BaseType) -> str:
@@ -106,7 +107,7 @@ def unify_type(raw_type: str) -> Tuple[str, BaseType]:
 
     # if there is a precistion scale, try to cast it
     if 'number' in t or 'decimal' in t:
-        match = re.search(r'\((\d+)(?:,(\d+))?\)', t)
+        match = re.search(r'\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)', t, re.IGNORECASE)
         if match:
             precision = match.group(1)
             scale = match.group(2) if match.group(2) else '0'
@@ -116,6 +117,9 @@ def unify_type(raw_type: str) -> Tuple[str, BaseType]:
                 return t, "Int"
             else:
                 return t, "Float"
+        if t == 'decimal' or t == 'number':
+            return t, "Float"
+
 
 
     # remove any size/precision qualifiers

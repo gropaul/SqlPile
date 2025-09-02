@@ -11,7 +11,8 @@ from typing import List, Dict, Any, Optional, Tuple, TypedDict, Literal
 from langchain_core.language_models import BaseLLM
 from pydantic import BaseModel, Field
 
-from src.sql_analysis.execution.prepare_sql_for_execution import escape_for_insert
+
+DataSetType = Literal['kaggle', 'sqlpile']
 
 
 class SemanticTypes(BaseModel):
@@ -56,74 +57,7 @@ class DataRowJson(TypedDict):
     values: List[str]
 
 
-def get_kaggle_data() -> List[DataRow]:
-    kaggle_con = duckdb.connect('/Users/paul/workspace/SqlPile/src/playground/kaggle_data.duckdb', read_only=True)
-    query = """
-            WITH cols AS (SELECT c.table_schema,
-                                 c.table_name,
-                                 list_reduce(list(
-                                         c.column_name ORDER BY c.column_name DESC
-                                 ), (acc, x) -> acc || x) AS signature
-                          FROM information_schema.columns c
-                          GROUP BY c.table_schema, c.table_name),
-                 distinct_tables AS (SELECT table_schema,
-                                            MIN(table_name) AS table_name
-                                     FROM cols
-                                     GROUP BY table_schema, signature)
-
-            SELECT table_schema,
-                   table_name,
-                   column_name,
-                   hash(concat(table_schema, table_name, column_name)) as column_id
-            FROM information_schema.columns
-                     JOIN distinct_tables USING (table_schema, table_name)
-            WHERE data_type = 'VARCHAR'
-                AND len(column_name) < 128
-                AND len(table_name) < 128
-                AND column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_kaggle.csv')
-            ORDER BY table_schema, table_name, column_name
-            """
-    column_data = kaggle_con.execute(query).fetchall()
-
-    data: List[DataRow] = []
-
-    for table_schema, table_name, column_name, column_id in tqdm(column_data, desc="Fetching column values"):
-        try:
-            table_name_escaped = escape_for_insert(table_name)
-            column_name_escaped = escape_for_insert(column_name)
-            query = f"""
-                        WITH distinct_values AS (
-                            SELECT DISTINCT "{column_name}" as value
-                            FROM "{table_schema}"."{table_name}"
-                            WHERE value IS NOT NULL AND value != ''
-                            LIMIT 10
-                        )
-                        SELECT list({column_id})[0:1], '{table_name_escaped}', '{column_name_escaped}', list(value) as values, len(values) as n_values
-                        FROM distinct_values
-                        """
-            values = kaggle_con.execute(query)
-            fetched = values.fetchall()
-
-            # check if any of the values is None or empty string
-
-            if fetched:
-                column_ids, table_name, column_name, values, n_values = fetched[0]
-                if values:
-                    for v in values:
-                        if v is None or v == '':
-                            values.remove(v)
-                            n_values -= 1
-                if n_values and n_values > 0:
-                    data.append((column_ids, table_name, column_name, values))
-        except Exception as e:
-            logger.error(f"Error fetching values for {table_schema}.{table_name}.{column_name}: {e}")
-            print(query)
-            continue
-
-    return data
-
-
-def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
+def get_sql_pile_data(con: duckdb.DuckDBPyConnection, dataset: DataSetType) -> List[DataRow]:
     """
     Retrieve column data from the database and organize it into batches.
 
@@ -134,20 +68,20 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
     query = """
             WITH ids_to_process AS (SELECT DISTINCT column_id
                                     FROM values_often
-                                    WHERE column_id NOT IN (SELECT column_id
-                                                            FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_sqlpile.csv')
-                                    LIMIT 10000)
+                                    WHERE column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv')      
+                                )
             SELECT list(DISTINCT column_id) as column_ids,
                    table_name,
                    column_name,
                    list(DISTINCT value)[:10] as "values"
             FROM ids_to_process
-                JOIN values_often USING (column_id)
-                JOIN columns
-            ON values_often.column_id = columns.id
-                JOIN tables ON tables.id = columns.table_id
+            JOIN values_often USING (column_id)
+            JOIN columns ON values_often.column_id = columns.id
+            JOIN tables ON tables.id = columns.table_id
+            JOIN repos ON tables.repo_id = repos.id
+            WHERE 'kaggle' IN repos.repo_name
             GROUP BY tables.repo_id, table_name, column_name
-            ORDER BY tables.repo_id, table_name, column_name
+            ORDER BY tables.repo_id
             """
 
     result = con.execute(query).fetchall()
@@ -310,7 +244,6 @@ def save_results(results: List[Dict[str, Any]], output_file: str = "semantic_typ
     final_df.to_csv(output_file, index=False)
 
 
-DataSetType = Literal['kaggle', 'sqlpile']
 
 BATCH_SIZE = 5
 MODEL = 'qwen3:8b'
@@ -319,13 +252,14 @@ DATA_SET: DataSetType = 'kaggle'
 if __name__ == "__main__":
     logger.info("Starting semantic type determination")
     con = get_con(read_only=True)
+    data = get_sql_pile_data(con, DATA_SET)
 
     if DATA_SET == 'kaggle':
-        data = get_kaggle_data()
         output_file = "semantic_types_kaggle.csv"
     else:
-        data = get_sql_pile_data(con)
         output_file = "semantic_types_sqlpile.csv"
+
+    con.close()
 
     batches = batch_data(data)
     logger.info(f"Retrieved {len(batches)} batches with a total of {sum(len(batch) for batch in batches)} columns")

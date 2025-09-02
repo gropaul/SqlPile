@@ -45,7 +45,6 @@
 %%
 %%
 \documentclass[sigconf,natbib=false]{style/acmart}
-\usepackage{biblatex}
 \usepackage[capitalise,nameinlink]{cleveref}
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
@@ -116,7 +115,7 @@
 
 %% Declare bibliography sources (one \addbibresource command per source)
 \addbibresource{bib/main.bib}
-\include{variables}
+%% \include{variables}
 %%
 %% end of the preamble, start of the body of the document source.
 \begin{document}
@@ -235,28 +234,7 @@ To keep the prompt compact and comparable across columns, the concatenated examp
 We use and report twelve semantic types in total which are listed in \cref{tab:semantic-types-list}
 along with the description we provided to the model.
 
-\begin{table}
-\caption{Semantic types for string columns and their model descriptions.}
-\label{tab:semantic-types-list}
-\begin{tabular}{lp{0.32\textwidth}}
-\toprule
-\textbf{Type} & \textbf{Type Description} \\
-\midrule
-\texttt{Name}           & Names of entities and persons, titles, labels \\
-\texttt{DateTime}       & Dates, timestamps, time-related columns  \\
-\texttt{Numeric}        & E.g.\ amounts, counts, prices, scores, sizes  \\
-\texttt{Boolean}        & Yes/no flags, is*/has*, enabled states \\
-\texttt{Category}       & Type, role, status, label, class, tag \\
-\texttt{FullText}       & Descriptions, messages, summaries, notes, comments \\
-\texttt{Identifier}     & Id, uuid, code, hash, token, version \\
-\texttt{Contact}        & Emails, phone, fax, mobile \\
-\texttt{Location}       & City, country, region, address, zip  \\
-\texttt{URL}             & Link, url, image path, icon, slug \\
-\texttt{Semistructured} & Formats like \texttt{JSON}, \texttt{CSV}, or simple lists \\
-\texttt{Test}           & Column with content or name that are for testing (e.g., \texttt{test}, \texttt{col}, \texttt{val1}). \\
-\bottomrule
-\end{tabular}
-\end{table}
+\input{assets/table_semantic_types}
 
 We have one system message that is used for all batches:
 \begin{quote}\small
@@ -279,15 +257,18 @@ Each batch is rendered into a single user message of the form:
 \(\dots\)\\
 \texttt{Column N: \dots}
 \end{quote}
-
-
 \caption{Semantic types used for string columns and their intended interpretation.}
 \label{tab:semantic-types}
-\end{table}
 
 \section{Storage}\label{sec:storage}
+\input{gen/sec_storage_analysis}
 
-
+\section{Properties of Strings}
+\begin{itemize}
+\item What physical types do strings of different semantic types share
+\item How do they differ?
+\item How can we use this for execution and compression
+\end{itemize}
 
 \section{Query Processing}\label{sec:query-processing}
 
@@ -305,10 +286,19 @@ Each batch is rendered into a single user message of the form:
 
 \section{Benchmark for String}\label{sec:benchmark-for-string}
 \begin{itemize}
-- Based on the analysis, we created a benchmark for strings.
-- What columns compress how well with which compression algorithm?
-- What are the expensive parts for e.g. a join operation of a int64 compared to a string?
-\end{itemize}}
+\item  Based on the analysis, we created a benchmark for strings.
+\item  What columns compress how well with which compression algorithm?
+\item  What are the expensive parts for e.g. a join operation of a int64 compared to a string?
+\end{itemize}
+
+
+\section{Findings}\label{sec:findings}
+While the TPC-H schema defines a \texttt{comment} column for all tables
+(e.g., \texttt{l\_comment}, \texttt{o\_comment}), only \texttt{c\_comment},
+\texttt{o\_comment}, and \texttt{s\_comment} are actually used
+This is especially noteworthy as also the comments from high cardinality tables like \texttt{lineitem} are not used.
+
+Similar for TPC-DS, we only two out of five comment columns are used (\texttt{item\_desc} and \texttt{reason\_desc}).
 
 \section{Limitations}\label{sec:limitations}
 \begin{itemize}

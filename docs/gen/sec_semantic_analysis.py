@@ -21,13 +21,12 @@ In the following, we will discuss how which semantic type is used in which opera
 """
 
 
-def gen_semantic_analysis():
+def generate_semantic_analysis():
     con = get_con(read_only=True)
 
     column_semantic_type_llm_usage_plot(con, output_dir=LATEX_ASSETS_DIR)
     figure_column_physical_type_usage = get_figure(
         path='assets/column_usage/semantic_type_llm/column_cnt.pdf',
-        description="Distribution of the semantic types of different benchmarks.",
         caption="Distribution of the semantic types of different benchmarks.",
         label="fig:column_semantic_type_usage",
     )
@@ -44,6 +43,6 @@ def gen_semantic_analysis():
 
 
 if __name__ == "__main__":
-    gen_semantic_analysis()
+    generate_semantic_analysis()
 
 

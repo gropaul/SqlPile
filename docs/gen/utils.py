@@ -13,12 +13,18 @@ def get_figure(path: str, caption: str = "", description: str = "", label: str =
         The caption text to display under the figure.
     description : str, optional
         The description text for accessibility (screen readers).
+    label: str, optional
+
 
     Returns
     -------
     str
         A LaTeX string representing the figure environment.
     """
+
+    if not description and label:
+        description = label
+
     template = f"""\\begin{{figure}}
   \\centering
   \\includegraphics[width=\\linewidth]{{{path}}}

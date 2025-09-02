@@ -15,10 +15,17 @@ class RepoTableData:
         self.table_name = table_name
         self.file_url = file_url
 
+
+def get_benchmark_repo_name(benchmark_name: str) -> str:
+    return f'3rd-party-{benchmark_name}'
+
+def get_benchmark_repo_url(benchmark_name: str) -> str:
+    return f'https://github.com/3rd-party/3rd-party-{benchmark_name}'
+
 class RepoData:
     def __init__(self, benchmark_name, queries: List[RepoQuery], table_data: List[RepoTableData]):
-        self.repo_name = f'3rd-party-{benchmark_name}'
-        self.repo_url = f'https://github.com/3rd-party/3rd-party-{benchmark_name}'
+        self.repo_name = get_benchmark_repo_name(benchmark_name)
+        self.repo_url = get_benchmark_repo_url(benchmark_name)
         self.queries: List[RepoQuery] = queries
         self.table_data: List[RepoTableData] = table_data
 
@@ -47,6 +54,58 @@ class RepoData:
         return repo_data
 
 
+def table_exists(con, table_name: str) -> bool:
+    result = con.execute(f"""
+        SELECT COUNT(*) FROM information_schema.tables
+        WHERE table_name = '{table_name}'
+    """).fetchone()
+    count = result[0] if result is not None else 0
+    return count == 1
+
+
+def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int):
+    if table_exists(con, "queries"):
+        con.execute("DELETE FROM queries WHERE repo_id = ?", (repo_id,))
+
+    if table_exists(con, "queries_error_select"):
+        con.execute("DELETE FROM queries_error_select WHERE repo_id = ?", (repo_id,))
+
+    # delete from column_values
+    if table_exists(con, "column_values") and table_exists(con, "columns") and table_exists(con, "tables"):
+        con.execute("""
+            DELETE FROM column_values
+            WHERE column_id IN (
+                SELECT c.id FROM columns c
+                JOIN tables t ON c.table_id = t.id
+                WHERE t.repo_id = ?
+            )
+        """, (repo_id,))
+
+    if table_exists(con, "columns") and table_exists(con, "tables"):
+        con.execute("""
+            DELETE FROM columns
+            WHERE table_id IN (SELECT id FROM tables WHERE repo_id = ?)
+        """, (repo_id,))
+
+    # delte from table_values_count
+    if table_exists(con, "table_values_count") and table_exists(con, "tables"):
+        con.execute("""
+            DELETE FROM table_values_count
+            WHERE table_id IN (SELECT id FROM tables WHERE repo_id = ?)
+        """, (repo_id,))
+
+     # delete from tables
+
+    if table_exists(con, "tables"):
+        con.execute("DELETE FROM tables WHERE repo_id = ?", (repo_id,))
+
+
+    if table_exists(con, TABLES_DATA_FILES_TABLE_NAME):
+        con.execute(f"DELETE FROM {TABLES_DATA_FILES_TABLE_NAME} WHERE repo_id = ?", (repo_id,))
+
+    if table_exists(con, "repos"):
+        con.execute("DELETE FROM repos WHERE id = ?", (repo_id,))
+
 def add_3rd_party(con: duckdb.DuckDBPyConnection, repo_data: RepoData, replace_existing: bool = False):
 
     repo_name = repo_data.repo_name
@@ -61,34 +120,7 @@ def add_3rd_party(con: duckdb.DuckDBPyConnection, repo_data: RepoData, replace_e
         if replace_existing:
             # we need to remove a) queries, b) columns c) tables d) table_data_files e) the repo itself
             repo_id = repo_exists[0]
-            # a) remove queries and also from queries_error_select
-            con.execute(f"""
-                    DELETE FROM queries WHERE repo_id = {repo_id}
-                """)
-            con.execute(f"""
-                    DELETE FROM queries_error_select WHERE repo_id = {repo_id}
-                """)
-
-            # b) remove columns, we need to join the tables as only the tables has the repo_id
-            con.execute(f"""
-                    DELETE FROM columns
-                    WHERE table_id IN (SELECT id FROM tables WHERE repo_id = {repo_id})
-                """)
-
-            # c) remove tables
-            con.execute(f"""
-                    DELETE FROM tables WHERE repo_id = {repo_id}
-                """)
-
-            # d) remove table_data_files
-            con.execute(f"""
-                    DELETE FROM {TABLES_DATA_FILES_TABLE_NAME} WHERE repo_id = {repo_id}
-                """)
-
-            # e) remove the repo itself
-            con.execute(f"""
-                    DELETE FROM repos WHERE id = {repo_id}
-                """)
+            delete_repo(con, repo_id)
         else:
             print("Skipping addition of repository due to existing data.")
             return
@@ -119,6 +151,11 @@ def add_3rd_party(con: duckdb.DuckDBPyConnection, repo_data: RepoData, replace_e
             """, (max_query_id + i + 1, None, repo_id, repo_query.query, 0, '', 0, repo_query.query_type))
 
     print(f"Added {len(all_queries)} queries to the database for repository {repo_name}, id {repo_id}.")
+
+    n_select_queries = len([q for q in all_queries if q.query_type == 'SELECT'])
+    n_create_queries = len([q for q in all_queries if q.query_type == 'CREATE'])
+    print(f" - {n_select_queries} SELECT queries")
+    print(f" - {n_create_queries} CREATE queries")
 
     # Create table_data_files Table
     con.execute(f"""

@@ -256,7 +256,8 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
         'column_distinct_cnt': 4,  # Index of column_cnt in the result tuple
         'query_cnt': 5,  # Index of query_cnt in the result tuple
         'repo_cnt': 6,  # Index of repo_cnt in the result tuple
-        'first': 3  # Index of column_cnt in the result tuple
+        'column_base_type': 3,  # Index of column_cnt in the result tuple
+        'semantic_type_llm': 3  # Index of column_cnt in the result tuple
     }
 
     percentage_index = count_indices[count_type]
@@ -280,10 +281,11 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
 
     n_usage_types = len(all_usage_types)
 
+    height_per_plot = (1.3 / 3) * len(all_data_sources)
     fig, axes = plt.subplots(
         nrows=n_usage_types,
         ncols=1,
-        figsize=(5, 1.3 * n_usage_types),  # wide, not too tall
+        figsize=(5,  height_per_plot * n_usage_types),  # wide, not too tall
         constrained_layout=True
     )
 
@@ -417,33 +419,13 @@ def column_semantic_type_syntactic_usage_plot(con: duckdb.DuckDBPyConnection):
     # create_stacked_bar_plot(all_results, 'repo_cnt', dir)
 
 
-def unify_llm_type(semantic_type: Optional[str]) -> str:
-    # {None, '', 'Password', 'Identifier', 'Contact', 'Boolean', 'Numeric', 'URL', 'Location',
-    # '', 'DateTime', 'Category', 'Email', 'Name', 'PhoneNumber', 'FullText', 'Title', 'Function'}
-
-    # Gender, Color are transformed to 'Category'
-    if semantic_type in ['Gender', 'Color']:
-        return 'Category'
-
-    # Email, PhoneNumber are transformed to 'Contact'
-    if semantic_type in ['Email', 'PhoneNumber']:
-        return 'Contact'
-
-    # Boolean and Numeric to Other
-    if semantic_type in ['Boolean', 'Numeric']:
-        return 'Other'
-
-    return semantic_type if semantic_type else 'Unknown'
-
-
-print('Warning: Boolean and Numeric are transformed to Other. Mention this in the text!')
+print('Warning: Semistructured, Boolean and Numeric, Semistructured, Url are transformed to Other. Mention this in the text!')
 
 
 def column_semantic_type_llm_usage_plot(con: duckdb.DuckDBPyConnection, output_dir: str = PLOTS_DIR):
     """
     Create a stacked bar plot showing column semantic types and their distribution by LLM usage.
     """
-    con.create_function('unify_llm_type', unify_llm_type, null_handling='SPECIAL')
     # Dictionary to store all results
     all_results = get_results(
         con, "unify_llm_type(semantic_type_llm)",

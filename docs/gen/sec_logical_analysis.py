@@ -41,7 +41,6 @@ def generate_logical_analysis():
     column_physical_type_usage_plot(con, output_dir=LATEX_ASSETS_DIR)
     figure_column_physical_type_usage = get_figure(
         path='assets/column_usage/physical_type/column_cnt.pdf',
-        description="Distribution of physical column types in SqlPile.",
         caption="Distribution of physical column types in SqlPile.",
         label="fig:column-physical-type-usage"
     )

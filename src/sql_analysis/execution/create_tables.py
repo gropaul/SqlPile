@@ -14,17 +14,6 @@ def create_base_tables(con: duckdb.DuckDBPyConnection, mode: ExecutionMode):
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
-    # create a view that contains all the ids of queries that have been already executed
-    con.execute(f"""
-        CREATE OR REPLACE VIEW executed_queries_ids AS
-        (
-            with ids AS (
-                SELECT query_id FROM {QUERIES_EXECUTABLE_TABLE_NAME}
-                UNION SELECT query_id FROM {QUERIES_ERROR_SELECT_TABLE_NAME}
-            ) SELECT DISTINCT query_id FROM ids
-        )
-        """)
-
     con.execute(f"""
         {create_statement} {QUERIES_EXECUTABLE_TABLE_NAME} (
             id BIGINT {primary_key()},
@@ -52,6 +41,17 @@ def create_base_tables(con: duckdb.DuckDBPyConnection, mode: ExecutionMode):
         )
     """)
 
+    # create a view that contains all the ids of queries that have been already executed
+    con.execute(f"""
+        CREATE OR REPLACE VIEW executed_queries_ids AS
+        (
+            with ids AS (
+                SELECT query_id FROM {QUERIES_EXECUTABLE_TABLE_NAME}
+                UNION SELECT query_id FROM {QUERIES_ERROR_SELECT_TABLE_NAME}
+            ) SELECT DISTINCT query_id FROM ids
+        )
+        """)
+
     con.execute(f"""
         {create_statement} {QUERIES_ERROR_CREATE_TABLE_NAME} (
             table_id BIGINT,
@@ -76,14 +76,14 @@ def create_base_tables(con: duckdb.DuckDBPyConnection, mode: ExecutionMode):
 
     # Create a table to store the column values with strings
     con.execute(f"""
-        {create_statement} {COLUMN_VALUES_TABLE_NAME} (
+        CREATE TABLE IF NOT EXISTS {COLUMN_VALUES_TABLE_NAME} (
             column_id BIGINT,
             value VARCHAR,
         )
     """)
 
     con.execute(f"""
-        {create_statement} {TABLE_VALUES_COUNT_TABLE_NAME} (
+        CREATE TABLE IF NOT EXISTS {TABLE_VALUES_COUNT_TABLE_NAME} (
             table_id BIGINT,
             count INTEGER
         )

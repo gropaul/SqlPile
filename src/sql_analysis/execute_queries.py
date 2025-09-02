@@ -411,32 +411,34 @@ def get_tables_from_create_statements(repo_id: int, con: duckdb.DuckDBPyConnecti
                 VALUES (?, ?, ?, ?)
             """, (repo_id, query_id, sql, str(e)))
 
-def save_used_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
-                            artificial_populated_ids: List[int]):
+def save_string_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
+                              artificial_populated_ids: List[int]):
 
     print(f"The following tables were artificially populated: {artificial_populated_ids}")
-    # get the columns that where recorded in the executable queries
-    used_columns = con.execute(f"""
+    # get the columns that where recorded in the executable queries and for which we don't have values yet
+    columns_to_record = con.execute(f"""
          SELECT {COLUMNS_TABLE_NAME}.id as column_id, column_name, table_name 
          FROM {COLUMNS_TABLE_NAME} 
          JOIN {TABLES_TABLE_NAME} on {COLUMNS_TABLE_NAME}.table_id = {TABLES_TABLE_NAME}.id
          WHERE 
-            column_base_type = 'Text' and 
-            {COLUMNS_TABLE_NAME}.id IN (
-                 SELECT DISTINCT unnest(column_ids)
-                 FROM column_usages 
-                 JOIN queries ON queries.id = query_id 
-                 WHERE queries.repo_id = {repo_id}
-            ) and 
-            {TABLES_TABLE_NAME}.id NOT IN {artificial_populated_ids}
+            column_base_type = 'Text' 
+            and {TABLES_TABLE_NAME}.repo_id = {repo_id}
+            -- and  {COLUMNS_TABLE_NAME}.id IN (
+            --     SELECT DISTINCT unnest(column_ids)
+            --     FROM column_usages 
+            --     JOIN queries ON queries.id = query_id 
+            --     WHERE queries.repo_id = {repo_id}
+            -- ) 
+            and {TABLES_TABLE_NAME}.id NOT IN {artificial_populated_ids}
+            and {COLUMNS_TABLE_NAME}.id NOT IN (SELECT DISTINCT column_id FROM {COLUMN_VALUES_TABLE_NAME})
     """).fetchall()
-    for (column_id, column_name, table_name) in used_columns:
+    for (column_id, column_name, table_name) in columns_to_record:
 
         try:
-            values_count = sandbox_con.execute(f"SELECT COUNT(*) FROM {quote(table_name)}").fetchone()[0]
             values_arrow = sandbox_con.execute(f"""
-                SELECT {column_id} as column_id, {column_name} as value
-                FROM {quote(table_name)} LIMIT {MAX_VALUES_TO_SAVE_PER_COLUMN}
+                SELECT {column_id} as column_id, {quote(column_name)} as value
+                FROM {quote(table_name)} 
+                USING SAMPLE {MAX_VALUES_TO_SAVE_PER_COLUMN}
             """).arrow()
 
             if not values_arrow:
@@ -523,7 +525,26 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
 def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, query_id: Optional[int] = None):
     con = get_con()
 
+    # check the number of tables for each 3rd party repo
+    res = con.execute(f"""
+        SELECT repos.id, repos.repo_url, COUNT(tables.id) AS table_count
+        FROM repos
+        LEFT JOIN tables ON repos.id = tables.repo_id
+        WHERE '3rd-party' IN repos.repo_name
+        GROUP BY repos.id, repos.repo_url
+        ORDER BY repos.id DESC
+    """).fetchall()
+
+    for repo_id_, repo_url, table_count in res:
+        if table_count == 0:
+            print(f"Warning: Repo {repo_id_} ({repo_url}) has no tables.")
+
+        print(f"Repo {repo_id_} ({repo_url}) has {table_count} tables.")
+
     create_base_tables(con, mode)
+
+    con.close()
+    con = get_con(DATABASE_PATH)
 
     repos = con.execute(f"""
         SELECT repos.id, repos.repo_url, COUNT(queries.id) AS query_count
@@ -570,7 +591,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
             analyse_plans(con, repo_id)
 
-            save_used_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
+            save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
             save_table_counts(repo_id, con, sandbox_con)
 
             # Close the sandbox connection, save progress, and checkpoint

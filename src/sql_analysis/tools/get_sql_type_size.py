@@ -2,6 +2,7 @@ import math
 import re
 from typing import Optional
 
+import duckdb
 from src.config import get_con
 
 
@@ -88,27 +89,24 @@ def get_sql_type_size(sql_type: str) -> Optional[int]:
     return None
 
 
-if __name__ == "__main__":
-    con = get_con()
+def create_sql_type_size_table(con: duckdb.DuckDBPyConnection):
 
     con.execute("""
-                CREATE OR REPLACE TABLE sql_type_sizes
-                (
-                    sql_type      TEXT NOT NULL,
-                    size_in_bytes INTEGER
-                )
-                """)
+                    CREATE OR REPLACE TABLE sql_type_sizes
+                    (
+                        sql_type      TEXT NOT NULL,
+                        size_in_bytes INTEGER
+                    )
+                    """)
 
     types_of_columns = con.execute("""
-        SELECT DISTINCT column_type FROM columns
-    """).fetchall()
+            SELECT DISTINCT column_type FROM columns
+        """).fetchall()
 
     for (sql_type,) in types_of_columns:
         size = get_sql_type_size(sql_type)
         con.execute("""
-            INSERT INTO sql_type_sizes (sql_type, size_in_bytes)
-            VALUES (?, ?)
-            """, (sql_type, size))
+                INSERT INTO sql_type_sizes (sql_type, size_in_bytes)
+                VALUES (?, ?)
+                """, (sql_type, size))
     con.commit()
-
-

@@ -103,15 +103,19 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
     """).fetchall()
 
     # get the number of queries
-    schemas = []
     n_erros = 0
-    n_new_tables = 0
-    n_new_columns = 0
     for sql, table_name, query_id, repo_url, repo_id in tqdm(create_queries, desc="Processing CREATE TABLE queries",
                                                              unit="query"):
         try:
             table_schema = parse_create_table(sql)
-            save_table_in_db(con, repo_id, table_schema)
+            new_id = save_table_in_db(con, repo_id, table_schema)
+            if new_id is None:
+                # print(f"Table {table_schema.table_name} already exists in repo {repo_id}. Skipping.")
+                continue
+            else:
+                # print(f"Saved table {table_schema.table_name} from repo {repo_url} (id {repo_id})")
+                pass
+
 
         except Exception as e:
             con.execute(f"""
@@ -121,9 +125,8 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
             n_erros += 1
 
     print(f"Parsed {len(create_queries)} CREATE TABLE queries.")
-    print(f"Found {n_new_tables} new tables and {n_new_columns} new columns.")
     print(f"Encountered {n_erros} errors during parsing.")
 
 
 if __name__ == "__main__":
-    get_schemas_from_create_query(repo_id=40982)
+    get_schemas_from_create_query(repo_id=40979)

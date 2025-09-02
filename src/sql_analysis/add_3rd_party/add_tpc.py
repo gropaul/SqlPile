@@ -71,7 +71,6 @@ def add_tpc(benchmark: Benchmark, select_queries: List[str] = None, benchmark_na
         file_url = os.path.join(tpch_dir, file)
         tabular_data_files.append(RepoTableData(table_name=table_name, file_url=file_url))
 
-
     queries: List[RepoQuery] = []
     for query, query_type in zip(all_queries, query_types):
         queries.append(RepoQuery(query=query, query_type=query_type))

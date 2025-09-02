@@ -23,6 +23,10 @@ DATABASE_TMP_DIR = os.path.join(TMP_DIR, "databases")
 GENERATED_SECTIONS_DIR = os.path.join(ROOT, "docs", "tex", "gen")
 LATEX_ASSETS_DIR = os.path.join(ROOT, "docs", "tex", "assets")
 
+KAGGLE_DATA_DIR = os.path.join(DATA_DIR, "kaggle")
+KAGGLE_DATA_DB_PATH = os.path.join(KAGGLE_DATA_DIR, "kaggle_data.duckdb")
+KAGGLE_DATASETS_DB_PATH = os.path.join(KAGGLE_DATA_DIR, "kaggle_datasets.duckdb")
+
 QUERY_RUN_TIMEOUT_SECONDS = 3 # Timeout for running queries in seconds
 
 TPC_DATA_DIR = os.path.join(DATA_DIR, "tpc")
@@ -34,6 +38,7 @@ ONLY_SCRAPE_SELECT_QUERIES = False
 CHARACTERS_BEFORE_AND_AFTER_QUERY = 400
 HEADER_N_LINES = 30  # Number of header lines to keep for each file that contains SQL queries
 MAX_VALUES_TO_SAVE_PER_COLUMN = 5000  # Maximum number of values to save per column in the database
+MAX_VALUES_TO_ANALYZE_PER_COLUMN = 100_000
 
 RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing
@@ -152,13 +157,58 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
     # Register the custom function to format numbers as percentages
     con.create_function("as_percentage", format_number_as_percentage, [float], str, type="native")
 
-    con.execute("""
-                  CREATE TEMP VIEW column_usages_unnested AS
-                  (
-                  SELECT *, unnest(column_ids) AS column_id
-                  FROM column_usages
-                  )
-                  """)
+    def unify_llm_type(semantic_type: Optional[str]) -> str:
+        # {None, '', 'Password', 'Identifier', 'Contact', 'Boolean', 'Numeric', 'URL', 'Location',
+        # '', 'DateTime', 'Category', 'Email', 'Name', 'PhoneNumber', 'FullText', 'Title', 'Function'}
+
+        # Gender, Color are transformed to 'Category'
+        if semantic_type in ['Gender', 'Color']:
+            return 'Category'
+
+        # Email, PhoneNumber are transformed to 'Contact'
+        if semantic_type in ['Email', 'PhoneNumber']:
+            return 'Contact'
+
+        # Boolean and Numeric to Other
+        if semantic_type in ['Boolean', 'Numeric', 'Semistructured', 'URL']:
+            return 'Other'
+
+        return semantic_type if semantic_type else 'Other'
+
+    con.create_function('unify_llm_type', unify_llm_type, null_handling='SPECIAL')
+
+    try:
+        con.execute("""
+                          CREATE TEMP VIEW column_usages_unnested AS
+                          (
+                          SELECT *, unnest(column_ids) AS column_id
+                          FROM column_usages
+                          )
+                          """)
+
+        con.execute("""
+                        CREATE OR REPLACE TEMP VIEW values_often AS
+                        WITH filtered_values AS (
+                            SELECT column_id, value
+                            FROM column_values
+                            WHERE value != 'example text' 
+                                AND value != 'None'
+                                AND length(value) > 0
+                                AND value IS NOT NULL
+                        ),
+                        often AS (
+                            SELECT column_id
+                            FROM filtered_values
+                            GROUP BY column_id
+                            HAVING COUNT(value) > 0
+                        )
+                        SELECT column_id, value
+                        FROM filtered_values
+                        WHERE column_id IN (SELECT column_id FROM often);
+                """)
+    except Exception as e:
+        logging.warning(f"Could not create views column_usages_unnested and values_often. The tables might not exist yet.")
+        pass
 
     def unifiy_usage_types(usage_type: str) -> str:
         usage_to_operator_map = {
@@ -195,6 +245,8 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
             return "TPC"
         elif repo_url.startswith("https://github.com/3rd-party/3rd-party-sql-storm"):
             return "SQLStorm"
+        elif repo_url.startswith("https://github.com/3rd-party/3rd-party-kaggle"):
+            return "Kaggle"
         else:
             return "SqlPile"
 
@@ -276,26 +328,7 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
 
     con.execute(PREPARE_SQL_STATICALLY_MACRO)
 
-    con.execute("""
-                CREATE OR REPLACE TEMP VIEW values_often AS
-                WITH filtered_values AS (
-                    SELECT column_id, value
-                    FROM column_values
-                    WHERE value != 'example text' 
-                        AND value != 'None'
-                        AND length(value) > 0
-                        AND value IS NOT NULL
-                ),
-                often AS (
-                    SELECT column_id
-                    FROM filtered_values
-                    GROUP BY column_id
-                    HAVING COUNT(value) > 0
-                )
-                SELECT column_id, value
-                FROM filtered_values
-                WHERE column_id IN (SELECT column_id FROM often);
-        """)
+
     return con
 
 

@@ -17,6 +17,8 @@ class StackOverflowDownloadResult:
 
 def download_stackoverflow_data() -> StackOverflowDownloadResult:
     output_dir = os.path.join(SQL_STORM_DATA_DIR, 'stackoverflow')
+    # make the directory if it does not exist
+    os.makedirs(output_dir, exist_ok=True)
     # download the schema from https://db.in.tum.de/~schmidt/data/stackoverflow_schema.sql
     schema_url = 'https://db.in.tum.de/~schmidt/data/stackoverflow_schema.sql'
     schema_path = os.path.join(output_dir, 'schema_stackoverflow.sql')
@@ -61,7 +63,7 @@ def remove_multiline_comments(code: str) -> str:
     return re.sub(pattern, "", code)
 
 
-def add_sql_storm_stack_overflow():
+def add_sql_storm_stack_overflow(replace_existing: bool = True):
     result = download_stackoverflow_data()
 
     schema_content = open(result.schema_path, 'r').read()
@@ -78,7 +80,7 @@ def add_sql_storm_stack_overflow():
     benchmark_name = 'sql-storm-stackoverflow'
     repo_data = RepoData.from_queries(benchmark_name, benchmark_queries, schema_queries, result.data_dir, '.csv')
     con = get_con()
-    add_3rd_party(con, repo_data, replace_existing=True)
+    add_3rd_party(con, repo_data, replace_existing=replace_existing)
 
 
 def add_sql_storm_tpc(tpc_benchmark: Benchmark):
@@ -107,11 +109,15 @@ def add_sql_storm_job():
 
     imdb_db_path = os.path.join(SQL_STORM_DATA_DIR, 'imdb', 'imdb.duckdb')
     os.makedirs(os.path.dirname(imdb_db_path), exist_ok=True)
+
+    # delete the existing imdb.duckdb file if it exists
+    if os.path.exists(imdb_db_path):
+        os.remove(imdb_db_path)
+
     con = duckdb.connect(imdb_db_path)
 
-    if not os.path.exists(imdb_db_path):
-        con.execute(imdb_schema)
-        con.execute(imdb_load)
+    con.execute(imdb_schema)
+    con.execute(imdb_load)
 
     export_path = os.path.join(SQL_STORM_DATA_DIR, 'imdb', 'imdb')
     con.execute(f"EXPORT DATABASE '{export_path}' (FORMAT PARQUET, OVERWRITE TRUE)")

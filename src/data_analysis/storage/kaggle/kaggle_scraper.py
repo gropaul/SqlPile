@@ -4,11 +4,13 @@ from time import sleep
 from IPython.core.page import page_dumb
 from datasets import tqdm
 
+from src.config import KAGGLE_DATASETS_DB_PATH
+
 kaggle.api.authenticate()
 
 
 # create dataset table
-con = duckdb.connect('kaggle_datasets.duckdb')
+con = duckdb.connect(KAGGLE_DATASETS_DB_PATH)
 
 con.execute("""
     CREATE TABLE IF NOT EXISTS kaggle_datasets (
