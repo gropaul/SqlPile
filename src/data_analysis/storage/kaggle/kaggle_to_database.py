@@ -182,5 +182,5 @@ def delte_kaggle_repos():
 
 
 if __name__ == "__main__":
-    # delte_kaggle_repos()
+    delte_kaggle_repos()
     save_kaggle_in_database()

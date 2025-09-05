@@ -108,7 +108,10 @@ def main():
             SELECT ref, clean_name(ref) AS schema_name, file_name as file, table_name_from_file(file) AS table_name
             FROM kaggle_datasets
             JOIN filtered_datasets ON kaggle_datasets.id = filtered_datasets.dataset_id
-            WHERE 'abhishekyana/nse-listed-1384' NOT IN ref
+            WHERE 
+                'abhishekyana/nse-listed-1384' NOT IN ref
+                AND 'allen-institute-for-ai' NOT IN ref -- too large for vldb wifi
+                AND 'aymital/us-us' NOT IN ref -- too large for vldb wifi
         ),
         data_filtered_for_processed AS (
             SELECT data.*

@@ -47,7 +47,7 @@ CATEGORIES = [
     "Semistructured", "Test"
 ]
 
-type DataRow = Tuple[List[int], str, str, List[str]]
+DataRow = Tuple[List[int], str, str, List[str]]
 
 
 class DataRowJson(TypedDict):

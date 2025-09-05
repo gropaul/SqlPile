@@ -1,5 +1,4 @@
 import os
-import re
 from docs.gen.utils import get_figure, format_latex_string
 from src.config import get_con, LATEX_ASSETS_DIR, GENERATED_SECTIONS_DIR
 from src.data_analysis.storage.storage_analysis import get_storage_percentage_table
@@ -19,16 +18,16 @@ In this section, we want to analyze how much storage is used for different logic
 
 def generate_storage_analysis():
 
-    get_storage_percentage_table('semantic_type_llm', output_dir=LATEX_ASSETS_DIR)
+    get_storage_percentage_table('column_base_type', output_dir=LATEX_ASSETS_DIR)
     figure_storage_semantic_type = get_figure(
-        path='assets/semantic_type_llm.pdf',
+        path='assets/column_base_type.pdf',
         caption="Analysis on the storage per logical types",
         label="fig:storage-semantic-type-llm",
     )
 
-    get_storage_percentage_table('column_base_type', output_dir=LATEX_ASSETS_DIR)
+    get_storage_percentage_table('semantic_type_llm', output_dir=LATEX_ASSETS_DIR)
     figure_storage_column_base_type = get_figure(
-        path='assets/column_base_type.pdf',
+        path='assets/semantic_type_llm.pdf',
         caption="Ratios for storage for all strings based on semantic type",
         label="fig:storage-column-base-type",
     )

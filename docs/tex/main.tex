@@ -289,8 +289,23 @@ Each batch is rendered into a single user message of the form:
 \item  Based on the analysis, we created a benchmark for strings.
 \item  What columns compress how well with which compression algorithm?
 \item  What are the expensive parts for e.g. a join operation of a int64 compared to a string?
+\item The goal should be to have a benchmark where both the compression and the execution can be tested.
+So the data is allowed to be compressed by the DBMS, the idea is to leverage how the data is compressed for execution.
+-> String processing is manly compressed execution
+\item The benchmark should measure compression speed, compression ratio, and execution speed, a bit similar then
+Clickbench but not with obscure queries then can be easily exploited on.
 \end{itemize}
 
+The idea for creating the benchmark is to get kaggle datasets (mainly ml datasets). They are usually denomalized single
+tables so we could LLMs to normalize the data a bit more. Then we could use LLMs to generate very simple queries with
+not that many joins. The benchmark should not be winable by good join ordering, but really focus on core operator
+speed and the leverage of compression.
+The problem of SQLstorm for string execution lays in the complexity of the queries. This means that good
+query optimization will overshadow the actual execution performance.
+Also, with only two new datasets, while there are a lot of different query features, there is a lack of divere data
+features (Join on emails instead of uint64 ids, \ldots).
+
+What do strings mean for GPU databases? Even more memory heavy..
 
 \section{Findings}\label{sec:findings}
 While the TPC-H schema defines a \texttt{comment} column for all tables

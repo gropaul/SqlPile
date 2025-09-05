@@ -70,6 +70,20 @@ class IDManager:
 
 
 
+def make_create_statement(complete_quoted_table_name, columns):
+    col_defs = []
+    for column in columns:
+        col_name = quote(column["column_name"])
+        col_type = base_type_to_duckdb_type(column["column_base_type"])
+        col_defs.append(f"{col_name} {col_type}")
+
+    col_defs_str = ",\n".join(col_defs)
+
+    create_statement = f"""
+        CREATE TABLE IF NOT EXISTS {complete_quoted_table_name} (
+            {col_defs_str}
+        )"""
+    return create_statement
 
 
 def create_sandbox_tables(repo_id: int, con: duckdb.DuckDBPyConnection,
@@ -112,12 +126,7 @@ def create_sandbox_tables(repo_id: int, con: duckdb.DuckDBPyConnection,
             complete_quoted_table_name = quote(table_name_clean)
 
         try:
-            create_statement = f"""
-                 CREATE TABLE IF NOT EXISTS {complete_quoted_table_name} ({
-            ',\n'.join(
-                f'{quote(column['column_name'])} {base_type_to_duckdb_type(column['column_base_type'])}'
-                for column in columns)
-            })"""
+            create_statement = make_create_statement(complete_quoted_table_name, columns)
             create_statement = prepare_select_statically(create_statement)
             sandbox_con.execute(create_statement)
 

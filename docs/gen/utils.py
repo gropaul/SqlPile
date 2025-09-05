@@ -25,13 +25,19 @@ def get_figure(path: str, caption: str = "", description: str = "", label: str =
     if not description and label:
         description = label
 
-    template = f"""\\begin{{figure}}
-  \\centering
-  \\includegraphics[width=\\linewidth]{{{path}}}
-  {"\\caption{" + caption + "}" if caption else ""}
-  {"\\Description{" + description + "}" if description else ""}
-    {"\\label{" + label + "}" if label else ""}
-\\end{{figure}}"""
+    cap_str = f"\\caption{{{caption}}}" if caption else ""
+    desc_str = f"\\Description{{{description}}}" if description else ""
+    label_str = f"\\label{{{label}}}" if label else ""
+
+    template = (
+        "\\begin{figure}\n"
+        "  \\centering\n"
+        f"  \\includegraphics[width=\\linewidth]{{{path}}}\n"
+        f"  {cap_str}\n"
+        f"  {desc_str}\n"
+        f"  {label_str}\n"
+        "\\end{figure}"
+    )
     return template
 
 

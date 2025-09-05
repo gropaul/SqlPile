@@ -3,11 +3,71 @@ from src.config import get_con
 from src.data_analysis.usage_plots import create_stacked_bar_plot
 from src.sql_analysis.tools.get_sql_type_size import create_sql_type_size_table
 
-# todo: remove one of the sqlstorm repos that does not have a specific
+def create_columns_storage_view(con: duckdb.DuckDBPyConnection):
 
-"""
+    # get the string view
+    con.execute("""
+        CREATE OR REPLACE VIEW column_sizes_text AS ( SELECT 
+            column_id,
+            offsets: 8,
+            all_offsets: count * offsets,
+            
+            uncompressed: count_non_null * avg_length + all_offsets,
+            
+            dict_codes: ceil((ceil(log2(count)) / 8)) * count,
+            dict_entries: ceil(count_distinct * (avg_length + offsets)), 
+            dict_compressed: dict_codes + dict_entries,
+            
+            fsst: ceil(uncompressed / 3) + all_offsets,
+            
+            compressed: least(uncompressed, dict_compressed, fsst),
+            compression_rate: round(uncompressed / compressed, 2)
+        FROM column_stats_text
+    ) """)
 
-"""
+    # create a view for ints
+    con.execute("""
+        CREATE OR REPLACE VIEW column_sizes_int AS ( SELECT
+            column_id,
+            bits_per_value: if(range_value > 0, ceil(log2(range_value)), 0),
+            uncompressed: 32 * count,
+            compressed: bits_per_value * count
+            FROM column_stats_int)
+    """)
+
+    # create a view for floats
+    con.execute("""
+        CREATE OR REPLACE VIEW column_sizes_float AS ( SELECT
+            column_id,
+            bits_per_value: ceil(32 / 2.5),  -- assuming ALP compression
+            uncompressed: 32 * count,
+            compressed: bits_per_value * count
+            FROM column_stats_float)
+    """)
+
+    # create a view for dates
+    con.execute("""
+        CREATE OR REPLACE VIEW column_sizes_date AS ( SELECT
+            column_id,
+            bits_per_value: 16,  -- assuming 16 bits per date
+            uncompressed: 32 * count,
+            compressed: bits_per_value * count
+            FROM column_stats_date)
+    """)
+
+    # create a view that unifies all the sizes
+    con.execute("""
+        CREATE OR REPLACE VIEW column_sizes AS (
+            SELECT column_id, uncompressed, compressed, 'text' AS type FROM column_sizes_text
+            UNION ALL
+            SELECT column_id, uncompressed, compressed, 'int' AS type FROM column_sizes_int
+            UNION ALL
+            SELECT column_id, uncompressed, compressed, 'float' AS type FROM column_sizes_float
+            UNION ALL
+            SELECT column_id, uncompressed, compressed, 'date' AS type FROM column_sizes_date
+        )
+    """)
+    
 
 def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir: str = '.'):
 
@@ -46,7 +106,7 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
             )
             -- these are all the columns with a variable size (strings)
             UNION ALL
-            SELECT columns.id, table_id, column_type, {group_key}, ifnull(size_in_bytes,9.5)
+            SELECT columns.id, table_id, column_type, {group_key}, ifnull(size_in_bytes,9.5) -- 9.5 is the average length for sqlstorm
             FROM columns
             LEFT JOIN semantics ON semantics.column_id = columns.id
             LEFT JOIN string_column_sizes ON string_column_sizes.column_id = columns.id

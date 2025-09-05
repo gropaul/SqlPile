@@ -5315,3 +5315,413 @@ against",Name
 4836731,xapi_edu_data,GradeID,Identifier
 4836741,xapi_edu_data,ParentschoolSatisfaction,Category
 4836730,xapi_edu_data,StageID,Category
+4823084,commentsmay2017,userTitle,Name
+4823147,gcar-data,year,Numeric
+4823148,gcar-data,price_in_euro,Numeric
+4823150,gcar-data,power_ps,Numeric
+4823149,gcar-data,power_kw,Numeric
+4823162,food-coded,GPA,Numeric
+4823204,food-coded,meals_dinner_friend,FullText
+4823218,food-coded,type_sports,Category
+4823206,food-coded,mother_profession,FullText
+4823187,food-coded,fav_cuisine,Category
+4823178,food-coded,eating_changes,FullText
+4823197,food-coded,ideal_diet,FullText
+4823170,food-coded,comfort_food_reasons,FullText
+4823196,food-coded,healthy_meal,FullText
+4823190,food-coded,food_childhood,FullText
+4823169,food-coded,comfort_food,FullText
+4823175,food-coded,diet_current,FullText
+4823186,food-coded,father_profession,Category
+4823222,food-coded,weight,Numeric
+4823224,netflix-titles,type,Category
+4823227,netflix-titles,cast,FullText
+4823226,netflix-titles,director,FullText
+4823225,netflix-titles,title,Name
+4823229,netflix-titles,date_added,DateTime
+4823231,netflix-titles,rating,Category
+4823223,netflix-titles,show_id,Identifier
+4823234,netflix-titles,description,FullText
+4823233,netflix-titles,listed_in,Category
+4823228,netflix-titles,country,Location
+4823232,netflix-titles,duration,Numeric
+4823236,plane-crash-info,Fatal,Numeric
+4823241,plane-crash-info,Type,Category
+4823240,plane-crash-info,Flight,Identifier
+4823237,plane-crash-info,Date,DateTime
+4823239,plane-crash-info,Carrier,Location
+4823235,plane-crash-info,Unnamed: 0,Identifier
+4823238,plane-crash-info,Location,Location
+4823254,consumers,Occupation,Category
+4823245,consumers,Country,Location
+4823244,consumers,State,Location
+4823242,consumers,Consumer_ID,Identifier
+4823255,consumers,Budget,Category
+4823248,consumers,Smoker,Boolean
+4823249,consumers,Drink_Level,Category
+4823252,consumers,Children,Category
+4823243,consumers,City,Location
+4823251,consumers,Marital_Status,Category
+4823250,consumers,Transportation_Method,Category
+4823257,songs-normalize,song,FullText
+4823256,songs-normalize,artist,Name
+4823273,songs-normalize,genre,Category
+4823285,titanic,Embarked,Category
+4823282,titanic,Ticket,Identifier
+4823277,titanic,Name,Name
+4823278,titanic,Sex,Category
+4823284,titanic,Cabin,Identifier
+4823286,seattle-weather,date,DateTime
+4823291,seattle-weather,weather,Category
+4823293,mail-data,Message,FullText
+4823292,mail-data,Category,Category
+4823302,heart-disease-cleaned,restecg,Category
+4823298,heart-disease-cleaned,cp,Category
+4823296,heart-disease-cleaned,sex,Category
+4823318,heart-disease-uci,restecg,Category
+4823324,heart-disease-uci,thal,Category
+4823308,heart-disease-cleaned,thal,Category
+4823312,heart-disease-uci,sex,Category
+4823314,heart-disease-uci,cp,Category
+4823322,heart-disease-uci,slope,Category
+4823306,heart-disease-cleaned,slope,Category
+4823297,heart-disease-cleaned,dataset,Location
+4823313,heart-disease-uci,dataset,Location
+4823326,visa-stock-data,Date,DateTime
+4823338,retail-and-wherehouse-sale,ITEM DESCRIPTION,FullText
+4823336,retail-and-wherehouse-sale,SUPPLIER,Name
+4823337,retail-and-wherehouse-sale,ITEM CODE,Identifier
+4823339,retail-and-wherehouse-sale,ITEM TYPE,Category
+4823351,spotify-most-streamed-songs,streams,Numeric
+4823354,spotify-most-streamed-songs,in_deezer_playlists,Numeric
+4823356,spotify-most-streamed-songs,in_shazam_charts,Numeric
+4823343,spotify-most-streamed-songs,track_name,Name
+4823344,spotify-most-streamed-songs,artist(s)_name,Name
+4823358,spotify-most-streamed-songs,key,Category
+4823367,spotify-most-streamed-songs,cover_url,URL
+4823359,spotify-most-streamed-songs,mode,Category
+4823402,worldcups,Fourth,Name
+4823369,worldcupmatches,Datetime,DateTime
+4823400,worldcups,Runners-Up,Name
+4823395,worldcupplayers,Position,Category
+4823392,worldcupplayers,Line-up,Category
+4823371,worldcupmatches,Stadium,Location
+4823376,worldcupmatches,Away Team Name,Name
+4823406,worldcups,Attendance,Numeric
+4823399,worldcups,Winner,Name
+4823386,worldcupmatches,Home Team Initials,Name
+4823377,worldcupmatches,Win conditions,FullText
+4823372,worldcupmatches,City,Location
+4823401,worldcups,Third,Category
+4823382,worldcupmatches,Assistant 1,Name
+4823390,worldcupplayers,Team Initials,Identifier
+4823391,worldcupplayers,Coach Name,Name
+4823383,worldcupmatches,Assistant 2,Name
+4823396,worldcupplayers,Event,FullText
+4823394,worldcupplayers,Player Name,Name
+4823370,worldcupmatches,Stage,Category
+4823373,worldcupmatches,Home Team Name,Name
+4823387,worldcupmatches,Away Team Initials,Category
+4823381,worldcupmatches,Referee,Name
+4823398,worldcups,Country,Location
+4823411,testdata,tpryan,Test
+4823410,testdata,kindle2,Category
+4823412,testdata,"@stellargirl I loooooooovvvvvveee my Kindle2. Not that the DX is cool, but the 2 is fantastic in its own right.",FullText
+4823409,testdata,Mon May 11 03:17:40 UTC 2009,DateTime
+4823413,indian-restaurants,restaurant_name,Name
+4823423,indian-restaurants,location,Location
+4823424,rice--countries,Country,Location
+4823434,military,Country,Location
+4823441,population,Rank,Numeric
+4823442,population,State or union territory,Location
+4823457,swiggy,Food type,FullText
+4823453,swiggy,Restaurant,Name
+4823452,swiggy,City,Location
+4823451,swiggy,Area,Location
+4823458,swiggy,Address,Location
+4823468,ronaldo-competition-goals,Competition,Category
+4823466,messi-opponent-goals,Opponent,Location
+4823460,messi-competition-goals,Competition,Category
+4823474,ronaldo-opponent-goals,Opponent,Location
+4823476,petrol-price,date,DateTime
+4823503,zomato,local address,Location
+4823499,zomato,online_order,Boolean
+4823502,zomato,area,Location
+4823501,zomato,cuisines type,Category
+4823500,zomato,table booking,Boolean
+4823495,zomato,restaurant type,Category
+4823494,zomato,restaurant name,Name
+4823505,shortjokes,Joke,FullText
+4823508,annotations,Category,Category
+4823515,articles,publishingDate,DateTime
+4823511,annotations-consolidated,Category,Category
+4823531,posts,Body,FullText
+4823528,posts,CreatedAt,DateTime
+4823530,posts,Headline,FullText
+4823518,categories,Name,Category
+4823516,articles,Title,FullText
+4823529,posts,Status,Category
+4823517,articles,Body,FullText
+4823514,articles,Path,URL
+4823521,crossvalsplit,Category,Category
+4823608,cat-train,ord_3,Test
+4823579,cat-test,nom_8,Identifier
+4823626,cat-train-folds,nom_6,Identifier
+4823550,adult-folds,workclass,Category
+4823557,adult-folds,race,Category
+4823622,cat-train-folds,nom_2,Category
+4823595,cat-train,nom_0,Category
+4823580,cat-test,nom_9,Identifier
+4823609,cat-train,ord_4,Category
+4823619,cat-train-folds,bin_4,Boolean
+4823539,adult,marital.status,Category
+4823583,cat-test,ord_2,Category
+4823641,imdb,sentiment,Category
+4823606,cat-train,ord_1,Category
+4823621,cat-train-folds,nom_1,Category
+4823572,cat-test,nom_1,Category
+4823555,adult-folds,occupation,Category
+4823598,cat-train,nom_3,Category
+4823547,adult,native.country,Location
+4823563,adult-folds,income,Category
+4823552,adult-folds,education,Category
+4823578,cat-test,nom_7,Identifier
+4823576,cat-test,nom_5,Identifier
+4823586,cat-test,ord_5,Category
+4823543,adult,sex,Category
+4823569,cat-test,bin_3,Boolean
+4823601,cat-train,nom_6,Identifier
+4823597,cat-train,nom_2,Category
+4823633,cat-train-folds,ord_3,Category
+4823556,adult-folds,relationship,Category
+4823620,cat-train-folds,nom_0,Category
+4823628,cat-train-folds,nom_8,Identifier
+4823577,cat-test,nom_6,Identifier
+4823573,cat-test,nom_2,Name
+4823634,cat-train-folds,ord_4,Category
+4823575,cat-test,nom_4,Name
+4823594,cat-train,bin_4,Boolean
+4823603,cat-train,nom_8,Identifier
+4823554,adult-folds,marital.status,Category
+4823584,cat-test,ord_3,Semistructured
+4823571,cat-test,nom_0,Category
+4823604,cat-train,nom_9,Identifier
+4823535,adult,workclass,Category
+4823585,cat-test,ord_4,Category
+4823624,cat-train-folds,nom_4,Category
+4823542,adult,race,Category
+4823607,cat-train,ord_2,Category
+4823574,cat-test,nom_3,Location
+4823596,cat-train,nom_1,Category
+4823631,cat-train-folds,ord_1,Category
+4823635,cat-train-folds,ord_5,Category
+4823627,cat-train-folds,nom_7,Identifier
+4823625,cat-train-folds,nom_5,Identifier
+4823618,cat-train-folds,bin_3,Boolean
+4823642,imdb-folds,review,FullText
+4823600,cat-train,nom_5,Identifier
+4823602,cat-train,nom_7,Identifier
+4823610,cat-train,ord_5,Identifier
+4823593,cat-train,bin_3,Boolean
+4823640,imdb,review,FullText
+4823537,adult,education,Category
+4823582,cat-test,ord_1,Category
+4823623,cat-train-folds,nom_3,Category
+4823558,adult-folds,sex,Category
+4823540,adult,occupation,Category
+4823562,adult-folds,native.country,Category
+4823548,adult,income,Category
+4823629,cat-train-folds,nom_9,Identifier
+4823632,cat-train-folds,ord_2,Category
+4823541,adult,relationship,Category
+4823599,cat-train,nom_4,Category
+4823570,cat-test,bin_4,Boolean
+4826108,br001,From Date,DateTime
+4826061,ar001,To Date,DateTime
+4826168,dl001,From Date,DateTime
+4826180,gj001,From Date,DateTime
+4826129,cg001,To Date,DateTime
+4826038,ap001,To Date,DateTime
+4826060,ar001,From Date,DateTime
+4826228,hr001,To Date,DateTime
+4826268,jk001,To Date,DateTime
+4826109,br001,To Date,DateTime
+4826085,as001,From Date,DateTime
+4826248,jh001,From Date,DateTime
+4826267,jk001,From Date,DateTime
+4826227,hr001,From Date,DateTime
+4826037,ap001,From Date,DateTime
+4826204,hp001,From Date,DateTime
+4826290,ka001,From Date,DateTime
+4826144,ch001,From Date,DateTime
+4826145,ch001,To Date,DateTime
+4826291,ka001,To Date,DateTime
+4826205,hp001,To Date,DateTime
+4826169,dl001,To Date,DateTime
+4826128,cg001,From Date,DateTime
+4826181,gj001,To Date,DateTime
+4826249,jh001,To Date,DateTime
+4826086,as001,To Date,DateTime
+4826327,test,Registration_Date,DateTime
+4826319,health-camp-detail,Category1,Category
+4826318,health-camp-detail,Camp_End_Date,DateTime
+4826320,health-camp-detail,Category2,Category
+4826317,health-camp-detail,Camp_Start_Date,DateTime
+4826335,possum,Pop,Location
+4826336,possum,sex,Category
+4826351,campeonato-brasileiro-cartoes,atleta,Name
+4826371,campeonato-brasileiro-full,hora,DateTime
+4826372,campeonato-brasileiro-full,mandante,Name
+4826383,campeonato-brasileiro-full,visitante_Estado,Category
+4826387,campeonato-brasileiro-gols,atleta,Name
+4826389,campeonato-brasileiro-gols,tipo_de_gol,Category
+4826350,campeonato-brasileiro-cartoes,cartao,Category
+4826388,campeonato-brasileiro-gols,minuto,Numeric
+4826357,campeonato-brasileiro-estatisticas-full,clube,Name
+4826378,campeonato-brasileiro-full,vencedor,Name
+4826373,campeonato-brasileiro-full,visitante,Name
+4826375,campeonato-brasileiro-full,formacao_visitante,Category
+4826370,campeonato-brasileiro-full,data,DateTime
+4826360,campeonato-brasileiro-estatisticas-full,posse_de_bola,Numeric
+4826377,campeonato-brasileiro-full,tecnico_visitante,Name
+4826376,campeonato-brasileiro-full,tecnico_mandante,Name
+4826386,campeonato-brasileiro-gols,clube,Name
+4826374,campeonato-brasileiro-full,formacao_mandante,Category
+4826379,campeonato-brasileiro-full,arena,Location
+4826382,campeonato-brasileiro-full,mandante_Estado,Category
+4826362,campeonato-brasileiro-estatisticas-full,precisao_passes,Numeric
+4826353,campeonato-brasileiro-cartoes,posicao,Category
+4826349,campeonato-brasileiro-cartoes,clube,Name
+4826354,campeonato-brasileiro-cartoes,minuto,DateTime
+4826416,loan,earliest_cr_line,DateTime
+4826502,loan,sec_app_earliest_cr_line,DateTime
+4826410,loan,purpose,Category
+4826527,loan,disbursement_method,Category
+4826400,loan,emp_title,Name
+4826413,loan,addr_state,Location
+4826406,loan,loan_status,Category
+4826438,loan,last_credit_pull_d,DateTime
+4826425,loan,initial_list_status,Category
+4826404,loan,verification_status,Category
+4826445,loan,verification_status_joint,Category
+4826407,loan,pymnt_plan,Boolean
+4826412,loan,zip_code,Location
+4826401,loan,emp_length,Category
+4826512,loan,hardship_flag,Boolean
+4826395,loan,term,Numeric
+4826442,loan,application_type,Category
+4826528,loan,debt_settlement_flag,Boolean
+4826405,loan,issue_d,DateTime
+4826411,loan,title,Category
+4826435,loan,last_pymnt_d,DateTime
+4826402,loan,home_ownership,Category
+4826399,loan,sub_grade,Category
+4826398,loan,grade,Category
+4826437,loan,next_pymnt_d,DateTime
+4826538,ford,transmission,Category
+4826535,ford,model,Name
+4826540,ford,fuelType,Category
+4826546,bank-data,job,Category
+4826548,bank-data,education,Category
+4826551,bank-data,housing,Boolean
+4826552,bank-data,loan,Boolean
+4826547,bank-data,marital,Category
+4826561,bank-data,y,Boolean
+4826560,bank-data,poutcome,Category
+4826549,bank-data,default,Boolean
+4826553,bank-data,contact,Category
+4826555,bank-data,month,DateTime
+4826565,electric-vehicle-population-data,State,Location
+4826576,electric-vehicle-population-data,Vehicle Location,Location
+4826570,electric-vehicle-population-data,Electric Vehicle Type,Category
+4826564,electric-vehicle-population-data,City,Location
+4826563,electric-vehicle-population-data,County,Location
+4826562,electric-vehicle-population-data,VIN (1-10),Identifier
+4826571,electric-vehicle-population-data,Clean Alternative Fuel Vehicle (CAFV) Eligibility,Category
+4826569,electric-vehicle-population-data,Model,Name
+4826568,electric-vehicle-population-data,Make,Name
+4826577,electric-vehicle-population-data,Electric Utility,Category
+4826582,international-education-costs,Program,Category
+4826581,international-education-costs,University,Name
+4826583,international-education-costs,Level,Category
+4826580,international-education-costs,City,Location
+4826579,international-education-costs,Country,Location
+4826594,-annotations,class,Category
+4826591,-annotations,filename,Identifier
+4826601,salaries,employment_type,Category
+4826609,salaries,company_size,Category
+4826604,salaries,salary_currency,Category
+4826600,salaries,experience_level,Category
+4826608,salaries,company_location,Location
+4826602,salaries,job_title,Name
+4826606,salaries,employee_residence,Location
+4826620,students-social-media-addiction,Relationship_Status,Category
+4826612,students-social-media-addiction,Gender,Category
+4826616,students-social-media-addiction,Most_Used_Platform,Category
+4826614,students-social-media-addiction,Country,Location
+4826617,students-social-media-addiction,Affects_Academic_Performance,Boolean
+4826613,students-social-media-addiction,Academic_Level,Category
+4826634,student-depression-dataset,Dietary Habits,Category
+4826626,student-depression-dataset,City,Location
+4826638,student-depression-dataset,Financial Stress,Numeric
+4826635,student-depression-dataset,Degree,Category
+4826639,student-depression-dataset,Family History of Mental Illness,Boolean
+4826624,student-depression-dataset,Gender,Category
+4826633,student-depression-dataset,Sleep Duration,Category
+4826627,student-depression-dataset,Profession,Category
+4826636,student-depression-dataset,Have you ever had suicidal thoughts ?,Boolean
+4826733,unclean-focus,mileage,Numeric
+4826641,audi,model,Category
+4826738,unclean-focus,engine size2,Numeric
+4826691,merc,model,Category
+4826723,unclean-cclass,fuel type,Category
+4826721,unclean-cclass,transmission,Category
+4826724,unclean-cclass,engine size,Numeric
+4826736,unclean-focus,mileage2,Numeric
+4826739,unclean-focus,reference,URL
+4826650,bmw,model,Category
+4826678,ford,fuelType,Category
+4826664,cclass,fuelType,Category
+4826703,skoda,transmission,Category
+4826720,unclean-cclass,price,Numeric
+4826749,vw,model,Name
+4826644,audi,transmission,Category
+4826705,skoda,fuelType,Category
+4826676,ford,transmission,Category
+4826662,cclass,transmission,Category
+4826754,vw,fuelType,Category
+4826694,merc,transmission,Category
+4826726,unclean-cclass,fuel type2,Category
+4826718,unclean-cclass,model,Name
+4826655,bmw,fuelType,Category
+4826722,unclean-cclass,mileage,Numeric
+4826673,ford,model,Name
+4826659,cclass,model,Name
+4826727,unclean-cclass,engine size2,Numeric
+4826740,vauxhall,model,Name
+4826734,unclean-focus,fuel type,Numeric
+4826682,hyundi,model,Category
+4826712,toyota,transmission,Category
+4826671,focus,fuelType,Category
+4826732,unclean-focus,transmission,Category
+4826728,unclean-cclass,reference,URL
+4826725,unclean-cclass,mileage2,Numeric
+4826646,audi,fuelType,Category
+4826687,hyundi,fuelType,Category
+4826745,vauxhall,fuelType,Category
+4826666,focus,model,Name
+4826731,unclean-focus,price,Numeric
+4826669,focus,transmission,Category
+4826714,toyota,fuelType,Category
+4826700,skoda,model,Name
+4826735,unclean-focus,engine size,Numeric
+4826653,bmw,transmission,Category
+4826752,vw,transmission,Category
+4826696,merc,fuelType,Category
+4826743,vauxhall,transmission,Category
+4826685,hyundi,transmission,Category
+4826709,toyota,model,
+4826737,unclean-focus,fuel type2,
+4826729,unclean-focus,model,
+4826773,all-countries,continent,
+4826774,all-countries,demonym,
