@@ -1,7 +1,7 @@
 import os.path
 
 from docs.gen.utils import format_number, join_list_with_and, format_latex_string
-from src.config import GENERATED_SECTIONS_DIR, get_con, QUERIES_TABLE_NAME
+from src.config import LATEX_GEN_DIR, get_con, QUERIES_TABLE_NAME
 import duckdb
 
 # the section name is the filename without the extension
@@ -209,7 +209,7 @@ def generate_dataset_description():
 
     description = format_latex_string(description)
 
-    path = os.path.join(GENERATED_SECTIONS_DIR, SECTION_NAME)
+    path = os.path.join(LATEX_GEN_DIR, SECTION_NAME)
     with open(path, "w") as f:
         f.write(description)
 

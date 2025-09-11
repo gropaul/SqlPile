@@ -7,9 +7,9 @@ import duckdb
 
 
 def create_base_tables(con: duckdb.DuckDBPyConnection, mode: ExecutionMode):
-    if mode == 'replace':
+    if mode == 'restart':
         create_statement = "CREATE OR REPLACE TABLE"
-    elif mode == 'append':
+    elif mode == 'append' or mode == 'replace':
         create_statement = "CREATE TABLE IF NOT EXISTS"
     else:
         raise ValueError(f"Unknown mode: {mode}")

@@ -1,4 +1,21 @@
+from typing import List
+from pathlib import Path
 import re
+
+
+def sanitize_label(text: str) -> str:
+    """
+    Make a LaTeX-safe label fragment:
+    - lowercase
+    - spaces to hyphens
+    - remove characters not [a-z0-9:_-]
+    - collapse duplicate hyphens/underscores
+    """
+    t = text.lower()
+    t = t.replace(" ", "-")
+    t = re.sub(r"[^a-z0-9:_\-]+", "", t)
+    t = re.sub(r"[-_]{2,}", "-", t)
+    return t.strip("-_:")
 
 
 def get_figure(path: str, caption: str = "", description: str = "", label: str = "") -> str:
@@ -39,6 +56,66 @@ def get_figure(path: str, caption: str = "", description: str = "", label: str =
         "\\end{figure}"
     )
     return template
+
+
+def get_multi_figure(paths: List[str], caption: str, captions: List[str], label: str = "") -> str:
+    """
+    Generate a LaTeX figure with multiple subfigures.
+    Each subfigure gets a label derived from its file name.
+
+    Parameters
+    ----------
+    paths : List[str]
+        Full paths (with extension) to the figure files.
+    captions : List[str]
+        Captions per subfigure (same length as paths; use "" for none).
+    label : str, optional
+        Overall figure label prefix. Subfigure labels will be:
+        '<label>:<filename-stem>' if provided, otherwise 'fig:<filename-stem>'.
+
+    Returns
+    -------
+    str
+        LaTeX code for the multi-subfigure environment.
+    """
+
+    if len(paths) != len(captions):
+        raise ValueError("Number of paths and captions must match.")
+
+    overall_label_prefix = sanitize_label(label) if label else "fig"
+
+    percentage_per_figure = round(0.98 / len(paths), 4)
+
+    subfigures = []
+    for path, cap in zip(paths, captions):
+        stem = Path(path).stem
+        stem_safe = sanitize_label(stem)
+        sub_label = f"{overall_label_prefix}:{stem_safe}"
+        cap_str = f"\\caption{{{cap}}}" if cap else ""
+
+        subfig = (
+            f"\\begin{{subfigure}}{{{percentage_per_figure}\\linewidth}}\n"
+            "   \\centering\n"
+            f"  \\includegraphics[width=\\linewidth]{{{path}}}\n"
+            f"  {cap_str}\n"
+            f"  \\label{{{sub_label}}}\n"
+            "\\end{subfigure}"
+        )
+        subfigures.append(subfig)
+
+    overall_label_str = f"\\label{{{overall_label_prefix}}}" if label else ""
+    cap_str = f"\\caption{{{caption}}}" if caption else ""
+
+    template = (
+        "\\begin{figure*}\n"
+        "  \\centering\n"
+        f"{'\n'.join(subfigures)}\n"
+        f"  {overall_label_str}\n"
+        f"  {cap_str}\n"
+        "\\end{figure*}"
+    )
+    return template
+
 
 
 def escape_latex_string(latex_str: str) -> str:

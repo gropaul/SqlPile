@@ -3,7 +3,11 @@ from typing import List, Literal
 from src.sql_analysis.tools.sql_types import BaseType
 
 
-ExecutionMode = Literal['replace', 'append']
+ExecutionMode = Literal['replace', 'append', 'restart']
+# replace: an repo that will be executed will replace any existing data for that repo
+# append: a repo that was executed will not be executed again, but new repos will be added
+# restart: all existing data will be deleted and the repo will be executed again
+
 
 class Column:
     def __init__(self, column_id: int, column_name: str, column_base_type: BaseType):

@@ -27,6 +27,11 @@ poetry run python main.py
 
 ## Build the Custom DuckDB
 
+```shell
+cd  ./external/duckdb-sqlpile/
+BUILD_PYTHON=1 PIP_BREAK_SYSTEM_PACKAGES=1 make release
+cd ../..
+poetry install
+```
 1. In the DuckDB repo:
-   `BUILD_PYTHON=1 make release`
 2. In poetry `poetry install`

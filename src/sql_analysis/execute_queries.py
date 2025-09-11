@@ -10,30 +10,23 @@ from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, RE
     COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
     QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME
+from src.sql_analysis.utils.delete_data import delete_repo, reset_statistics_tables
 from src.sql_analysis.execution.create_tables import create_base_tables
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
 from src.sql_analysis.execution.fix_group_by import fix_group_by
 from src.sql_analysis.execution.mock_query import MockQueryResult, try_to_mock_and_execute_query
 from src.sql_analysis.execution.models import Table, Column, ExecutionMode
 from src.sql_analysis.execution.prepare_sql_for_execution import prepare_select_statically, escape_for_insert
+from src.sql_analysis.execution.record_statistics import record_statistics_for_repo
 from src.sql_analysis.execution.transform_insert import transform_insert_to_create, save_schema_from_insert_create
+from src.sql_analysis.execution.utils import quote
 from src.sql_analysis.get_schemas_from_create_query import save_table_in_db
 from src.sql_analysis.plan_analysis.analyse_plans import analyse_plans
 from src.sql_analysis.tools.sql_to_schema import parse_create_table
 from src.sql_analysis.tools.sql_types import base_type_to_duckdb_type, base_type_to_example_value
 
 
-# Define the error table name
-
-def quote(column_name: str) -> str:
-    # if the column name has ` or ' in it, replace them with double quotes
-    column_name = column_name.replace('`', '"').replace("'", '"')
-
-    # if the column name is not already wrapped in quotes, wrap it in double quotes
-    if not (column_name.startswith('"') and column_name.endswith('"')):
-        return f'"{column_name}"'
-
-    return column_name
+# Define the error table names
 
 
 n_failed_view_creations = 0
@@ -534,26 +527,16 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
 def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, query_id: Optional[int] = None):
     con = get_con()
 
-    # check the number of tables for each 3rd party repo
-    res = con.execute(f"""
-        SELECT repos.id, repos.repo_url, COUNT(tables.id) AS table_count
-        FROM repos
-        LEFT JOIN tables ON repos.id = tables.repo_id
-        WHERE '3rd-party' IN repos.repo_name
-        GROUP BY repos.id, repos.repo_url
-        ORDER BY repos.id DESC
-    """).fetchall()
-
-    for repo_id_, repo_url, table_count in res:
-        if table_count == 0:
-            print(f"Warning: Repo {repo_id_} ({repo_url}) has no tables.")
-
-        print(f"Repo {repo_id_} ({repo_url}) has {table_count} tables.")
-
     create_base_tables(con, mode)
 
+    if mode == 'restart':
+        reset_statistics_tables(con)
+
     con.close()
-    con = get_con(DATABASE_PATH)
+    con = get_con(DATABASE_PATH) # reploads some views
+
+    # if the mode is append we have to get rid of the queries already executed
+    append_filter = "AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids)"
 
     repos = con.execute(f"""
         SELECT repos.id, repos.repo_url, COUNT(queries.id) AS query_count
@@ -564,9 +547,9 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
-            and queries.id NOT IN (SELECT query_id FROM executed_queries_ids)
+            {append_filter if mode == 'append' else ''}
+            
         GROUP BY repos.id, repos.repo_url
-        HAVING COUNT(queries.id) > 0
         ORDER BY repos.id DESC -- from recently added to oldest
     """).fetchall()
 
@@ -574,10 +557,15 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
     id_manager = IDManager(con)
 
+    success_count = 0
+    error_count = 0
 
     with tqdm(repos, desc="Processing repositories", unit="repo") as pbar:
         for repo_id, repo_url, cnt in pbar:
             logging.info(f"Processing repository {repo_id} ({repo_url}) with {cnt} queries")
+
+            if mode == 'replace':
+                delete_repo(con, repo_id, mode='execution_only')
 
             # initialize the sandbox connection
             sandbox_con = duckdb.connect()
@@ -596,12 +584,14 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
-            execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
-
-            analyse_plans(con, repo_id)
+            print("QUERIES ARE NOT EXECUTED YET")
+            # execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
+            #
+            # analyse_plans(con, repo_id)
 
             save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
             save_table_counts(repo_id, con, sandbox_con)
+            record_statistics_for_repo(con, sandbox_con, repo_id)
 
             # Close the sandbox connection, save progress, and checkpoint
             con.execute("CHECKPOINT;")
@@ -634,11 +624,10 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
     if n_successful_view_creations > 0 or n_failed_view_creations > 0:
         print(
             f"Successfully created {n_successful_view_creations} views, failed to create {n_failed_view_creations} views.")
-
     con.close()
 
 
 
 
 if __name__ == "__main__":
-    execute_repo_queries(mode='replace', repo_id=None, query_id=None)
+    execute_repo_queries(mode='append', repo_id=None, query_id=None)

@@ -1,5 +1,7 @@
 # Install dependencies as needed:
 # pip install kagglehub[polars-datasets]
+import os
+import shutil
 from time import sleep
 from typing import List
 import re
@@ -42,6 +44,18 @@ def download_dataset(
         CREATE SCHEMA IF NOT EXISTS "{schema_name}"
     """)
 
+    # clear the cache at ~/.cache/kagglehub/datasets
+    # check if the dir exists
+    cache_path = os.path.expanduser("~/.cache/kagglehub/datasets")
+    if os.path.exists(cache_path):
+        try:
+            shutil.rmtree(cache_path)  # deletes the entire folder and its contents
+        except Exception as e:
+            print(f"Error deleting {cache_path}: {e}")
+
+    else:
+        print("Cache path does not exist, skipping cache clear.")
+
     for file_dict in files:
         file = file_dict['file']
         table_name = file_dict['table_name']
@@ -59,6 +73,7 @@ def download_dataset(
                     "on_bad_lines": "skip",
                 },
             )
+
             print(f"Storing {file} as {handle}.{table_name} with {df.shape[0]} rows and {df.shape[1]} columns")
             data_con.execute(f"""
                         CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM df

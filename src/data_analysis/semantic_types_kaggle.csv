@@ -5725,3 +5725,58 @@ against",Name
 4826729,unclean-focus,model,
 4826773,all-countries,continent,
 4826774,all-countries,demonym,
+4826768,all-countries,country,Location
+4826828,all-countries,democracy_type,Category
+4826772,all-countries,region,Location
+4826770,all-countries,currency,Category
+4826771,all-countries,capital_city,Location
+4826831,all-countries,title,Name
+4826830,all-countries,political_leader,Name
+4826769,all-countries,country_long,Name
+4826836,iris,Setosa,Category
+4826843,basic1,id,Identifier
+4826881,e-commerce,Category,Category
+4826887,employee-attrition,salary_level,Category
+4826937,titanic,Gender,Category
+4826883,e-commerce,ArrivalDate,DateTime
+4826896,insurance,지점코드,Identifier
+4826943,titanic,Cabin,Identifier
+4826891,high-blood-pressure,Id,Identifier
+4826907,payment,menu,FullText
+4826946,website,StartTime,DateTime
+4826920,sidedu,학습 카테고리,Category
+4826936,titanic,Name,Name
+4826914,sales-branch,거래ID,Identifier
+4826902,overwork,부서,Category
+4826848,basic1,f3,Test
+4826880,e-commerce,Feedback,FullText
+4826901,overwork,직원ID,Identifier
+4826882,e-commerce,OrderDate,DateTime
+4826941,titanic,Ticket,Identifier
+4826903,overwork,날짜,DateTime
+4826852,christmas-decoration-sales,Region,Category
+4826915,sales-branch,지점,Location
+4826892,high-blood-pressure,sex,Category
+4826912,purchase,카테고리,Category
+4826944,titanic,Embarked,Category
+4826916,sales-branch,거래일,DateTime
+4826910,purchase,세그먼트,Category
+4826948,website,Page,Category
+4826911,purchase,연령대,Category
+4826845,basic1,city,Location
+4826898,insurance,연령대,Category
+4826909,purchase,고객ID,Identifier
+4826947,website,EndTime,DateTime
+4826918,sidedu,ID,Identifier
+4826849,basic1,f4,Category
+4826851,christmas-decoration-sales,Decoration_Type,Category
+4826956,space-corrected, Rocket,Numeric
+4826955,space-corrected,Status Rocket,Category
+4826954,space-corrected,Detail,FullText
+4826951,space-corrected,Company Name,Name
+4826952,space-corrected,Location,Location
+4826957,space-corrected,Status Mission,Category
+4826953,space-corrected,Datum,DateTime
+4826958,images,image,Identifier
+4826960,images,label,Category
+4826963,ctu-iot-malware-capture-21-1conn,ts|uid|id.orig_h|id.orig_p|id.resp_h|id.resp_p|proto|service|duration|orig_bytes|resp_bytes|conn_state|local_orig|local_resp|missed_bytes|history|orig_pkts|orig_ip_bytes|resp_pkts|resp_ip_bytes|tunnel_parents|label|detailed-label,Semistructured

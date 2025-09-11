@@ -20,7 +20,7 @@ QUERIES_DIR_PARTITIONED = os.path.join(DATA_DIR, "queries_partitioned")
 DATABASE_PATH = os.path.join(DATA_DIR, 'schemapile.duckdb')
 TMP_DIR = os.path.join(DATA_DIR, "tmp")
 DATABASE_TMP_DIR = os.path.join(TMP_DIR, "databases")
-GENERATED_SECTIONS_DIR = os.path.join(ROOT, "docs", "tex", "gen")
+LATEX_GEN_DIR = os.path.join(ROOT, "docs", "tex", "gen")
 LATEX_ASSETS_DIR = os.path.join(ROOT, "docs", "tex", "assets")
 
 KAGGLE_DATA_DIR = os.path.join(DATA_DIR, "kaggle")
@@ -48,7 +48,7 @@ PROCESS_ZIPPED_REPOS = False
 LOG_TO_FILE = False  # Whether to log to a file or not
 
 # create all directories if they do not exist
-DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR_RAW, TMP_DIR, DATABASE_TMP_DIR, GENERATED_SECTIONS_DIR,
+DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR_RAW, TMP_DIR, DATABASE_TMP_DIR, LATEX_GEN_DIR,
         LATEX_ASSETS_DIR, TPC_DATA_DIR, SQL_STORM_DATA_DIR]
 
 for directory in DIRS:
@@ -170,10 +170,20 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
             return 'Contact'
 
         # Boolean and Numeric to Other
-        if semantic_type in ['Boolean', 'Numeric', 'Semistructured', 'URL']:
+        if semantic_type in ['Boolean', 'Numeric', 'URL']:
             return 'Other'
 
         return semantic_type if semantic_type else 'Other'
+
+    cum_sum_macro = """
+        -- cumulative sum over a LIST (NULLs treated as 0)
+        CREATE OR REPLACE TEMP MACRO list_cum_sum(xs) AS (
+          list_transform(xs, lambda x, i :
+            list_reduce(list_slice(xs, 1, i), lambda acc, y : acc + coalesce(y, 0))
+          )
+        );
+    """
+    con.execute(cum_sum_macro)
 
     con.create_function('unify_llm_type', unify_llm_type, null_handling='SPECIAL')
 

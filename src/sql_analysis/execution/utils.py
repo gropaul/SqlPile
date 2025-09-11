@@ -5,6 +5,15 @@ import duckdb
 
 from src.config import logger
 
+def quote(column_name: str) -> str:
+    # if the column name has ` or ' in it, replace them with double quotes
+    column_name = column_name.replace('`', '"').replace("'", '"')
+
+    # if the column name is not already wrapped in quotes, wrap it in double quotes
+    if not (column_name.startswith('"') and column_name.endswith('"')):
+        return f'"{column_name}"'
+
+    return column_name
 
 def execute_with_timeout(con: duckdb.DuckDBPyConnection, sql: str, timeout: int = 10) -> Any:
     """

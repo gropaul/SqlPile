@@ -1,7 +1,7 @@
 import os
 import re
 from docs.gen.utils import get_figure, format_latex_string
-from src.config import get_con, LATEX_ASSETS_DIR, GENERATED_SECTIONS_DIR
+from src.config import get_con, LATEX_ASSETS_DIR, LATEX_GEN_DIR
 from src.data_analysis.usage_plots import column_physical_type_usage_plot, column_semantic_type_llm_usage_plot
 
 
@@ -37,7 +37,7 @@ def generate_semantic_analysis():
 
     description = format_latex_string(description)
 
-    path = os.path.join(GENERATED_SECTIONS_DIR, SECTION_NAME)
+    path = os.path.join(LATEX_GEN_DIR, SECTION_NAME)
     with open(path, "w") as f:
         f.write(description)
 

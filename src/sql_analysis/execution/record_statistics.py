@@ -6,7 +6,8 @@ from tqdm import tqdm
 
 from src.config import COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_VALUES_TABLE_NAME, MAX_VALUES_TO_SAVE_PER_COLUMN, \
     MAX_VALUES_TO_ANALYZE_PER_COLUMN, TABLE_VALUES_COUNT_TABLE_NAME, get_con, KAGGLE_DATA_DB_PATH
-from src.sql_analysis.execute_queries import quote
+from src.sql_analysis.execution.utils import quote
+from src.sql_analysis.utils.delete_data import reset_statistics_tables
 
 
 def get_column_of_type(
@@ -28,12 +29,10 @@ def get_column_of_type(
     """).fetchone()[0] == 1
 
 
-    if table_exists:
+    if table_exists and False:
         table_filter = f"AND {COLUMNS_TABLE_NAME}.id NOT IN (SELECT column_id FROM {table_name_stats})"
     else:
         table_filter = ""
-
-
 
 
     columns = con.execute(f"""
@@ -77,11 +76,14 @@ def record_statistics_datetime(
                                 value,
                                 epoch(value) AS value_epoch
                             FROM vals
+                        ), total_table_size AS (
+                            SELECT COUNT(*) FROM {table_qualifier}{quote(table_name)}
                         )
                         SELECT
                             {column_id} AS column_id,
                             (SELECT list(value) FROM (FROM vals LIMIT 5)) AS sample_values,
-
+                            
+                            (SELECT * FROM total_table_size) AS total_table_size,
                             COUNT(*)                        AS count,
                             COUNT(value)                    AS count_non_null,
                             COUNT(*) - COUNT(value)         AS count_null,
@@ -126,10 +128,13 @@ def record_statistics_datetime(
             LIMIT 0
         """)
 
-        con.execute("""
-            INSERT INTO column_stats_datetime
-            SELECT * FROM all_stats_df
-        """)
+        try:
+            con.execute("""
+                        INSERT INTO column_stats_datetime
+                        SELECT * FROM all_stats_df
+                    """)
+        except Exception as e:
+            print(f"Error inserting datetime stats for repo id {repo_id}: {str(e)}")
 
 
 def record_statistics_int(
@@ -153,11 +158,13 @@ def record_statistics_int(
                                 {quote(column_name)} AS value
                             FROM {table_qualifier}{quote(table_name)}
                             LIMIT {MAX_VALUES_TO_ANALYZE_PER_COLUMN}
+                        ), total_table_size AS (
+                            SELECT COUNT(*) FROM {table_qualifier}{quote(table_name)}
                         )
                         SELECT
                             {column_id} AS column_id,
                             (SELECT list(value) FROM (FROM vals LIMIT 5)) AS sample_values,
-
+                            (SELECT * FROM total_table_size) AS total_table_size,
                             COUNT(*)                    AS count,
                             COUNT(value)                AS count_non_null,
                             COUNT(*) - COUNT(value)     AS count_null,
@@ -237,10 +244,13 @@ def record_statistics_float(
                                 AS digits_after_decimal
                             FROM {table_qualifier}{quote(table_name)}
                             LIMIT {MAX_VALUES_TO_ANALYZE_PER_COLUMN}
+                        ), total_table_size AS (
+                            SELECT COUNT(*) FROM {table_qualifier}{quote(table_name)}
                         )
                         SELECT
                             {column_id} AS column_id,
                             (SELECT list(value) FROM (FROM decimals LIMIT 5))         AS sample_values,
+                            (SELECT * FROM total_table_size)               AS total_table_size,
                             COUNT(*) AS count,
                             COUNT(value) AS count_non_null,
                             COUNT(*) - COUNT(value) AS count_null,
@@ -316,7 +326,7 @@ def record_statistics_string(
     table_qualifier = f"{quote(database_schema)}." if database_schema else ""
 
     # first get all the string columns of the repo
-    columns_to_analyze = get_column_of_type(con, repo_id, 'Text')
+    columns_to_analyze = get_column_of_type(con, repo_id, 'Text', min_values_count=0)
     all_stats = []
     for (column_id, column_name, table_name) in columns_to_analyze:
         try:
@@ -327,14 +337,28 @@ def record_statistics_string(
                                 {column_id}                              AS column_id,
                                 CAST({quote(column_name)} AS VARCHAR)    AS value,
                                 LENGTH(CAST({quote(column_name)} AS VARCHAR)) AS value_length,
+                                strlen(CAST({quote(column_name)} AS VARCHAR)) AS value_bytes,
                                 split(value, '') as chars
                             FROM {table_qualifier}{quote(table_name)}
                             LIMIT {MAX_VALUES_TO_ANALYZE_PER_COLUMN}
                         ),
+                        total_table_size AS (
+                            SELECT COUNT(*) FROM {table_qualifier}{quote(table_name)}
+                        ),
+                        distinct_values AS (
+                            SELECT DISTINCT value FROM data
+                        ),
+                        distinct_stats AS (
+                            SELECT 
+                                AVG(LENGTH(value)) AS avg_distinct_length,
+                                SUM(LENGTH(value)) AS total_distinct_length,
+                                SUM(strlen(value)) AS total_distinct_bytes
+                            FROM distinct_values
+                        ),
                         chars_unnested AS (
                             SELECT unnest(chars) as char 
                             FROM data 
-                            -- USING SAMPLE 1_000_000
+                            USING SAMPLE 10_000
                         ),
                         char_counts AS (
                             SELECT char, COUNT(*) as cnt
@@ -346,35 +370,21 @@ def record_statistics_string(
                                 column_id,
                                 value,
                                 value_length,
+                                value_bytes,
                                 chars,
-
-                                -- count characters
-                                LENGTH(REGEXP_REPLACE(value, '[^a-z]', '', 'g')) AS lower_alpha_chars,
-                                LENGTH(REGEXP_REPLACE(value, '[^A-Z]', '', 'g')) AS upper_alpha_chars,
-                                LENGTH(REGEXP_REPLACE(value, '[^0-9]',   '', 'g')) AS digit_chars,
-                                LENGTH(REGEXP_REPLACE(value, '[^ ]',   '', 'g')) AS space_chars,
-                                (value_length - LENGTH(TRANSLATE(value, '/.?:,-', ''))) AS punct_chars,
-
-                                -- get character percentages
-                                lower_alpha_chars / value_length as lower_alpha_chars_perc,
-                                upper_alpha_chars / value_length as upper_alpha_chars_perc,
-                                space_chars / value_length as space_chars_perc,
-                                digit_chars / value_length as digit_chars_perc,
-                                punct_chars / value_length as punct_chars_perc
-
                             FROM data
                             WHERE value IS NOT NULL
                         )
                         SELECT
                             column_id,
                             (SELECT list(value) FROM (FROM data LIMIT 5))         AS sample_values,
+                            (SELECT * FROM total_table_size)               AS total_table_size,
                             COUNT(*)                                       AS count,
                             COUNT(value)                                   AS count_non_null,
+                            COUNT(DISTINCT value)                          AS count_distinct,
                             COUNT(*) - COUNT(value)                        AS count_null,
                             COUNT_IF(value = '')                           AS count_empty,
-                            COUNT(DISTINCT value)                          AS count_distinct,
                             count_non_null / NULLIF(count_distinct, 0)     AS repeat_rate,
-
 
                             -- length stats
                             AVG(value_length)                              AS avg_length,
@@ -382,7 +392,16 @@ def record_statistics_string(
                             MIN(value_length)                              AS min_length,
                             MAX(value_length)                              AS max_length,
                             max_length - min_length                        AS range_length,
-
+                            stddev_pop(value_length)                       AS stddev_length,
+                            
+                            AVG(value_bytes)                               AS avg_bytes,
+                            MEDIAN(value_bytes)                            AS median_bytes,
+                            MIN(value_bytes)                               AS min_bytes,
+                            MAX(value_bytes)                               AS max_bytes,
+                            max_bytes - min_bytes                          AS range_bytes,
+         
+                      
+                            
                             -- percentiles (change/extend as needed)
                             -- QUANTILE_CONT(value_length, 0.01)              AS p01_length,
                             QUANTILE_CONT(value_length, 0.05)              AS p05_length,
@@ -392,17 +411,14 @@ def record_statistics_string(
                             QUANTILE_CONT(value_length, 0.95)              AS p95_length,
                             -- QUANTILE_CONT(value_length, 0.99)              AS p99_length
 
-                            -- character percentages
-                            AVG(lower_alpha_chars_perc)                    AS avg_lower_alpha_chars,
-                            AVG(upper_alpha_chars_perc)                    AS avg_upper_alpha_chars,
-                            AVG(space_chars_perc)                          AS avg_space_chars,
-                            AVG(digit_chars_perc)                          AS avg_digit_chars,
-                            AVG(punct_chars_perc)                          AS avg_punct_chars,
-
                             -- get the distinct chars 
-                            (SELECT list({{char: char, cnt: cnt}} ORDER BY cnt) FROM char_counts) as char_histogram
-
+                            (SELECT list({{char: char, cnt: cnt}} ORDER BY cnt) FROM char_counts) as char_histogram,
+                            MIN(distinct_stats.avg_distinct_length) AS avg_distinct_length,
+                            MIN(distinct_stats.total_distinct_length) AS total_distinct_length,
+                            MIN(distinct_stats.total_distinct_bytes) AS total_distinct_bytes
+                
                         FROM stats
+                        POSITIONAL JOIN distinct_stats
                         GROUP BY column_id
                         """
             ).fetchdf()
@@ -411,10 +427,6 @@ def record_statistics_string(
             print(f"Error analyzing string column {column_name} in table {table_name}: {str(e)}")
             print(f"Skipping this column.")
             continue
-
-
-        # get a histogram of the characters in the string values
-        # todo: later
 
         all_stats.append(stats)
 
@@ -430,20 +442,17 @@ def record_statistics_string(
         con.execute(f"""
             INSERT INTO column_stats_text 
             SELECT * FROM all_stats_df
-            WHERE column_id NOT IN (SELECT column_id FROM column_stats_text)
         """)
     else:
         print(f"No string columns found for repo id {repo_id}")
 
 
-
-
-def reset_statistics_tables(con: duckdb.DuckDBPyConnection):
-    con.execute(f"DROP TABLE IF EXISTS column_stats_text")
-    con.execute(f"DROP TABLE IF EXISTS column_stats_int")
-    con.execute(f"DROP TABLE IF EXISTS column_stats_float")
-    con.execute(f"DROP TABLE IF EXISTS column_stats_datetime")
-
+def safe_exec(fn, *args, **kwargs):
+    try:
+        fn(*args, **kwargs)
+    except Exception as e:
+        # you can log, print, or ignore depending on your use case
+        print(f"Error in {fn.__name__}: {e}")
 
 def record_statistics_for_repo(
         con: duckdb.DuckDBPyConnection,
@@ -452,10 +461,11 @@ def record_statistics_for_repo(
         database_schema: str = ''
 ):
     print(f"Recording statistics for repo id {repo_id} (schema: '{database_schema}')")
-    record_statistics_string(con, sandbox_con, repo_id, database_schema)
-    record_statistics_int(con, sandbox_con, repo_id, database_schema)
-    record_statistics_float(con, sandbox_con, repo_id, database_schema)
-    record_statistics_datetime(con, sandbox_con, repo_id, database_schema)
+    safe_exec(lambda: record_statistics_string(con, sandbox_con, repo_id, database_schema))
+    safe_exec(lambda: record_statistics_int(con, sandbox_con, repo_id, database_schema))
+    safe_exec(lambda: record_statistics_float(con, sandbox_con, repo_id, database_schema))
+    safe_exec(lambda: record_statistics_datetime(con, sandbox_con, repo_id, database_schema))
+
 
 if __name__ == "__main__":
 
@@ -463,9 +473,6 @@ if __name__ == "__main__":
     con = get_con()
 
     sandbox_con = duckdb.connect(KAGGLE_DATA_DB_PATH)
-
-    reset_statistics_tables(con)
-    print("Reset statistics tables.")
 
     # get repo information for id 41171
     repo_infos = con.execute(f"""
@@ -476,7 +483,6 @@ if __name__ == "__main__":
 
 
     print(f"Found {len(repo_infos)} kaggle repos to process.")
-
 
     for id, repo_name, repo_url in tqdm(repo_infos):
         # remove the 'kaggle-' prefix from the repo_name to get the schema name

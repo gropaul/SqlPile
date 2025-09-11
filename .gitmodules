@@ -4,3 +4,7 @@
 [submodule "external/SQLStorm"]
 	path = external/SQLStorm
 	url = https://github.com/SQL-Storm/SQLStorm
+[submodule "external/duckdb-sqlpile"]
+	path = external/duckdb-sqlpile
+	url = https://github.com/gropaul/duckdb.git
+	branch = sqlpile/printbindings

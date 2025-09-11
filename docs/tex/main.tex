@@ -46,6 +46,9 @@
 %%
 \documentclass[sigconf,natbib=false]{style/acmart}
 \usepackage[capitalise,nameinlink]{cleveref}
+\usepackage{subcaption}
+\usepackage{graphicx}
+
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
 \AtBeginDocument{%
@@ -107,6 +110,7 @@
 %% import acronyms
 \usepackage[nolist]{acronym}
 \usepackage{hyperref}
+\usepackage{lipsum}
 
 \begin{acronym}
 \acro{DBMS}{Database Management System}
@@ -202,7 +206,6 @@ Our contributions are as follows:
 
 
 \section{Data Collection}\label{sec:data-collection}
-
 \subsection{SQLPile Dataset}\label{subsec:sqlpile-dataset}
 The query and schema information for our dataset was collected from public GitHub repositories.
 We used the the list of GitHub repositories published by Döhmen et al.~\cite{dohmen_schemapile_2024} that were known to contain Schema Definitions.
@@ -220,8 +223,7 @@ As SQLPile does only contain data from table dumps and is therefore very limited
 These are datasets that are mostly for analytical workloads and contain both the data and the schema.
 
 \begin{itemize}
-\item How many tables, rows, columns
-\item How did we get the queries? (from kernels, from external sources)
+\item How many datasets, tables, rows, columns
 \end{itemize}
 
 
@@ -260,10 +262,18 @@ Each batch is rendered into a single user message of the form:
 \caption{Semantic types used for string columns and their intended interpretation.}
 \label{tab:semantic-types}
 
+Here should then come a detailed analysis in form of a table e.g. that shows example values for each operator and semantic
+type e.g. how do the string columns look like. Also, for each semantic type, I would like to show what expressions where used.
+For example, if there is a group by on a full text column, the query could look like
+GROUP BY full\_text\_column LIKE 'foo\%' is probably not that useful.
+\begin{itemize}
+\item
+\end{itemize}
+
 \section{Storage}\label{sec:storage}
 \input{gen/sec_storage_analysis}
-
 \section{Properties of Strings}
+\input{gen/sec_string_properties}ragraphs 2 through 4
 \begin{itemize}
 \item What physical types do strings of different semantic types share
 \item How do they differ?

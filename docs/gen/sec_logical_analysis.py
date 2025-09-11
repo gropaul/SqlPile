@@ -1,7 +1,7 @@
 import os
 
 from docs.gen.utils import format_latex_string, get_figure
-from src.config import GENERATED_SECTIONS_DIR, get_con, LATEX_ASSETS_DIR
+from src.config import LATEX_GEN_DIR, get_con, LATEX_ASSETS_DIR
 from src.data_analysis.dataset_stats import get_query_type_query, get_operator_table, get_column_type_table
 from src.data_analysis.usage_plots import column_physical_type_usage_plot
 
@@ -52,7 +52,7 @@ def generate_logical_analysis():
     )
     description = format_latex_string(description)
 
-    path = os.path.join(GENERATED_SECTIONS_DIR, SECTION_NAME)
+    path = os.path.join(LATEX_GEN_DIR, SECTION_NAME)
     with open(path, "w") as f:
         f.write(description)
 

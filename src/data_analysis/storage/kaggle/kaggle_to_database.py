@@ -4,7 +4,8 @@ import duckdb
 from src.config import KAGGLE_DATA_DB_PATH, get_con, COLUMNS_TABLE_NAME, TABLE_VALUES_COUNT_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, MAX_VALUES_TO_SAVE_PER_COLUMN
 from src.data_analysis.storage.kaggle.kaggle_download import clean_name
-from src.sql_analysis.add_3rd_party.utils import get_benchmark_repo_name, get_benchmark_repo_url, delete_repo
+from src.sql_analysis.add_3rd_party.utils import get_benchmark_repo_name, get_benchmark_repo_url
+from src.sql_analysis.utils.delete_data import delete_repo
 from src.sql_analysis.tools.sql_types import unify_type
 
 

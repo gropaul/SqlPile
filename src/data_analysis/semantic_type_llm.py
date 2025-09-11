@@ -57,7 +57,7 @@ class DataRowJson(TypedDict):
     values: List[str]
 
 
-def get_sql_pile_data(con: duckdb.DuckDBPyConnection, dataset: DataSetType) -> List[DataRow]:
+def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
     """
     Retrieve column data from the database and organize it into batches.
 
@@ -79,9 +79,9 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, dataset: DataSetType) -> L
             JOIN columns ON values_often.column_id = columns.id
             JOIN tables ON tables.id = columns.table_id
             JOIN repos ON tables.repo_id = repos.id
-            WHERE 'kaggle' IN repos.repo_name
+            WHERE 'kaggle' IN repo_url  -- exclude kaggle datasets
             GROUP BY tables.repo_id, table_name, column_name
-            ORDER BY tables.repo_id
+            ORDER BY tables.repo_id DESC, table_name, column_name
             """
 
     result = con.execute(query).fetchall()
@@ -247,12 +247,12 @@ def save_results(results: List[Dict[str, Any]], output_file: str = "semantic_typ
 
 BATCH_SIZE = 5
 MODEL = 'qwen3:8b'
-DATA_SET: DataSetType = 'kaggle'
+DATA_SET: DataSetType = 'sqlpile'
 
 if __name__ == "__main__":
     logger.info("Starting semantic type determination")
     con = get_con(read_only=True)
-    data = get_sql_pile_data(con, DATA_SET)
+    data = get_sql_pile_data(con)
 
     if DATA_SET == 'kaggle':
         output_file = "semantic_types_kaggle.csv"
