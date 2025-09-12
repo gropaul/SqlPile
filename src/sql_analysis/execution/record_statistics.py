@@ -1,3 +1,4 @@
+import os.path
 from typing import List
 
 import duckdb
@@ -5,9 +6,10 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.config import COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, COLUMN_VALUES_TABLE_NAME, MAX_VALUES_TO_SAVE_PER_COLUMN, \
-    MAX_VALUES_TO_ANALYZE_PER_COLUMN, TABLE_VALUES_COUNT_TABLE_NAME, get_con, KAGGLE_DATA_DB_PATH
+    MAX_VALUES_TO_ANALYZE_PER_COLUMN, TABLE_VALUES_COUNT_TABLE_NAME, get_con, KAGGLE_DATA_DB_PATH, TMP_DIR
 from src.sql_analysis.execution.utils import quote
 from src.sql_analysis.utils.delete_data import reset_statistics_tables
+from external.CompressionBenchmark.tools.benchmark import run_compression_benchmark
 
 
 def get_column_of_type(
@@ -458,7 +460,9 @@ def record_statistics_for_repo(
         con: duckdb.DuckDBPyConnection,
         sandbox_con: duckdb.DuckDBPyConnection,
         repo_id: int,
+        sandbox_database_path: str,
         database_schema: str = ''
+
 ):
     print(f"Recording statistics for repo id {repo_id} (schema: '{database_schema}')")
     safe_exec(lambda: record_statistics_string(con, sandbox_con, repo_id, database_schema))
@@ -472,7 +476,10 @@ if __name__ == "__main__":
     print('Starting statistics recording for kaggle datasets...')
     con = get_con()
 
+    exit()
+
     sandbox_con = duckdb.connect(KAGGLE_DATA_DB_PATH)
+
 
     # get repo information for id 41171
     repo_infos = con.execute(f"""
@@ -480,7 +487,6 @@ if __name__ == "__main__":
         FROM repos 
         WHERE repo_name like '3rd-party-kaggle-%'
     """).fetchall()
-
 
     print(f"Found {len(repo_infos)} kaggle repos to process.")
 

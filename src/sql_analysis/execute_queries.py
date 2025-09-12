@@ -1,15 +1,17 @@
 import json
 import logging
+import os.path
 from typing import List, Optional, Literal
 
 import duckdb
 from tqdm import tqdm
 
+from external.CompressionBenchmark.tools.benchmark import run_compression_benchmark
 from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, REPO_TABLE_NAME, TABLES_TABLE_NAME, \
     TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, COLUMN_VALUES_TABLE_NAME, TABLE_VALUES_COUNT_TABLE_NAME, \
     COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
-    QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME
+    QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR
 from src.sql_analysis.utils.delete_data import delete_repo, reset_statistics_tables
 from src.sql_analysis.execution.create_tables import create_base_tables
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
@@ -523,6 +525,52 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
 
 
 
+def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb.DuckDBPyConnection):
+
+    # create the compression benchmark results table if it doesn't exist
+    con.execute(f"""
+        CREATE TABLE IF NOT EXISTS columns_compression_results (
+            repo_id INTEGER,
+            column_id INTEGER,
+            n_rows BIGINT,
+            n_rows_not_empty BIGINT,
+            algorithm TEXT,
+            uncompressed_size BIGINT,
+            compressed_size BIGINT,
+            compression_time_ms DOUBLE,
+            decompression_time_ms_full DOUBLE,
+            decompression_time_ms_vector DOUBLE,
+            decompression_time_ms_random DOUBLE
+        )
+    """)
+
+    # read the csv file
+    try:
+        con.execute(f""" 
+            WITH columns_full AS (
+                SELECT columns.id as column_id, column_name, table_name, 
+                '"main"."' || table_name_clean || '"' as full_quoted_table_name,
+                '"' || column_name || '"' as quoted_column_name
+                FROM {COLUMNS_TABLE_NAME}
+                JOIN {TABLES_TABLE_NAME} ON {COLUMNS_TABLE_NAME}.table_id = {TABLES_TABLE_NAME}.id
+                WHERE {TABLES_TABLE_NAME}.repo_id = {repo_id}
+            ), joined_data AS (
+                SELECT {repo_id} as repo_id, column_id, n_rows, n_rows_not_empty, algorithm, uncompressed_size, compressed_size, compression_time_ms, decompression_time_ms_full,decompression_time_ms_vector,decompression_time_ms_random
+                FROM columns_full
+                JOIN read_csv_auto('{escape_for_insert(result_path)}') AS results
+                    ON lower(results.table) = lower(full_quoted_table_name) 
+                    AND lower(results.column) = lower(quoted_column_name)
+            ) INSERT INTO columns_compression_results ( SELECT * FROM joined_data )
+        """)
+    except Exception as e:
+        print(f"Failed to read compression benchmark results from {result_path}: {e}")
+        return
+
+    # if the file exists, delete it
+    if os.path.exists(result_path):
+        os.remove(result_path)
+
+
 
 def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, query_id: Optional[int] = None):
     con = get_con()
@@ -568,7 +616,8 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
                 delete_repo(con, repo_id, mode='execution_only')
 
             # initialize the sandbox connection
-            sandbox_con = duckdb.connect()
+            sandbox_database_path = os.path.join(DATA_DIR, f'sandbox_{repo_id}.db')
+            sandbox_con = duckdb.connect(sandbox_database_path)
             for function in EXTRA_FUNCTIONS:
                 sandbox_con.execute(function)
 
@@ -591,11 +640,17 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
             save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
             save_table_counts(repo_id, con, sandbox_con)
-            record_statistics_for_repo(con, sandbox_con, repo_id)
+
+            record_statistics_for_repo(con, sandbox_con, repo_id, sandbox_database_path)
+
+            sandbox_con.close()
+            output_path = os.path.join(TMP_DIR, f"compression_benchmark_repo_{repo_id}.csv")
+            run_compression_benchmark(sandbox_database_path, output_path)
+            save_columns_compression_results(repo_id, output_path, con)
 
             # Close the sandbox connection, save progress, and checkpoint
             con.execute("CHECKPOINT;")
-            sandbox_con.close()
+            os.remove(sandbox_database_path) # delete the sandbox database file
 
             # Update counts
             error_count = id_manager.n_error
@@ -630,4 +685,4 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
 
 if __name__ == "__main__":
-    execute_repo_queries(mode='append', repo_id=None, query_id=None)
+    execute_repo_queries(mode='replace', repo_id=None, query_id=None)

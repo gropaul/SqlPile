@@ -43,6 +43,9 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
     if table_exists(con, "queries_executable"):
         con.execute("DELETE FROM queries_executable WHERE query_id IN (SELECT id FROM queries WHERE repo_id = ?)", (repo_id,))
 
+    if table_exists(con, "columns_compression_results"):
+        con.execute("DELETE FROM columns_compression_results WHERE repo_id = ?", (repo_id,))
+
     reset_statistics_for_repo(con, repo_id)
 
     # delete from column_values

@@ -8,3 +8,6 @@
 	path = external/duckdb-sqlpile
 	url = https://github.com/gropaul/duckdb.git
 	branch = sqlpile/printbindings
+[submodule "external/CompressionBenchmark"]
+	path = external/CompressionBenchmark
+	url = https://github.com/gropaul/CompressionBenchmark
