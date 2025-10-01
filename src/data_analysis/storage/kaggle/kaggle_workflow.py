@@ -3,6 +3,8 @@ from datasets import tqdm
 import duckdb
 from src.config import get_con, KAGGLE_DATA_DB_PATH
 from src.data_analysis.storage.kaggle.kaggle_compress import compress_kaggle
+from src.data_analysis.storage.kaggle.kaggle_download import download_datasets
+from src.data_analysis.storage.kaggle.kaggle_scraper import scrape_for_datasets
 from src.data_analysis.storage.kaggle.kaggle_to_database import delte_kaggle_repos, save_kaggle_in_database
 from src.sql_analysis.execution.record_statistics import record_statistics_for_repo
 
@@ -30,8 +32,12 @@ def add_kaggle_statistics():
 
 
 
+def retrieve_kaggle_datasets():
+    scrape_for_datasets()
+    download_datasets()
 
-def init_kaggle():
+
+def process_kaggle_data():
     delte_kaggle_repos()
     save_kaggle_in_database()
     add_kaggle_statistics()
@@ -39,4 +45,5 @@ def init_kaggle():
 
 
 if __name__ == "__main__":
-    init_kaggle()
+    retrieve_kaggle_datasets()
+    process_kaggle_data()

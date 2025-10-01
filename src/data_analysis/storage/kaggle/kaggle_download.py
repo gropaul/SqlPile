@@ -89,7 +89,7 @@ def download_dataset(
             """, (handle, file, str(e)))
 
 
-def main():
+def download_datasets():
     datasets_con = duckdb.connect(KAGGLE_DATASETS_DB_PATH)
 
     datasets_con.create_function("clean_name", clean_name)
@@ -167,5 +167,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    download_datasets()
 
