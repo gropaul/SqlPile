@@ -125,7 +125,7 @@ def download_datasets():
             GROUP BY dataset_id, stem
         ),
         data AS (
-            SELECT ref, clean_name(ref) AS schema_name, file_name as file, table_name_from_file(file) AS table_name
+            SELECT ref, view_count, clean_name(ref) AS schema_name, file_name as file, table_name_from_file(file) AS table_name
             FROM kaggle_datasets
             JOIN filtered_datasets ON kaggle_datasets.id = filtered_datasets.dataset_id
             WHERE 
@@ -146,6 +146,7 @@ def download_datasets():
         SELECT 
             ref, 
             schema_name,
+            view_count,
             list({
                 file: file,
                 table_name: table_name
@@ -156,7 +157,7 @@ def download_datasets():
         """
     ).fetchall()
 
-    n_files = sum([len(d[2]) for d in datasets])
+    n_files = sum([len(d[3]) for d in datasets])
 
     print(f"Found {len(datasets)} datasets to download, with a total of {n_files} files.")
 
@@ -164,8 +165,8 @@ def download_datasets():
     data_con = duckdb.connect(KAGGLE_DATA_DB_PATH)
 
 
-    for ref, schema_name, files in datasets:
-        print(f"Downloading {ref} with {len(files)} files")
+    for ref, schema_name, view_count, files in datasets:
+        print(f"Downloading {ref} with {len(files)} files with {view_count} views into schema {schema_name}")
         download_dataset(ref, schema_name, files, data_con, datasets_con, n_rows=None)
 
 
