@@ -162,6 +162,8 @@ def save_kaggle_in_database():
         ORDER BY table_schema
     """).fetchall()
 
+    print(f"Found {len(tables)} kaggle schemas to process.")
+
     for schema_name, in tables:
         add_kaggle_schema(con, schema_name)
 

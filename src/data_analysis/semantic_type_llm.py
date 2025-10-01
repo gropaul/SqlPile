@@ -4,7 +4,7 @@ import pandas as pd
 from langchain_ollama import ChatOllama
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH, logger, get_con
+from src.config import DATABASE_PATH, logger, get_con, LLM_SEMANTIC_TYPES
 import duckdb
 from typing import List, Dict, Any, Optional, Tuple, TypedDict, Literal
 
@@ -35,17 +35,12 @@ Every column must fit one of the types:
 9. **Location** – city, country, region, address, zip  
 10. **URL** – link, url, image path, icon, slug
 11. **Semistructured** – like JSON, CSV, ... or simple lists e.g. "a,b,c"
-11. **Test** – column with content/name that is for testing, e.g. "test", "col", "val1"
+12. **Test** – column with content/name that is for testing, e.g. "test", "col", "val1"
 
 You will be given multiple columns at once.
 Return *only* the list of semantic types in the same order as the columns were provided.
 """
 
-CATEGORIES = [
-    "Name", "DateTime", "Numeric", "Boolean", "Category",
-    "FullText", "Identifier", "Email", "PhoneNumber", "Location", "URL",
-    "Semistructured", "Test"
-]
 
 DataRow = Tuple[List[int], str, str, List[str]]
 
@@ -78,8 +73,11 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
             JOIN values_often USING (column_id)
             JOIN columns ON values_often.column_id = columns.id
             JOIN tables ON tables.id = columns.table_id
+            JOIN table_values_count as tvc ON tvc.table_id = tables.id
             JOIN repos ON tables.repo_id = repos.id
-            WHERE 'kaggle' IN repo_url  -- exclude kaggle datasets
+            WHERE 
+                tvc.count > 2000 -- the column will be used for statistics, e.g. kaggle columns
+                OR column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
             GROUP BY tables.repo_id, table_name, column_name
             ORDER BY tables.repo_id DESC, table_name, column_name
             """
@@ -171,10 +169,10 @@ Sample Values: {column_data['values'][:10]}
         semantic_types = response.types
 
         # check if all semantic types are in the expected categories
-        if not all(st in CATEGORIES for st in semantic_types):
+        if not all(st in LLM_SEMANTIC_TYPES for st in semantic_types):
             messages = messages + [
                 {"role": "assistant",
-                 "content": f"Invalid semantic types detected: {set(semantic_types) - set(CATEGORIES)}. Please ensure all types are one of the following: {CATEGORIES}"}
+                 "content": f"Invalid semantic types detected: {set(semantic_types) - set(LLM_SEMANTIC_TYPES)}. Please ensure all types are one of the following: {LLM_SEMANTIC_TYPES}"}
             ]
             response = model.invoke(messages, think=False)
         semantic_types = response.types
@@ -247,17 +245,13 @@ def save_results(results: List[Dict[str, Any]], output_file: str = "semantic_typ
 
 BATCH_SIZE = 5
 MODEL = 'qwen3:8b'
-DATA_SET: DataSetType = 'sqlpile'
 
 if __name__ == "__main__":
     logger.info("Starting semantic type determination")
     con = get_con(read_only=True)
     data = get_sql_pile_data(con)
 
-    if DATA_SET == 'kaggle':
-        output_file = "semantic_types_kaggle.csv"
-    else:
-        output_file = "semantic_types_sqlpile.csv"
+    output_file = "semantic_types_sqlpile.csv"
 
     con.close()
 

@@ -29,24 +29,36 @@ def _build_query(metric_col: str, p_low: float = 0.05, p_high: float = 0.95) -> 
     of the chosen metric column.
     """
     return f"""
-        WITH data AS (
+        WITH tmp AS (
             SELECT 
-                unify_llm_type(semantic_type_llm) as semantic_type_llm, 
-                counts:  list_transform(char_histogram, (x -> x.cnt)), 
-                total: list_sum(counts),
-                percentages:  list_filter(counts, (x -> x / total > 0.01)),
-                count_filtered: len(percentages),
-                count_unfiltered: len(char_histogram),
-                empty_or_null: count_null + count_empty,
-                {metric_col} AS metric_value
+              unify_llm_type(semantic_type_llm) as semantic_type_llm, 
+              counts:  list_sort(list_transform(char_histogram, (x -> x.cnt)), 'DESC'), 
+              total: list_sum(counts),
+              indices: range(0, len(counts)),
+              percentages: list_transform(counts, (x -> x/ total)),
+              percentages2:  list_filter(counts, (x -> x / total > 0.01)),
+              empty_or_null_rate: count_null + count_empty / count,
+              *
             FROM column_stats_text AS stats
             JOIN "columns" ON columns.id = stats.column_id
             JOIN tables ON columns.table_id = tables.id
             JOIN (
-                SELECT column_id AS column_id_llm, semantic_type AS semantic_type_llm
-                FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv'
+              SELECT column_id AS column_id_llm, semantic_type AS semantic_type_llm
+              FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv'
             ) AS st ON st.column_id_llm = columns.id
-            WHERE semantic_type_llm IN ({SEMANTIC_TYPES_SQL})
+            WHERE semantic_type_llm IN ('Name', 'Location', 'DateTime', 'Identifier', 'FullText', 'Category', 'Contact', 'Semistructured')
+        ),
+        data as (
+            SELECT 
+              semantic_type_llm,
+              percentages, 
+              percentages_sum: list_transform(indices,  (x -> list_sum(percentages[0:x+1]))), 
+              percentages_to_bound: list_filter(percentages_sum, (x -> x < 0.95)),
+              count_filtered: len(percentages_to_bound),
+              count_unfiltered: len(percentages),
+              empty_or_null_rate,
+              {metric_col} AS metric_value
+            FROM tmp
         ),
         bounds AS (
             SELECT
@@ -88,7 +100,7 @@ def boxplot_by_type(
         hue="semantic_type_llm",
         order=SEMANTIC_TYPES,
         palette="Set3",
-        showfliers=True,
+        showfliers=False,
         legend=False,  # suppress duplicate legend
     )
 
@@ -122,8 +134,8 @@ def get_string_prop_plots(con, path: str):
     boxplot_by_type(con, "count_unfiltered", path=path, ylabel="Number of distinct characters", log_scale=False)
     boxplot_by_type(con, "avg_length", path=path, ylabel="Average Length")
     boxplot_by_type(con, "stddev_length", path=path, ylabel="Standard Deviation of Length")
-    boxplot_by_type(con, "repeat_rate", path=path, ylabel="Duplicates per Value")
-    boxplot_by_type(con, "empty_or_null", path=path, ylabel="Null Values", log_scale=False)
+    boxplot_by_type(con, "repeat_rate", path=path, ylabel="Duplicates per Value", log_scale=True)
+    boxplot_by_type(con, "empty_or_null_rate", path=path, ylabel="% Null Values", log_scale=False)
 
 
 SECTION_TEMPLATE = """
@@ -147,11 +159,11 @@ def generate_section(con):
             os.path.join(local_assets_dir, 'count_unfiltered.pdf'),
             os.path.join(local_assets_dir, 'repeat_rate.pdf'),
         ],
-        caption="String properties per semantic type.",
+        caption="String properties per semantic type. The filtered distinct chars only counts the number of chars that make up 95\\% of all chars.",
         captions=[
             "Avg. length",
             "Std. dev. length",
-            "Distinct chars (filtered)",
+            "Distinct chars (filtered*)",
             "Distinct chars",
             "Duplicates",
         ]

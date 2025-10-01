@@ -11,7 +11,7 @@ from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, RE
     TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, COLUMN_VALUES_TABLE_NAME, TABLE_VALUES_COUNT_TABLE_NAME, \
     COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
-    QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR
+    QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR, KAGGLE_DATA_DB_PATH
 from src.sql_analysis.utils.delete_data import delete_repo, reset_statistics_tables
 from src.sql_analysis.execution.create_tables import create_base_tables
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
@@ -525,7 +525,7 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
 
 
 
-def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb.DuckDBPyConnection):
+def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb.DuckDBPyConnection, schema: str = '"main"'):
 
     # create the compression benchmark results table if it doesn't exist
     con.execute(f"""
@@ -549,7 +549,7 @@ def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb
         con.execute(f""" 
             WITH columns_full AS (
                 SELECT columns.id as column_id, column_name, table_name, 
-                '"main"."' || table_name_clean || '"' as full_quoted_table_name,
+                '{schema}."' || table_name_clean || '"' as full_quoted_table_name,
                 '"' || column_name || '"' as quoted_column_name
                 FROM {COLUMNS_TABLE_NAME}
                 JOIN {TABLES_TABLE_NAME} ON {COLUMNS_TABLE_NAME}.table_id = {TABLES_TABLE_NAME}.id
@@ -560,7 +560,7 @@ def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb
                 JOIN read_csv_auto('{escape_for_insert(result_path)}') AS results
                     ON lower(results.table) = lower(full_quoted_table_name) 
                     AND lower(results.column) = lower(quoted_column_name)
-            ) INSERT INTO columns_compression_results ( SELECT * FROM joined_data )
+            ) INSERT INTO columns_compression_results ( SELECT DISTINCT * FROM joined_data ORDER BY column_id, algorithm )
         """)
     except Exception as e:
         print(f"Failed to read compression benchmark results from {result_path}: {e}")
@@ -587,17 +587,21 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
     append_filter = "AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids)"
 
     repos = con.execute(f"""
-        SELECT repos.id, repos.repo_url, COUNT(queries.id) AS query_count
+        SELECT repos.id, repos.repo_url, repos.repo_name, COUNT(queries.id) AS query_count
         FROM repos
-        JOIN queries ON repos.id = queries.repo_id
+        LEFT JOIN queries ON repos.id = queries.repo_id
         WHERE 
-            queries.type IN ('SELECT', 'WITH') 
+            (
+                queries.type IN ('SELECT', 'WITH') 
+                OR '3rd-party' IN repos.repo_url   -- always reprocess 3rd-party repos
+            ) 
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
+            and 'kaggle' NOT IN repos.repo_url
             {append_filter if mode == 'append' else ''}
             
-        GROUP BY repos.id, repos.repo_url
+        GROUP BY ALL
         ORDER BY repos.id DESC -- from recently added to oldest
     """).fetchall()
 
@@ -609,7 +613,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
     error_count = 0
 
     with tqdm(repos, desc="Processing repositories", unit="repo") as pbar:
-        for repo_id, repo_url, cnt in pbar:
+        for repo_id, repo_url, repo_name, cnt in pbar:
             logging.info(f"Processing repository {repo_id} ({repo_url}) with {cnt} queries")
 
             if mode == 'replace':
@@ -641,9 +645,21 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
             save_table_counts(repo_id, con, sandbox_con)
 
-            record_statistics_for_repo(con, sandbox_con, repo_id, sandbox_database_path)
+            # *** STATISTICS RECORDING ***
 
+            if 'kaggle' in repo_name:
+                database_schema = repo_name.replace('3rd-party-kaggle-', '')
+                sandbox_con.close()
+                sandbox_con = duckdb.connect(KAGGLE_DATA_DB_PATH) # switch to the kaggle database
+            else:
+                database_schema = ''
+
+            record_statistics_for_repo(con, sandbox_con, repo_id, database_schema)
             sandbox_con.close()
+
+
+            # *** COMPRESSION BENCHMARK ***
+
             output_path = os.path.join(TMP_DIR, f"compression_benchmark_repo_{repo_id}.csv")
             run_compression_benchmark(sandbox_database_path, output_path)
             save_columns_compression_results(repo_id, output_path, con)

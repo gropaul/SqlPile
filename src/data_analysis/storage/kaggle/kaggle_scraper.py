@@ -23,7 +23,8 @@ con.execute("""
         download_count INT64,
         view_count INT64,
         vote_count INT64,
-        license_name TEXT
+        license_name TEXT,
+        page INT64,
     )
 """)
 
@@ -43,7 +44,7 @@ def download_dataset(dataset: str, unzip: bool = True):
     # kaggle.api.dataset_download_files(dataset, path=path, unzip=unzip)
 
 
-def store_dataset_information(con: duckdb.DuckDBPyConnection, dataset: any):
+def store_dataset_information(con: duckdb.DuckDBPyConnection, dataset: any, page: int):
 
     # check if dataset already exists
     res = con.execute("SELECT COUNT(*) FROM kaggle_datasets WHERE id = ?", (dataset.id,)).fetchone()
@@ -55,8 +56,8 @@ def store_dataset_information(con: duckdb.DuckDBPyConnection, dataset: any):
 
     # dataset is as json object
     con.execute("""
-        INSERT INTO kaggle_datasets (id, ref, title, subtitle, url, total_bytes, download_count, view_count, vote_count, license_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO kaggle_datasets (id, ref, title, subtitle, url, total_bytes, download_count, view_count, vote_count, license_name, page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         dataset.id,
         dataset.ref,
@@ -67,7 +68,8 @@ def store_dataset_information(con: duckdb.DuckDBPyConnection, dataset: any):
         dataset.download_count,
         dataset.view_count,
         dataset.vote_count,
-        dataset.license_name
+        dataset.license_name,
+        page
     ))
 
     # sleep for 1 second to avoid rate limiting
@@ -83,9 +85,26 @@ def store_dataset_information(con: duckdb.DuckDBPyConnection, dataset: any):
             file.total_bytes
         ))
 
-# list datasets
-for page in tqdm(range(175, 300), desc="Pages", unit="page"):
-    datasets = kaggle.api.dataset_list(sort_by="votes", page=page)
+
+try:
+    max_page = con.execute("SELECT MAX(page) FROM kaggle_datasets").fetchone()[0]
+    if max_page is None:
+        max_page = 0
+except Exception as e:
+    max_page = 0
+
+gb_to_bytes = 1024 * 1024 * 1024
+for page in tqdm(range(max_page + 1, 10_000), desc="Pages", unit="page"):
+    datasets = kaggle.api.dataset_list(
+        sort_by="votes",
+        search="parquet",
+        page=page,
+        min_size= 1 * gb_to_bytes,  # at least 1 GB
+    )
+
+    if len(datasets) == 0:
+        print(f"No more datasets found at page {page}. Stopping.")
+        break
 
     for d in datasets:
-        store_dataset_information(con, d)
+        store_dataset_information(con, d, page)

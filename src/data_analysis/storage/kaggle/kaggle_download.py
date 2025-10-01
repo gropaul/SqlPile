@@ -3,7 +3,7 @@
 import os
 import shutil
 from time import sleep
-from typing import List
+from typing import List, Optional
 import re
 
 import kagglehub
@@ -37,7 +37,7 @@ def download_dataset(
         files: List[str],
         data_con: duckdb.DuckDBPyConnection,
         datasets_con: duckdb.DuckDBPyConnection,
-        n_rows: int = 1000):
+        n_rows: Optional[int] = None):
 
     # create schema if not exists
     data_con.execute(f"""
@@ -56,6 +56,12 @@ def download_dataset(
     else:
         print("Cache path does not exist, skipping cache clear.")
 
+    pandas_kwargs = {
+        "on_bad_lines": "skip",
+    }
+    if n_rows is not None:
+        pandas_kwargs[0]["nrows"] = n_rows
+
     for file_dict in files:
         file = file_dict['file']
         table_name = file_dict['table_name']
@@ -67,11 +73,7 @@ def download_dataset(
             df = kagglehub.dataset_load(
                 KaggleDatasetAdapter.PANDAS,
                 handle=handle,
-                path=file,
-                pandas_kwargs={
-                    "nrows": n_rows,
-                    "on_bad_lines": "skip",
-                },
+                path=file
             )
 
             print(f"Storing {file} as {handle}.{table_name} with {df.shape[0]} rows and {df.shape[1]} columns")
@@ -116,7 +118,10 @@ def main():
         filtered_datasets AS (
             SELECT dataset_id, get_database_file_name_root(file_name) AS stem, MIN(file_name) as file_name
             FROM kaggle_dataset_files
-            WHERE lower(split(parse_filename(file_name, false), '.')[-1]) IN ('csv', 'parquet')
+            WHERE 
+                lower(split(parse_filename(file_name, false), '.')[-1]) IN ('csv', 'parquet')
+                AND total_bytes < 10 * 10 ^ 9  -- less than 10 GB
+                AND total_bytes > 0  -- more than 0 bytes
             GROUP BY dataset_id, stem
         ),
         data AS (
@@ -158,7 +163,7 @@ def main():
 
     for ref, schema_name, files in datasets:
         print(f"Downloading {ref} with {len(files)} files")
-        download_dataset(ref, schema_name, files, data_con, datasets_con, n_rows=100_000)
+        download_dataset(ref, schema_name, files, data_con, datasets_con, n_rows=None)
 
 
 if __name__ == "__main__":

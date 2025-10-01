@@ -331,7 +331,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
             # )
             if abs(percentage_sum - 1.0) >= 0.01:
                 print(f"Warning: Percentage sum for {data_source} in {data_usage_type} is not 100%: {percentage_sum}")
-            print(f"Enable assert again!!! ")
+        print(f"Enable assert again!!! ")
 
         # kick percentages out where the max is below 0.03
         for group_type in list(percentages_per_type.keys()):

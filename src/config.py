@@ -5,6 +5,7 @@ import re
 import duckdb
 from typing import Literal, Optional
 
+
 # Data directories
 
 # traverse one up as this is in src/config.py
@@ -38,7 +39,7 @@ ONLY_SCRAPE_SELECT_QUERIES = False
 CHARACTERS_BEFORE_AND_AFTER_QUERY = 400
 HEADER_N_LINES = 30  # Number of header lines to keep for each file that contains SQL queries
 MAX_VALUES_TO_SAVE_PER_COLUMN = 5000  # Maximum number of values to save per column in the database
-MAX_VALUES_TO_ANALYZE_PER_COLUMN = 100_000
+MAX_VALUES_TO_ANALYZE_PER_COLUMN = 122_880
 
 RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing
@@ -49,11 +50,18 @@ LOG_TO_FILE = False  # Whether to log to a file or not
 
 # create all directories if they do not exist
 DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR_RAW, TMP_DIR, DATABASE_TMP_DIR, LATEX_GEN_DIR,
-        LATEX_ASSETS_DIR, TPC_DATA_DIR, SQL_STORM_DATA_DIR]
+        LATEX_ASSETS_DIR, TPC_DATA_DIR, SQL_STORM_DATA_DIR, KAGGLE_DATA_DIR]
 
 for directory in DIRS:
     if not os.path.exists(directory):
         os.makedirs(directory)
+
+
+LLM_SEMANTIC_TYPES = [
+    "Name", "DateTime", "Numeric", "Boolean", "Category",
+    "FullText", "Identifier", "Contact", "Location", "URL",
+    "Semistructured", "Test"
+]
 
 # Logging configuration
 # Set the default logging level - can be changed to DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -171,6 +179,9 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
 
         # Boolean and Numeric to Other
         if semantic_type in ['Boolean', 'Numeric', 'URL']:
+            return 'Other'
+
+        if semantic_type not in LLM_SEMANTIC_TYPES:
             return 'Other'
 
         return semantic_type if semantic_type else 'Other'
