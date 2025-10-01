@@ -231,7 +231,11 @@ def create_columns_storage_view(con: duckdb.DuckDBPyConnection):
                     compressed * size_factor AS compressed,
                     total_table_size, count, type
                 FROM data
-                WHERE count_non_null  > 122_880 / 2
+                WHERE 
+                    True
+                    AND count_non_null  > 122_880 / 2 
+                    AND compressed > 0
+                    AND uncompressed > 0
         )
     """)
 
@@ -270,10 +274,10 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
                 columns.id as id, tables.id as table_id, columns.column_type, {group_key}, 
                 uncompressed, compressed, table_values_count.count AS n_rows
             FROM columns
-            LEFT JOIN semantics ON semantics.column_id = columns.id
             JOIN tables ON tables.id = columns.table_id
-            JOIN column_sizes ON column_sizes.column_id = columns.id
             JOIN table_values_count ON table_values_count.table_id = columns.table_id
+            LEFT JOIN semantics ON semantics.column_id = columns.id
+            LEFT JOIN column_sizes ON column_sizes.column_id = columns.id
         ),
         storage_per_repo AS (
             SELECT 

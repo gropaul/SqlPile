@@ -159,7 +159,10 @@ def download_datasets():
     n_files = sum([len(d[2]) for d in datasets])
 
     print(f"Found {len(datasets)} datasets to download, with a total of {n_files} files.")
+
+    datasets_con.execute(f"DETACH kaggle_data")
     data_con = duckdb.connect(KAGGLE_DATA_DB_PATH)
+
 
     for ref, schema_name, files in datasets:
         print(f"Downloading {ref} with {len(files)} files")
