@@ -108,7 +108,7 @@ def create_compression_box_plot(con: duckdb.DuckDBPyConnection):
     print(f"{'Semantic Type':<20} {'Dict %':<10} {'FSST %':<10} {'FSST12 %':<10} {'OnPair16 %':<12} {'Total':<10}")
     for row in df_best:
         print(
-            f"{row['semantic_type']:<20} "
+            f"{str(row['semantic_type']):<20} "
             f"{row['Dict']:<10.1f} "
             f"{row['FSST']:<10.1f} "
             f"{row['FSST12']:<10.1f} "

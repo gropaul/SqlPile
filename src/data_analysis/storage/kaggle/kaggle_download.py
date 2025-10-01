@@ -152,7 +152,7 @@ def download_datasets():
             }) AS files
         FROM data_filtered_for_processed
         GROUP BY ALL
-        ORDER BY ref
+        ORDER BY view_count DESC
         """
     ).fetchall()
 

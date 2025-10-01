@@ -34,6 +34,7 @@ scp = "^0.15.0"
 boto3 = "^1.40.18"
 datasets = "^4.0.0"
 kagglehub = "^0.3.13"
+kaggle = "^1.7.4.5"
 
 
 [build-system]
