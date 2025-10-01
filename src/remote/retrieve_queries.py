@@ -44,15 +44,6 @@ def progress(filename, size, sent):
     print(f"\rTransferring {filename}: {percent:.2f}% ({sent_formatted}/{size_formatted})", end='')
 
 
-def download_file():
-    ssh = SSHClient()
-    ssh.load_system_host_keys()  # or ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('example.com', username='your_user')
-
-    with SCPClient(ssh.get_transport(), progress=progress) as scp:
-        scp.get('/remote/path/your_big_file.is')
-
-
 def get_existing_repos_parquet() -> str:
     con = duckdb.connect(DATABASE_PATH, read_only=True)
 

@@ -1,8 +1,8 @@
 import kaggle
 import duckdb
 from time import sleep
-from IPython.core.page import page_dumb
-from datasets import tqdm
+
+from tqdm import tqdm
 
 from src.config import KAGGLE_DATASETS_DB_PATH
 
@@ -95,15 +95,17 @@ def scrape_for_datasets():
         if max_page is None:
             max_page = 0
     except Exception as e:
+        print(f"Error fetching max page: {e}")
         max_page = 0
 
     gb_to_bytes = 1024 * 1024 * 1024
+    print(f"Starting from page {max_page + 1}...")
     for page in tqdm(range(max_page + 1, 10_000), desc="Pages", unit="page"):
         datasets = kaggle.api.dataset_list(
             sort_by="votes",
             search="parquet",
             page=page,
-            min_size=0.5 * gb_to_bytes,  # at least 0.5 GB
+            min_size=int(0.5 * gb_to_bytes),  # at least 0.5 GB
         )
 
         if len(datasets) == 0:
