@@ -88,7 +88,7 @@ def download_dataset(
                 """, (handle, file, "Timeout reached while loading file"))
 
             # schedule an interrupt in 10s
-            timeout_sec = 120
+            timeout_sec = 300
             timer = threading.Timer(timeout_sec, on_cancel)
             timer.start()
             print(f"Storing {file} as {handle}.{table_name} with {df.shape[0]} rows and {df.shape[1]} columns")
