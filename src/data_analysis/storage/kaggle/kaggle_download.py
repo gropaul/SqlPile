@@ -145,9 +145,8 @@ def download_datasets():
             FROM kaggle_datasets
             JOIN filtered_datasets ON kaggle_datasets.id = filtered_datasets.dataset_id
             WHERE 
-                'abhishekyana/nse-listed-1384' NOT IN ref
-                AND 'allen-institute-for-ai' NOT IN ref -- too large for vldb wifi
-                AND 'aymital/us-us' NOT IN ref -- too large for vldb wifi
+                'abhishekyana/nse-listed-1384' NOT IN ref -- weird data
+                AND 'kylehamilton' NOT IN ref -- crashes kaggle API
         ),
         data_filtered_for_processed AS (
             SELECT data.*
