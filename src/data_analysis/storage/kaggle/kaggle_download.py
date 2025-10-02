@@ -2,6 +2,7 @@
 # pip install kagglehub[polars-datasets]
 import os
 import shutil
+import threading
 from time import sleep
 from typing import List, Optional
 import re
@@ -76,10 +77,25 @@ def download_dataset(
                 path=file
             )
 
+
+            def on_cancel():
+                print(f"Timeout reached while loading {file} from {handle}")
+
+                data_con.interrupt()
+                datasets_con.execute("""
+                    INSERT INTO kaggle_dataset_download_errors (dataset_ref, file_name, error_message)
+                    VALUES (?, ?, ?)
+                """, (handle, file, "Timeout reached while loading file"))
+
+            # schedule an interrupt in 10s
+            timeout_sec = 120
+            timer = threading.Timer(timeout_sec, on_cancel)
+            timer.start()
             print(f"Storing {file} as {handle}.{table_name} with {df.shape[0]} rows and {df.shape[1]} columns")
             data_con.execute(f"""
                         CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM df
                     """)
+            timer.cancel()  # cancel if finished in time
             print(f"Stored {file} as {handle}.{table_name}")
         except Exception as e:
             print(f"Error loading {file} from {handle}: {e}")
