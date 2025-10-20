@@ -47,5 +47,6 @@ def process_kaggle_data():
 
 
 if __name__ == "__main__":
-    retrieve_kaggle_datasets()
-    process_kaggle_data()
+    add_kaggle_statistics()
+    # retrieve_kaggle_datasets()
+    # process_kaggle_data()

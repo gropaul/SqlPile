@@ -8,7 +8,7 @@ import os
 def compress_kaggle():
 
     csv_path = f"{KAGGLE_DATA_DIR}/compression_benchmark_results.csv"
-    # run_compression_benchmark(KAGGLE_DATA_DB_PATH, csv_path)
+    run_compression_benchmark(KAGGLE_DATA_DB_PATH, csv_path)
 
     con = get_con()
     query = f"""

@@ -225,7 +225,7 @@ def generate_colors_from_cmap(n: int, cmap_name: str = "Dark2"):
     return [cmap(i) for i in range(n)]
 
 
-def create_stacked_bar_plot(all_results, count_type, output_dir):
+def create_stacked_bar_plot(all_results, count_type, output_dir, all_usage_types_ordered: List[str] = None):
     """
     Create a stacked bar plot for the given count type, showing percentages.
 
@@ -274,7 +274,10 @@ def create_stacked_bar_plot(all_results, count_type, output_dir):
     all_group_types.add(OTHER_KEY)  # Add 'Other' that will be all types < x% percent
     all_data_sources = sorted(list(all_data_sources))
     all_group_types = sorted(list(all_group_types), key=get_group_type_order)
-    all_usage_types = sorted(all_results.keys())
+    if all_usage_types_ordered:
+        all_usage_types = all_usage_types_ordered
+    else:
+        all_usage_types = sorted(all_results.keys())
     print('Found group types:', all_group_types)
     print('Found data sources:', all_data_sources)
     print('Found usage types:', all_usage_types)

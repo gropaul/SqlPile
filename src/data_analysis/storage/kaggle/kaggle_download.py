@@ -87,7 +87,6 @@ def download_dataset(
                     VALUES (?, ?, ?)
                 """, (handle, file, "Timeout reached while loading file"))
 
-            # schedule an interrupt in 10s
             timeout_sec = 300
             timer = threading.Timer(timeout_sec, on_cancel)
             timer.start()
