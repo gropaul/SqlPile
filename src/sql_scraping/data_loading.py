@@ -7,14 +7,13 @@ from src.config import logger, QUERIES_DIR_RAW, SCHEMAPILE_DIR
 
 
 def get_processed_urls() -> List[str]:
-
+    urls = []
     try:
         result = duckdb.sql(f" SELECT repo_url FROM '{QUERIES_DIR_RAW}/*/*.parquet'").fetchall()
 
         urls = [row[0] for row in result]
         # make sure th
-        logger.info(f"Found {len(urls)} processed URLs in the database.")
-        return urls
+        logger.info(f"Found {len(urls)} processed URLs in the database from raw queries.")
 
     except Exception as e:
         logger.error(f"Error fetching URLs from the database: {e}")
@@ -22,12 +21,13 @@ def get_processed_urls() -> List[str]:
     # also check at data/schemapile/existing.parquet
     try:
         result = duckdb.sql(f" SELECT repo_url FROM '{os.path.join(SCHEMAPILE_DIR, 'existing.parquet')}'").fetchall()
-        urls = [row[0] for row in result]
-        logger.info(f"Found {len(urls)} processed URLs in existing.parquet.")
-        return urls
+        urls_existing = [row[0] for row in result]
+        logger.info(f"Found {len(urls_existing)} processed URLs in existing.parquet file.")
+        urls.extend(urls_existing)
     except Exception as e:
         logger.error(f"Error fetching URLs from existing.parquet: {e}")
-    return []
+
+    return list(set(urls))
 
 
 def get_all_urls() -> List[str]:
