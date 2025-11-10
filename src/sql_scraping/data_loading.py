@@ -12,6 +12,7 @@ def get_processed_urls() -> List[str]:
         result = duckdb.sql(f" SELECT repo_url FROM '{QUERIES_DIR_RAW}/*/*.parquet'").fetchall()
 
         urls = [row[0] for row in result]
+        # make sure th
         logger.info(f"Found {len(urls)} processed URLs in the database.")
         return urls
 
@@ -44,7 +45,11 @@ def get_urls(filter_analysed: bool, shuffle: bool = False) -> List[str]:
     all_urls = get_all_urls()
 
     if filter_analysed:
-        urls = [url for url in all_urls if url not in processed_urls]
+        # create to sets and filter
+        processed_set = set(processed_urls)
+        all_set = set(all_urls)
+        urls = list(all_set - processed_set)
+
         logger.info(f"Filtered URLs: {len(urls)} remaining after excluding processed URLs.")
     else:
         urls = all_urls
