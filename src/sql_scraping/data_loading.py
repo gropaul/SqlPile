@@ -17,7 +17,16 @@ def get_processed_urls() -> List[str]:
 
     except Exception as e:
         logger.error(f"Error fetching URLs from the database: {e}")
-        return []
+
+    # also check at data/schemapile/existing.parquet
+    try:
+        result = duckdb.sql(f" SELECT url FROM '{os.path.join(SCHEMAPILE_DIR, 'existing.parquet')}'").fetchall()
+        urls = [row[0] for row in result]
+        logger.info(f"Found {len(urls)} processed URLs in existing.parquet.")
+        return urls
+    except Exception as e:
+        logger.error(f"Error fetching URLs from existing.parquet: {e}")
+    return []
 
 
 def get_all_urls() -> List[str]:
