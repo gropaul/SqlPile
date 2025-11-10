@@ -20,7 +20,7 @@ def get_processed_urls() -> List[str]:
 
     # also check at data/schemapile/existing.parquet
     try:
-        result = duckdb.sql(f" SELECT url FROM '{os.path.join(SCHEMAPILE_DIR, 'existing.parquet')}'").fetchall()
+        result = duckdb.sql(f" SELECT repo_url FROM '{os.path.join(SCHEMAPILE_DIR, 'existing.parquet')}'").fetchall()
         urls = [row[0] for row in result]
         logger.info(f"Found {len(urls)} processed URLs in existing.parquet.")
         return urls
