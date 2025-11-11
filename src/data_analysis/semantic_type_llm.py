@@ -4,37 +4,21 @@ import pandas as pd
 from langchain_ollama import ChatOllama
 from tqdm import tqdm
 
-from src.config import DATABASE_PATH, logger, get_con, LLM_SEMANTIC_TYPES
+from src.config import DATABASE_PATH, logger, get_con
 import duckdb
 from typing import List, Dict, Any, Optional, Tuple, TypedDict, Literal
 
 from langchain_core.language_models import BaseLLM
 from pydantic import BaseModel, Field
 
+from src.data_analysis.semantic_type.models import get_prompt, SemanticType, BASE_SEMANTIC_TYPES, SemanticTypeRunConfig, \
+    SemanticTypeColumnName, BASE_CONFIG, ID_CONFIG, SUB_CONFIGS
 
 DataSetType = Literal['kaggle', 'sqlpile']
 
-
-class SemanticTypes(BaseModel):
+class OutputSchema(BaseModel):
     """Always use this tool to structure your response to the user."""
     types: List[str] = Field(description="List of semantic types for each column")
-
-
-SYSTEM_PROMPT = """
-Based on the table name, column name, and sample values, determine the semantic type of each column.
-Every column must fit one of the types:
-
-1. **Numeric** – dates, times, timestamps, amounts, counts, prices, scores, sizes, values with unit
-2. **Category** – type, role, status, label, class, tag,  yes/no flags, is*/has*
-3. **FullText** – descriptions, messages, summaries, notes, comments
-4. **Identifier** – id, uuid, code, hash, token, version, link, url, slug, emails, phone numbers
-5. **Entity** – names of entities and persons, titles, labels, cities, countries, addresses
-6. **Semistructured** – like JSON, CSV or simple lists e.g. "a,b,c"
-7. **Test** – column with content/name that is for testing, e.g. "test", "col", "val1"
-
-You will be given multiple columns at once.
-Return *only* the list of semantic types in the same order as the columns were provided.
-"""
 
 
 DataRow = Tuple[List[int], str, str, List[str]]
@@ -47,7 +31,7 @@ class DataRowJson(TypedDict):
     values: List[str]
 
 
-def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
+def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: str | None, filter_semantic_type: str | None) -> List[DataRow]:
     """
     Retrieve column data from the database and organize it into batches.
 
@@ -55,30 +39,34 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
         List of batches, where each batch contains dictionaries with table_name, column_name, and values.
     """
 
-    # check if '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv' exists
-    has_csv =  os.path.exists('/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_sqlpile.csv')
-    filter = "" if not has_csv else "WHERE column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_sqlpile.csv')"
-
+    filter_null_clause = "" if filter_column_null is None else f" AND {filter_column_null} IS NULL"
+    filter_semantic_type_clause = "" if filter_semantic_type is None else f" AND columns.semantic_type_llm = '{filter_semantic_type}'"
     query = f"""
             WITH ids_to_process AS (SELECT DISTINCT column_id
-                                    FROM values_often 
-                                    {filter})
+                                    FROM column_values 
+                                )
             SELECT list(DISTINCT column_id) as column_ids,
                    table_name,
                    column_name,
                    list(DISTINCT value)[:10] as "values"
             FROM ids_to_process
-            JOIN values_often USING (column_id)
-            JOIN columns ON values_often.column_id = columns.id
+            JOIN column_values USING (column_id)
+            JOIN columns ON column_values.column_id = columns.id
             JOIN tables ON tables.id = columns.table_id
             JOIN table_values_count as tvc ON tvc.table_id = tables.id
             JOIN repos ON tables.repo_id = repos.id
             WHERE 
-                tvc.count > 2000 -- the column will be used for statistics, e.g. kaggle columns
-                OR column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
+                ( 
+                    tvc.count > 2000 -- the column will be used for statistics, e.g. kaggle columns
+                    OR column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
+                )  
+                AND length(value) > 0
+                {filter_null_clause}
+                {filter_semantic_type_clause}
             GROUP BY tables.repo_id, table_name, column_name
             ORDER BY tables.repo_id DESC, table_name, column_name
             """
+    print(query)
     result = con.execute(query).fetchall()
     return result
 
@@ -134,7 +122,7 @@ def setup_model() -> BaseLLM:
         keep_alive=-1,
         timeout=60,
     )
-    model = base.with_structured_output(SemanticTypes)
+    model = base.with_structured_output(OutputSchema)
 
     # Add retry with keyword args:
     retryable = model.with_retry(
@@ -145,7 +133,10 @@ def setup_model() -> BaseLLM:
     return retryable
 
 
-def determine_semantic_types_batch(batch: List[DataRowJson], model: BaseLLM) -> List[Optional[str]]:
+def determine_semantic_types_batch(batch: List[DataRowJson], model: BaseLLM, input_semantic_types: List[SemanticType]) -> List[Optional[str]]:
+
+    system_prompt = get_prompt(input_semantic_types)
+
     try:
         # Format the prompt with information about all columns in the batch
         columns_info = []
@@ -159,17 +150,18 @@ Sample Values: {column_data['values'][:10]}
 
         prompt = "Determine the semantic type for each of the following columns:\n\n" + "\n".join(columns_info)
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ]
         response = model.invoke(messages, think=False)
-        semantic_types = response.types
+        response_semantic_types = response.types
 
         # check if all semantic types are in the expected categories
-        if not all(st in LLM_SEMANTIC_TYPES for st in semantic_types):
+        allowed_types = [st.name for st in input_semantic_types]
+        if not all(st in allowed_types for st in response_semantic_types):
             messages = messages + [
                 {"role": "assistant",
-                 "content": f"Invalid semantic types detected: {set(semantic_types) - set(LLM_SEMANTIC_TYPES)}. Please ensure all types are one of the following: {LLM_SEMANTIC_TYPES}"}
+                 "content": f"Invalid semantic types detected: {set(response_semantic_types) - set(allowed_types)}. Please ensure all types are one of the following: {allowed_types}"}
             ]
             response = model.invoke(messages, think=False)
         semantic_types = response.types
@@ -199,7 +191,7 @@ Sample Values: {column_data['values'][:10]}
         return [None] * len(batch)
 
 
-def process_batches(batches: List[List[DataRowJson]], output_file: str) -> List[Dict[str, Any]]:
+def process_batches(batches: List[List[DataRowJson]], output_file: str, semantic_types_input: List[SemanticType], target_column: SemanticTypeColumnName) -> List[Dict[str, Any]]:
     model = setup_model()
     results = []
 
@@ -207,7 +199,7 @@ def process_batches(batches: List[List[DataRowJson]], output_file: str) -> List[
         logger.info(f"Processing batch {batch_idx + 1}/{len(batches)} ({len(batch)} columns)")
 
         # Process the entire batch in a single request using structured output
-        semantic_types = determine_semantic_types_batch(batch, model)
+        semantic_types = determine_semantic_types_batch(batch, model, semantic_types_input)
 
         # Add semantic types to the column data
         for column_data, semantic_type in zip(batch, semantic_types):
@@ -215,12 +207,12 @@ def process_batches(batches: List[List[DataRowJson]], output_file: str) -> List[
             column_result['semantic_type'] = semantic_type
             results.append(column_result)
 
-        save_results(results, output_file=output_file)
+        save_results(results, output_file=output_file, target_column=target_column)
 
     return results
 
 
-def save_results(results: List[Dict[str, Any]], output_file: str = "semantic_types_sqlpile.csv"):
+def save_results(results: List[Dict[str, Any]], target_column: SemanticTypeColumnName, output_file: str = "semantic_types_sqlpile.csv"):
     # Convert results to DataFrame
     new_df = pd.DataFrame(results)
     new_df = new_df[['column_ids', 'table_name', 'column_name', 'semantic_type']]
@@ -238,22 +230,62 @@ def save_results(results: List[Dict[str, Any]], output_file: str = "semantic_typ
 
     final_df.to_csv(output_file, index=False)
 
+    copy_csv_to_database(new_df, target_column=target_column)
+
+
 
 
 BATCH_SIZE = 5
 MODEL = 'qwen3:8b'
 
-if __name__ == "__main__":
+
+
+def add_columns():
+    con = duckdb.connect(DATABASE_PATH)
+    con.execute("ALTER TABLE columns ADD COLUMN IF NOT EXISTS semantic_type_llm VARCHAR;")
+    con.execute("ALTER TABLE columns ADD COLUMN IF NOT EXISTS semantic_type_llm_subtype VARCHAR;")
+
+def copy_csv_to_database(df: pd.DataFrame, target_column: SemanticTypeColumnName):
+    con = duckdb.connect(DATABASE_PATH)
+
+    for _, row in df.iterrows():
+        column_id = row['column_id']
+        semantic_type = row['semantic_type']
+        con.execute(f"""
+            UPDATE columns
+            SET {target_column} = ?
+            WHERE id = ?
+        """, (semantic_type, column_id))
+
+
+def run_semantic_type_analysis(output_file: str, config: SemanticTypeRunConfig):
+
+    add_columns()
+
+    # reset the output file
+    if os.path.exists(output_file):
+        os.remove(output_file)
+
     logger.info("Starting semantic type determination")
     con = get_con(read_only=True)
-    data = get_sql_pile_data(con)
-
-    output_file = "semantic_types_sqlpile.csv"
-
+    data = get_sql_pile_data(con, filter_column_null=config.target_column, filter_semantic_type=config.filter_semantic_type)
     con.close()
 
     batches = batch_data(data)
     logger.info(f"Retrieved {len(batches)} batches with a total of {sum(len(batch) for batch in batches)} columns")
 
-    results = process_batches(batches, output_file=output_file)
+    results = process_batches(batches, output_file=output_file, semantic_types_input=config.semantic_types, target_column=config.target_column)
     logger.info("Semantic type determination completed")
+
+
+if __name__ == "__main__":
+    output_file = "semantic_types_sqlpile.csv"
+    # run_semantic_type_analysis(output_file, BASE_CONFIG)
+
+    for sub_config in SUB_CONFIGS:
+        logger.info(f"Running semantic type analysis for config: {sub_config.filter_semantic_type}")
+        output_file = f"semantic_types_sqlpile_{sub_config.filter_semantic_type.lower()}.csv"
+        run_semantic_type_analysis(output_file, sub_config)
+
+
+

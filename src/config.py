@@ -55,11 +55,6 @@ for directory in DIRS:
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-LLM_SEMANTIC_TYPES = [
-    "Numeric", "Category", "FullText", "Identifier", "Entity",
-    "Semistructured", "Test"
-]
-
 # Logging configuration
 # Set the default logging level - can be changed to DEBUG, INFO, WARNING, ERROR, CRITICAL
 LOG_LEVEL = logging.INFO
@@ -163,24 +158,6 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
     con.create_function("as_percentage", format_number_as_percentage, [float], str, type="native")
 
     def unify_llm_type(semantic_type: Optional[str]) -> str:
-        # {None, '', 'Password', 'Identifier', 'Contact', 'Boolean', 'Numeric', 'URL', 'Location',
-        # '', 'DateTime', 'Category', 'Email', 'Name', 'PhoneNumber', 'FullText', 'Title', 'Function'}
-
-        # Gender, Color are transformed to 'Category'
-        if semantic_type in ['Gender', 'Color']:
-            return 'Category'
-
-        # Email, PhoneNumber are transformed to 'Contact'
-        if semantic_type in ['Email', 'PhoneNumber']:
-            return 'Contact'
-
-        # Boolean and Numeric to Other
-        if semantic_type in ['Boolean', 'Numeric', 'URL']:
-            return 'Other'
-
-        if semantic_type not in LLM_SEMANTIC_TYPES:
-            return 'Other'
-
         return semantic_type if semantic_type else 'Other'
 
     cum_sum_macro = """
