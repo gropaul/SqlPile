@@ -2,9 +2,8 @@ from typing import Literal
 
 import duckdb
 
-from src.config import TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME
-
-
+from src.config import TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, \
+    QUERY_OPERATOR_COMPONENT_EXPRESSIONS, QUERY_OPERATOR_COMPONENTS_TABLE_NAME, QUERY_OPERATOR_TABLE_NAME
 
 DeleteMode = Literal['all', 'execution_only']
 
@@ -17,6 +16,57 @@ def table_exists(con, table_name: str) -> bool:
     """).fetchone()
     count = result[0] if result is not None else 0
     return count == 1
+
+def delete_query_operator_component_expressions(con, repo_id):
+    """Delete all component expressions linked to a given repo."""
+    if table_exists(con, QUERY_OPERATOR_COMPONENT_EXPRESSIONS):
+        con.execute(f"""
+            DELETE FROM {QUERY_OPERATOR_COMPONENT_EXPRESSIONS}
+            WHERE component_id IN (
+                SELECT id FROM {QUERY_OPERATOR_COMPONENTS_TABLE_NAME}
+                WHERE operator_id IN (
+                    SELECT id FROM {QUERY_OPERATOR_TABLE_NAME}
+                    WHERE query_id IN (
+                        SELECT id FROM queries_executable
+                        WHERE query_id IN (
+                            SELECT id FROM queries WHERE repo_id = ?
+                        )
+                    )
+                )
+            )
+        """, (repo_id,))
+
+
+def delete_query_operator_components(con, repo_id):
+    """Delete all operator components linked to a given repo."""
+    if table_exists(con, QUERY_OPERATOR_COMPONENTS_TABLE_NAME):
+        con.execute(f"""
+            DELETE FROM {QUERY_OPERATOR_COMPONENTS_TABLE_NAME}
+            WHERE operator_id IN (
+                SELECT id FROM {QUERY_OPERATOR_TABLE_NAME}
+                WHERE query_id IN (
+                    SELECT id FROM queries_executable
+                    WHERE query_id IN (
+                        SELECT id FROM queries WHERE repo_id = ?
+                    )
+                )
+            )
+        """, (repo_id,))
+
+
+def delete_query_operators(con, repo_id):
+    """Delete all query operators linked to a given repo."""
+    if table_exists(con, QUERY_OPERATOR_TABLE_NAME):
+        con.execute(f"""
+            DELETE FROM {QUERY_OPERATOR_TABLE_NAME}
+            WHERE query_id IN (
+                SELECT id FROM queries_executable
+                WHERE query_id IN (
+                    SELECT id FROM queries WHERE repo_id = ?
+                )
+            )
+        """, (repo_id,))
+
 
 def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode = 'all'):
     """
@@ -45,6 +95,11 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
 
     if table_exists(con, "columns_compression_results"):
         con.execute("DELETE FROM columns_compression_results WHERE repo_id = ?", (repo_id,))
+
+    delete_query_operator_component_expressions(con, repo_id)
+    delete_query_operator_components(con, repo_id)
+    delete_query_operators(con, repo_id)
+
 
     reset_statistics_for_repo(con, repo_id)
 

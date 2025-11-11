@@ -637,10 +637,9 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
-            print("QUERIES ARE NOT EXECUTED YET")
-            # execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
-            #
-            # analyse_plans(con, repo_id)
+            execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
+
+            analyse_plans(con, repo_id)
 
             save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
             save_table_counts(repo_id, con, sandbox_con)
@@ -661,8 +660,11 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             # *** COMPRESSION BENCHMARK ***
 
             output_path = os.path.join(TMP_DIR, f"compression_benchmark_repo_{repo_id}.csv")
-            run_compression_benchmark(sandbox_database_path, output_path)
-            save_columns_compression_results(repo_id, output_path, con)
+            try:
+                run_compression_benchmark(sandbox_database_path, output_path)
+                save_columns_compression_results(repo_id, output_path, con)
+            except Exception as e:
+                print(f"Failed to run compression benchmark for repo {repo_id}: {e}")
 
             # Close the sandbox connection, save progress, and checkpoint
             con.execute("CHECKPOINT;")
@@ -701,4 +703,4 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
 
 if __name__ == "__main__":
-    execute_repo_queries(mode='replace', repo_id=None, query_id=None)
+    execute_repo_queries(mode='replace', repo_id=41551, query_id=None)

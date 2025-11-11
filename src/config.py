@@ -5,7 +5,6 @@ import re
 import duckdb
 from typing import Literal, Optional
 
-
 # Data directories
 
 # traverse one up as this is in src/config.py
@@ -28,7 +27,7 @@ KAGGLE_DATA_DIR = os.path.join(DATA_DIR, "kaggle")
 KAGGLE_DATA_DB_PATH = os.path.join(KAGGLE_DATA_DIR, "kaggle_data.duckdb")
 KAGGLE_DATASETS_DB_PATH = os.path.join(KAGGLE_DATA_DIR, "kaggle_datasets.duckdb")
 
-QUERY_RUN_TIMEOUT_SECONDS = 3 # Timeout for running queries in seconds
+QUERY_RUN_TIMEOUT_SECONDS = 3  # Timeout for running queries in seconds
 
 TPC_DATA_DIR = os.path.join(DATA_DIR, "tpc")
 SQL_STORM_DATA_DIR = os.path.join(DATA_DIR, "sql_storm")
@@ -56,10 +55,8 @@ for directory in DIRS:
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-
 LLM_SEMANTIC_TYPES = [
-    "Name", "DateTime", "Numeric", "Boolean", "Category",
-    "FullText", "Identifier", "Contact", "Location", "URL",
+    "Numeric", "Category", "FullText", "Identifier", "Entity",
     "Semistructured", "Test"
 ]
 
@@ -228,7 +225,8 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
                         WHERE column_id IN (SELECT column_id FROM often);
                 """)
     except Exception as e:
-        logging.warning(f"Could not create views column_usages_unnested and values_often. The tables might not exist yet.")
+        logging.warning(
+            f"Could not create views column_usages_unnested and values_often. The tables might not exist yet.")
         pass
 
     def unifiy_usage_types(usage_type: str) -> str:
@@ -349,7 +347,6 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDB
 
     con.execute(PREPARE_SQL_STATICALLY_MACRO)
 
-
     return con
 
 
@@ -397,6 +394,10 @@ COLUMNS_TABLE_NAME = 'columns'
 COLUMN_VALUES_TABLE_NAME = 'column_values'
 COLUMN_USAGES_TABLE_NAME = 'column_usages'
 COLUMN_USAGES_HISTORY_TABLE_NAME = 'column_usage_history'
+
+QUERY_OPERATOR_TABLE_NAME = 'query_operators'
+QUERY_OPERATOR_COMPONENTS_TABLE_NAME = 'query_operator_components'
+QUERY_OPERATOR_COMPONENT_EXPRESSIONS = 'query_component_expressions'
 
 QUERIES_TABLE_NAME = 'queries'
 QUERIES_EXECUTABLE_TABLE_NAME = 'queries_executable'

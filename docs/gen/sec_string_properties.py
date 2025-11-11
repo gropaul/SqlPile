@@ -46,7 +46,7 @@ def _build_query(metric_col: str, p_low: float = 0.05, p_high: float = 0.95) -> 
               SELECT column_id AS column_id_llm, semantic_type AS semantic_type_llm
               FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv'
             ) AS st ON st.column_id_llm = columns.id
-            WHERE semantic_type_llm IN ('Name', 'Location', 'DateTime', 'Identifier', 'FullText', 'Category', 'Contact', 'Semistructured')
+            WHERE semantic_type_llm IN ('Numeric', 'Category', 'FullText', 'Identifier', 'Entity', 'Semistructured', 'Test')
         ),
         data as (
             SELECT 

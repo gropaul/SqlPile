@@ -24,18 +24,13 @@ SYSTEM_PROMPT = """
 Based on the table name, column name, and sample values, determine the semantic type of each column.
 Every column must fit one of the types:
 
-1. **Name** – names of entities and persons, titles, labels
-2. **DateTime** – dates, timestamps, time-related columns  
-3. **Numeric** – amounts, counts, prices, scores, sizes  
-4. **Boolean** – yes/no flags, is*/has*, enabled states  
-5. **Category** – type, role, status, label, class, tag  
-6. **FullText** – descriptions, messages, summaries, notes, comments
-7. **Identifier** – id, uuid, code, hash, token, version  
-8. **Contact** – emails, phone, fax, mobile 
-9. **Location** – city, country, region, address, zip  
-10. **URL** – link, url, image path, icon, slug
-11. **Semistructured** – like JSON, CSV, ... or simple lists e.g. "a,b,c"
-12. **Test** – column with content/name that is for testing, e.g. "test", "col", "val1"
+1. **Numeric** – dates, times, timestamps, amounts, counts, prices, scores, sizes, values with unit
+2. **Category** – type, role, status, label, class, tag,  yes/no flags, is*/has*
+3. **FullText** – descriptions, messages, summaries, notes, comments
+4. **Identifier** – id, uuid, code, hash, token, version, link, url, slug, emails, phone numbers
+5. **Entity** – names of entities and persons, titles, labels, cities, countries, addresses
+6. **Semistructured** – like JSON, CSV or simple lists e.g. "a,b,c"
+7. **Test** – column with content/name that is for testing, e.g. "test", "col", "val1"
 
 You will be given multiple columns at once.
 Return *only* the list of semantic types in the same order as the columns were provided.
@@ -60,11 +55,14 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
         List of batches, where each batch contains dictionaries with table_name, column_name, and values.
     """
 
-    query = """
+    # check if '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv' exists
+    has_csv =  os.path.exists('/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_sqlpile.csv')
+    filter = "" if not has_csv else "WHERE column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/semantic_types_sqlpile.csv')"
+
+    query = f"""
             WITH ids_to_process AS (SELECT DISTINCT column_id
-                                    FROM values_often
-                                    WHERE column_id NOT IN (SELECT column_id FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv')      
-                                )
+                                    FROM values_often 
+                                    {filter})
             SELECT list(DISTINCT column_id) as column_ids,
                    table_name,
                    column_name,
@@ -81,7 +79,6 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection) -> List[DataRow]:
             GROUP BY tables.repo_id, table_name, column_name
             ORDER BY tables.repo_id DESC, table_name, column_name
             """
-
     result = con.execute(query).fetchall()
     return result
 

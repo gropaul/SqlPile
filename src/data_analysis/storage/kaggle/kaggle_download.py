@@ -9,6 +9,7 @@ import re
 
 import kagglehub
 from kagglehub import KaggleDatasetAdapter
+from src.data_analysis.storage.kaggle.kaggle_unify_schema import unify_kaggle_table_schema
 import duckdb
 
 from src.config import KAGGLE_DATA_DB_PATH, KAGGLE_DATASETS_DB_PATH
@@ -102,6 +103,8 @@ def download_dataset(
                 INSERT INTO kaggle_dataset_download_errors (dataset_ref, file_name, error_message)
                 VALUES (?, ?, ?)
             """, (handle, file, str(e)))
+
+        unify_kaggle_table_schema(schema_name)
 
 
 def download_datasets():
