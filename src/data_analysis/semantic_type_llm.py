@@ -48,7 +48,7 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: str | 
             SELECT list(DISTINCT column_id) as column_ids,
                    table_name,
                    column_name,
-                   list(DISTINCT value)[:10] as "values"
+                   list(DISTINCT value)[:20] as "values"
             FROM ids_to_process
             JOIN column_values USING (column_id)
             JOIN columns ON column_values.column_id = columns.id
@@ -90,7 +90,7 @@ def batch_data(data: List[DataRow]) -> List[List[DataRowJson]]:
             values_reduced = []
             total_characters = 0
 
-            MAX_WIDTH = 100
+            MAX_WIDTH = 250
             while total_characters < MAX_WIDTH and values:
                 remaining_characters = MAX_WIDTH - total_characters
                 value = values.pop(0)
@@ -238,7 +238,12 @@ def save_results(results: List[Dict[str, Any]], target_column: SemanticTypeColum
 BATCH_SIZE = 5
 MODEL = 'qwen3:8b'
 
+def clear_columns():
+    con = duckdb.connect(DATABASE_PATH)
+    con.execute("ALTER TABLE columns DROP COLUMN IF EXISTS semantic_type_llm;")
+    con.execute("ALTER TABLE columns DROP COLUMN IF EXISTS semantic_type_llm_subtype;")
 
+    add_columns()
 
 def add_columns():
     con = duckdb.connect(DATABASE_PATH)

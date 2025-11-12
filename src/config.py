@@ -145,8 +145,13 @@ CREATE OR REPLACE TEMP MACRO prepare_select_statically(sql) AS
 """
 
 
-def get_con(path: str = DATABASE_PATH, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Optional[int] = 16) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(path, read_only=read_only)
+
+    if max_threads is not None:
+        core_count = os.cpu_count() or 1
+        threads_to_use = min(max_threads, core_count)
+        con.execute(f"PRAGMA threads={threads_to_use};")
 
     def format_number_as_percentage(value: float) -> str:
         """Format a number as a percentage with two decimal places."""

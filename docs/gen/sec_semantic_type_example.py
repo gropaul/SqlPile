@@ -8,27 +8,27 @@ def semantic_type_example():
     MAX_EXAMPLES_PER_TYPE = 5
     MAX_VALUES_PER_EXAMPLE = 3
 
-    # First, get all combinations with their examples
+    # First, get all combinations with their examples and percentages
     df = con.sql(f"""
             WITH ranked_columns AS (
-                SELECT 
+                SELECT
                     semantic_type_llm,
                     semantic_type_llm_subtype,
                     tables.table_name as table_name,
                     columns.column_name as column_name,
                     columns.id as column_id,
                     ROW_NUMBER() OVER (
-                        PARTITION BY semantic_type_llm, semantic_type_llm_subtype 
+                        PARTITION BY semantic_type_llm, semantic_type_llm_subtype
                         ORDER BY columns.id
                     ) as rn
-                FROM columns 
+                FROM columns
                 JOIN tables ON tables.id = columns.table_id
                 JOIN table_values_count as tvc ON tvc.table_id = tables.id
                 WHERE tvc.count > 4000
                 ORDER BY hash(column_id)
             ),
             examples AS (
-                SELECT 
+                SELECT
                     rc.semantic_type_llm,
                     rc.semantic_type_llm_subtype,
                     rc.table_name,
@@ -38,22 +38,52 @@ def semantic_type_example():
                 JOIN column_values cv ON rc.column_id = cv.column_id
                 WHERE rc.rn <= {MAX_EXAMPLES_PER_TYPE}
                 GROUP BY rc.semantic_type_llm, rc.semantic_type_llm_subtype, rc.table_name, rc.column_name, rc.rn
+            ),
+            totals AS (
+                SELECT
+                    COUNT(*) as total_columns
+                FROM columns
+                WHERE semantic_type_llm IS NOT NULL
+            ),
+            type_counts AS (
+                SELECT
+                    semantic_type_llm,
+                    COUNT(*) as type_count
+                FROM columns
+                WHERE semantic_type_llm IS NOT NULL
+                GROUP BY semantic_type_llm
+            ),
+            subtype_counts AS (
+                SELECT
+                    semantic_type_llm,
+                    semantic_type_llm_subtype,
+                    COUNT(*) as subtype_count
+                FROM columns
+                WHERE semantic_type_llm IS NOT NULL
+                    AND semantic_type_llm_subtype IS NOT NULL
+                GROUP BY semantic_type_llm, semantic_type_llm_subtype
             )
-            SELECT 
-                semantic_type_llm,
-                semantic_type_llm_subtype,
+            SELECT
+                e.semantic_type_llm,
+                e.semantic_type_llm_subtype,
+                ROUND(100.0 * tc.type_count / t.total_columns, 2) as type_percentage,
+                ROUND(100.0 * sc.subtype_count / tc.type_count, 2) as subtype_percentage,
                 LIST(
-                    table_name || '.' || column_name || ': ' || 
-                    array_to_string(sample_values, ', ')
+                    e.table_name || '.' || e.column_name || ': ' ||
+                    array_to_string(e.sample_values, ', ')
                 ) as examples
-            FROM examples
-            WHERE 
-                semantic_type_llm_subtype != 'Other' 
-                AND semantic_type_llm != 'Test'
-                AND semantic_type_llm IS NOT NULL
-                AND semantic_type_llm_subtype IS NOT NULL
-            GROUP BY semantic_type_llm, semantic_type_llm_subtype
-            ORDER BY semantic_type_llm, semantic_type_llm_subtype
+            FROM examples e
+            CROSS JOIN totals t
+            JOIN type_counts tc ON e.semantic_type_llm = tc.semantic_type_llm
+            JOIN subtype_counts sc ON e.semantic_type_llm = sc.semantic_type_llm
+                AND e.semantic_type_llm_subtype = sc.semantic_type_llm_subtype
+            WHERE
+                e.semantic_type_llm_subtype != 'Other'
+                AND e.semantic_type_llm != 'Test'
+                AND e.semantic_type_llm IS NOT NULL
+                AND e.semantic_type_llm_subtype IS NOT NULL
+            GROUP BY e.semantic_type_llm, e.semantic_type_llm_subtype, tc.type_count, sc.subtype_count, t.total_columns
+            ORDER BY e.semantic_type_llm, e.semantic_type_llm_subtype
         """).df()
 
     # Create a markdown table
@@ -63,9 +93,11 @@ def semantic_type_example():
     for _, row in df.iterrows():
         semantic_type = row['semantic_type_llm']
         subtype = row['semantic_type_llm_subtype']
+        type_pct = row['type_percentage']
+        subtype_pct = row['subtype_percentage']
         examples_small = [ex[:MAX_CHARS] + ("..." if len(ex) > MAX_CHARS else "") for ex in row['examples']]
         examples = "<br>".join(examples_small)
-        markdown_lines.append(f"| {semantic_type} | {subtype} | {examples} |")
+        markdown_lines.append(f"| {semantic_type} ({type_pct}%) | {subtype} ({subtype_pct}%) | {examples} |")
     markdown_content = "\n".join(markdown_lines)
     with open("semantic_type_example.md", "w") as f:
         f.write(markdown_content)
