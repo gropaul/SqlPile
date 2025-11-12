@@ -1,0 +1,19 @@
+
+In the following, we will discuss how which semantic type is used in which operator for different benchmarks (TPC-H, TPC-DS, SQLStorm).
+
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{assets/column_usage/semantic_type_llm/column_cnt.pdf}
+  \caption{Distribution of the semantic types of different benchmarks.}
+  \Description{Distribution of the semantic types of different benchmarks.}
+    \label{fig:column_semantic_type_usage}
+\end{figure}
+
+\begin{itemize}
+\item Describe which semantic type is used in which operator. Go through operator by operator.
+\item Highlight the differences between the different benchmarks (TPC-H, TPC-DS, SQLStorm)
+\item Mention that boolean and numeric are merged to other types. 
+\item Create a table with examples of the semantic type and how often it occured. Maybe add like a 2nd level of detail, e.g., for location: city, country, address, ...
+\item What type of expressions are used for which operator and semantic type? 
+\item What is the difference between the expressions in the different benchmarks?
+\end{itemize}

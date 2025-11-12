@@ -1,0 +1,203 @@
+\section{Introduction}
+\label{sec:introduction}
+Recent studies show that variable-length text types are among the most commonly used column data types in \acp{DBMS}.
+For example, van Renen et al~\cite{van_renen_why_2024} showed that 52.1\% of all columns in the
+Amazon Redshift are of this type.
+But already in 2018, Vogelsgesang et al.~\cite{vogelsgesang_get_2018} showed with their analysis of Public Tableau
+Workbooks that 48.8\% of their columns are of type text.
+Most interestingly, these columns not only occur frequently but are also commonly used in operators and expressions.
+For example, a workload analysis of the Snowflake Data Cloud performed by Szlang et al.~\cite{szlang_workload_2025}
+shows that 46\% of join keys, 58\% of filter columns are text columns.
+The reason why strings are so prevalent is that they are a catch-all type for many
+different kinds of data and allow a very pragmatic schema design.
+However, this often results in data being stored in formats that are inefficient for processing~\cite{vogelsgesang_get_2018}.
+
+This prevalence of variable-length text columns poses significant challenges for query processing and storage management.
+Unlike fixed-length numeric or boolean types, strings require dynamic memory allocation, incur higher CPU costs during
+standard operations like comparison and hashing.
+
+In this paper, we analyze how variable-length text columns are used in \acp{DBMS} and how they affect system performance
+in execution and compression.
+We argue that, to adequately address the heterogeneity of the data these columns can represent, it is necessary to
+classify strings according to their semantic type.
+Doing this, we create a \textit{taxonomy of variable-length text columns} by using \acp{LLM} to categorize string
+columns as Numeric, Categorical, FullText, Identifier, Entity, or Semistructured.
+Doing this, we show that which each of these classes we can see distinct physical characteristics
+(length, character distribution) and usage patterns in query execution that can be exploited for efficient query processing.
+
+As a data basis for this analysis, we use queries, schema information, and data from publicly available repositories.
+Our work differs from previous studies such as~\cite{van_renen_why_2024, vogelsgesang_get_2018, szlang_workload_2025}
+in that we also release a dataset containing detailed information about the analyzed tables, columns, queries,
+query execution traces, column usages, and compression results.
+
+In summary, we offer the following contributions:
+\begin{itemize}
+    \item We release a public dataset of real-world schemas, queries, and query plans.
+    \item We present a reproducible pipeline for dataset creation.
+    \item We propose a taxonomy for variable-length text columns and analyze their physical properties, usage patterns, and compressibility.
+    \item We examine variable-length text column usage in the TPC-[H, DS] and SqlStorm benchmarks.
+    \item Based on our findings, we provide recommendations for future research directions.
+\end{itemize}
+
+\section{Dataset Collection}\label{sec:data-collection}
+
+To analyze the usage of text columns in \ac{DBMS}, we require both queries and corresponding populated tables.
+
+One publicly available dataset that offers this is SchemaPile~\cite{dohmen_schemapile_2024}, which is a collection of database schemas extracted from DDL and DML statements found in SQL files across public code repositories.
+However, as SchemaPile only contains data from SQL table dumps instead of database files or csv/parquet files.
+This leads to a table only containing 27.6 values on average.
+Since SchemaPile only provides schema and table information but no \texttt{SELECT} statements, we revisited the corresponding repositories to scrape such statements.
+This process and resulting dataset characteristics are described in \cref{subsec:sqlpile-dataset}.
+
+To complement the data with information on larger tables, we additionally analyzed data found publicly on kaggle.
+These datasets are mostly designed for analytical workloads and contain both the data and the schema; however, they rarely include queries.
+More information on this can be found in \cref{subsec:kaggle-datasets}.
+
+Additionally, we analyzed the data and queries from both TPC-H, TPC-DS, and SQLStorm to identify further string usage patterns and to compare these benchmarks against the other datasets.
+
+\subsection{SQLPile Dataset}\label{subsec:sqlpile-dataset}
+\input{content/gen/sec_dataset_sqlpile_description}
+
+\begin{itemize}
+    \item We also added SQLStorm and TPC-[H, DS] as benchmarks to compare against
+\end{itemize}
+
+\subsection{Kaggle Dataset}\label{subsec:kaggle-datasets}
+
+\begin{itemize}
+    \item How many datasets, tables, rows, columns
+\end{itemize}
+
+
+\section{Semantic Type}\label{sec:semantic-type}
+
+Strings are a catch-all storage type; their semantics depend on how they are used.
+To recover those semantics, we used an instruction-following LLM (Qwen3.5 via Ollama, \texttt{qwen3:8b}) with structured output to assign a single semantic label to every string-typed column.
+For each candidate column we collected up to ten \emph{distinct, non-empty} sample values.
+To keep the prompt compact and comparable across columns, the concatenated examples per column were truncated to a maximum length of \(\leq 100\) characters. Columns were processed in mini-batches of \(B=5\) to amortize model overhead while keeping responses aligned.
+
+\subsection{Semantic Type Pipeline}\label{sec:semantic-type-pipeline}
+
+We use and report twelve semantic types in total which are listed in \cref{tab:semantic-types-list}
+along with the description we provided to the model.
+
+\input{assets/table_semantic_types}
+
+We have one system message that is used for all batches:
+\begin{quote}
+    \small
+    \texttt{Based on the table name, column name, and sample values, determine the semantic type of each column.
+    Every column must fit one of the types:}\\
+    \texttt{<type\_1>} \texttt{<type\_1\_description>}\\
+    \(\dots\)\\
+    \texttt{<type\_N>} \texttt{<type\_N\_description>}\\
+    \texttt{You will be given multiple columns at once.
+    Return *only* the list of semantic types in the same order as the columns were provided.}
+\end{quote}
+
+Each batch is rendered into a single user message of the form:
+\begin{quote}
+    \small
+    \texttt{Determine the semantic type for each of the following columns:}\\
+    \texttt{Column 1:}\\
+    \texttt{Table: <table\_name>}\\
+    \texttt{Column: <column\_name>}\\
+    \texttt{Sample Values: [v\_1,\dots,v\_k]}\\
+    \(\dots\)\\
+    \texttt{Column N: \dots}
+\end{quote}
+\caption{Semantic types used for string columns and their intended interpretation.}
+\label{tab:semantic-types}
+
+Here should then come a detailed analysis in form of a table e.g. that shows example values for each operator and semantic
+type e.g. how do the string columns look like. Also, for each semantic type, I would like to show what expressions where used.
+For example, if there is a group by on a full text column, the query could look like
+GROUP BY full\_text\_column LIKE 'foo\%' is probably not that useful.
+\begin{itemize}
+    \item
+\end{itemize}
+
+\subsection{Results}\label{sec:semantic-type-results}
+%    \input{content/gen/sec_semantic_type_results}
+
+
+\section{Storage}\label{sec:storage}
+\input{content/gen/sec_storage_analysis}
+
+
+\section{Properties of Strings}
+\input{content/gen/sec_string_properties}ragraphs 2 through 4
+\begin{itemize}
+    \item What physical types do strings of different semantic types share
+    \item How do they differ?
+    \item How can we use this for execution and compression
+\end{itemize}
+
+
+\section{Query Processing}\label{sec:query-processing}
+
+\begin{itemize}
+    \item Describe what we did to execute the queries
+    \item Move parts from the dataset description here
+\end{itemize}
+
+\subsection{Logical Type Analysis}\label{subsec:logical-type-analysis}
+\input{content/gen/sec_logical_analysis}
+
+\subsection{Semantic Type Analysis}\label{subsec:semantic-type-analysis}
+\input{content/gen/sec_semantic_analysis}
+
+
+\section{Benchmark for String}\label{sec:benchmark-for-string}
+\begin{itemize}
+    \item  Based on the analysis, we created a benchmark for strings.
+    \item  What columns compress how well with which compression algorithm?
+    \item  What are the expensive parts for e.g. a join operation of a int64 compared to a string?
+    \item The goal should be to have a benchmark where both the compression and the execution can be tested.
+    So the data is allowed to be compressed by the DBMS, the idea is to leverage how the data is compressed for execution.
+    -> String processing is manly compressed execution
+    \item The benchmark should measure compression speed, compression ratio, and execution speed, a bit similar then
+    Clickbench but not with obscure queries then can be easily exploited on.
+\end{itemize}
+
+The idea for creating the benchmark is to get kaggle datasets (mainly ml datasets). They are usually denomalized single
+tables so we could LLMs to normalize the data a bit more. Then we could use LLMs to generate very simple queries with
+not that many joins. The benchmark should not be winable by good join ordering, but really focus on core operator
+speed and the leverage of compression.
+The problem of SQLstorm for string execution lays in the complexity of the queries. This means that good
+query optimization will overshadow the actual execution performance.
+Also, with only two new datasets, while there are a lot of different query features, there is a lack of divere data
+features (Join on emails instead of uint64 ids, \ldots).
+
+What do strings mean for GPU databases? Even more memory heavy..
+
+
+\section{Findings}\label{sec:findings}
+While the TPC-H schema defines a \texttt{comment} column for all tables
+(e.g., \texttt{l\_comment}, \texttt{o\_comment}), only \texttt{c\_comment},
+\texttt{o\_comment}, and \texttt{s\_comment} are actually used
+This is especially noteworthy as also the comments from high cardinality tables like \texttt{lineitem} are not used.
+
+Similar for TPC-DS, we only two out of five comment columns are used (\texttt{item\_desc} and \texttt{reason\_desc}).
+
+
+\section{Limitations}\label{sec:limitations}
+\begin{itemize}
+    \item SQLPile contains a lot of simple queries. Many queries come not from suffisticated industrial applications, but
+    from small personal projects.
+    \item We only have a limited number of queries with joins and aggregations.
+    \item While SQLPile contains mainly OLTP queries and schemas, kaggle are OLAP/ML datasets. We assume the properties of strings with
+    the same semantic type are similar in both workloads.
+\end{itemize}
+
+
+\section{Recommendations for future Research}\label{sec:recommendations-for-future-research}
+
+\begin{itemize}
+    \item Strings are a catch it all type. We should not treat them as a single type, but accept that with differnt
+    semantics come different properties that need to be treated differently.
+    \item It is worth to do this, as strings are a significant part of the data stored and processed in DBMS.
+\end{itemize}
+
+
+\section{Related Work}\label{sec:related-work}

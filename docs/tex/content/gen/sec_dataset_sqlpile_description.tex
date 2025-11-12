@@ -1,0 +1,27 @@
+
+In order to analyze the string usage in the scraped repositories, we tried first create and populate the tables featured in the 
+repository to then execute the select queries. We decided to use DuckDB~\cite{raasveldt_duckdb_2019} as the database system, as it is fast 
+and easy to use locally.
+
+In total we retrieved 36,991,829 queries from 27,389 repositories, 
+with 752,655 \texttt{SELECT}. By parsing the \texttt{CREATE} SQL statements, we could extract 
+701,382 distinct tables with 4,794,784 columns. In order to execute the queries 
+later in DuckDB, we unified the system specific column types into abstract types like \texttt{INTEGER}, \texttt{FLOAT}, 
+\texttt{TEXT} or \texttt{DATETIME} to then later map them to the DuckDB types. 
+
+For each repository, we then created a DuckDB database and created the tables using the parsed \texttt{CREATE} statements.
+We then executed all the \texttt{INSERT} statements to populate the tables with data. Due to errors in the extracted 
+SQL and differences in the features, data types and SQL dialects across systems, we could only execute 86.33\% 
+of the \texttt{CREATE TABLE}, 83.83\% of the \texttt{CREATE VIEW} and 93.76\% of the \texttt{INSERT} statements. 
+From this, we could populate 6,407 tables with at least one row, 
+with a median of 5 rows and a mean of 100.59 rows per table.
+
+To analyze string usage in the examined repositories, we executed the scraped \texttt{SELECT} statements.
+Since queries are rarely written as static strings in the code, we first had to preprocess them by 
+replacing variables and applying minor transformations to make them executable in DuckDB. This way, we where 
+able to execute 27.59\% of the \texttt{SELECT} statements resulting in a 
+total number of 56,222 statements we could retrieve query plans for. 
+
+To then be able to track the usage of columns through the operators, we implemented a special 
+explain function\footnote{See \url{https://todo}} that returns not only information on 
+the operators used to execute the queries but also the details on the expressions these use. 

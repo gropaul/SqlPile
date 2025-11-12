@@ -57,13 +57,15 @@ def main():
 
 
     total_queries = 0
+
+    timeout_per_task = 600
     start_time = time.time()
 
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         futures = {executor.submit(process_url, url): url for url in urls}
-        for future in as_completed(futures):
+        for future, url in futures.items():
             try:
-                n_queries = future.result()
+                n_queries = future.result(timeout=timeout_per_task)
                 total_queries += n_queries if n_queries is not None else 0
                 queries_per_minute = get_queries_per_minute(start_time, total_queries)
                 queries_per_minute_str = f"{queries_per_minute:.2f}" if queries_per_minute > 0 else "N/A"
@@ -72,6 +74,9 @@ def main():
                             f"Total queries: {total_queries}. "
                             f"Queries per minute: {queries_per_minute_str}. "
                             f"Run duration: {run_duration_str}.")
+            except TimeoutError:
+                logger.error(f"Timeout: {url} took longer than {timeout_per_task}s")
+                future.cancel()
             except Exception as e:
                 logger.error(f"Error processing URL {futures[future]}: {e}")
 

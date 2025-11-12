@@ -1,7 +1,8 @@
 from src.config import QUERIES_EXECUTABLE_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE_NAME, REPO_TABLE_NAME, \
     QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, QUERIES_ERROR_INSERT_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, TABLE_VALUES_COUNT_TABLE_NAME, COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, \
-    QUERY_OPERATOR_TABLE_NAME, QUERY_OPERATOR_COMPONENTS_TABLE_NAME, QUERY_OPERATOR_COMPONENT_EXPRESSIONS
+    QUERY_OPERATOR_TABLE_NAME, QUERY_OPERATOR_COMPONENTS_TABLE_NAME, QUERY_OPERATOR_COMPONENT_EXPRESSIONS, \
+    QUERIES_TABLE_NAME
 from src.sql_analysis.execution.models import ExecutionMode
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key
 import duckdb
@@ -45,7 +46,7 @@ def create_base_tables(con: duckdb.DuckDBPyConnection, mode: ExecutionMode):
     con.execute(f"""
         {create_statement} {QUERY_OPERATOR_TABLE_NAME} (
             id BIGINT {primary_key()},
-            query_id BIGINT {foreign_key(QUERIES_EXECUTABLE_TABLE_NAME, 'query_id')},
+            query_id BIGINT,
             node_id VARCHAR,
             node_type VARCHAR,
             meta_data JSON

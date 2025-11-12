@@ -20,7 +20,7 @@ QUERIES_DIR_PARTITIONED = os.path.join(DATA_DIR, "queries_partitioned")
 DATABASE_PATH = os.path.join(DATA_DIR, 'schemapile.duckdb')
 TMP_DIR = os.path.join(DATA_DIR, "tmp")
 DATABASE_TMP_DIR = os.path.join(TMP_DIR, "databases")
-LATEX_GEN_DIR = os.path.join(ROOT, "docs", "tex", "gen")
+LATEX_GEN_DIR = os.path.join(ROOT, "docs", "tex", "content", "gen")
 LATEX_ASSETS_DIR = os.path.join(ROOT, "docs", "tex", "assets")
 
 KAGGLE_DATA_DIR = os.path.join(DATA_DIR, "kaggle")

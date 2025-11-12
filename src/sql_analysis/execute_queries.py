@@ -462,7 +462,7 @@ def save_string_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnecti
             continue
 
 
-def save_table_counts(repo_id: int, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection):
+def save_table_counts(repo_id: int, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection, artificial_populated_ids: List[int]):
     table_counts = con.execute(f"""
         SELECT id, table_name_clean 
         FROM {TABLES_TABLE_NAME} 
@@ -470,10 +470,14 @@ def save_table_counts(repo_id: int, con: duckdb.DuckDBPyConnection, sandbox_con:
             repo_id = {repo_id}
             AND id NOT IN (SELECT table_id FROM {TABLE_VALUES_COUNT_TABLE_NAME})
     """).fetchall()
-
+    artificial_populated_ids = set(artificial_populated_ids)
     for (table_id, table_name) in table_counts:
         try:
-            count = sandbox_con.execute(f"SELECT COUNT(*) FROM {quote(table_name)}").fetchone()[0]
+            if table_id in artificial_populated_ids:
+                count = 0
+            else:
+                count = sandbox_con.execute(f"SELECT COUNT(*) FROM {quote(table_name)}").fetchone()[0]
+
             con.execute(f"""
                 INSERT INTO {TABLE_VALUES_COUNT_TABLE_NAME} (table_id, count)
                 VALUES ({table_id}, {count})
@@ -642,7 +646,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             analyse_plans(con, repo_id)
 
             save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
-            save_table_counts(repo_id, con, sandbox_con)
+            save_table_counts(repo_id, con, sandbox_con, artificial_populated_ids)
 
             # *** STATISTICS RECORDING ***
 
@@ -703,4 +707,4 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
 
 if __name__ == "__main__":
-    execute_repo_queries(mode='replace', repo_id=41551, query_id=None)
+    execute_repo_queries(mode='replace', repo_id=None, query_id=None)

@@ -107,7 +107,6 @@ def analyze_node(query_id: int, plan: Dict, tables: List[Table], cte_occurrence:
         'EXCEPT': analyze_set_operation,
         'UNION': analyze_set_operation,
 
-
     }
 
     analyze_fn = analyze_map.get(node_operator)

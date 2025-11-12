@@ -8,9 +8,10 @@ import duckdb
 SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
 text = """
-In order to analyze the string usage in the scraped repositories, we tried first create and populate the tables featured in the 
-repository to then execute the select queries. We decided to use DuckDB~\\cite{{raasveldt_duckdb_2019}} as the database system, as it is fast 
-and easy to use locally.
+Schemapile~\cite{dohmen_schemapile_2024} contains used the the list of GitHub repositories that are know to contain 
+SQL code together with data on tables and some values for each table. To use this dataset to analyze the use of text columns, 
+we also need to extract `SELECT` queries. Therefore, for each repository in Schemapile, we collected all SQL queries 
+from both `.sql` files and SQL strings in application code files. 
 
 In total we retrieved {number_of_queries} queries from {number_of_repos} repositories, 
 with {number_of_queries_per_type}. By parsing the `CREATE` SQL statements, we could extract 
@@ -18,18 +19,19 @@ with {number_of_queries_per_type}. By parsing the `CREATE` SQL statements, we co
 later in DuckDB, we unified the system specific column types into abstract types like `INTEGER`, `FLOAT`, 
 `TEXT` or `DATETIME` to then later map them to the DuckDB types. 
 
-For each repository, we then created a DuckDB database and created the tables using the parsed `CREATE` statements.
-We then executed all the `INSERT` statements to populate the tables with data. Due to errors in the extracted 
-SQL and differences in the features, data types and SQL dialects across systems, we could only execute {percentage_create_table} 
-of the `CREATE TABLE`, {percentage_create_view} of the `CREATE VIEW` and {percentage_insert_statements} of the `INSERT` statements. 
-From this, we could populate {tables_with_data} tables with at least one row, 
-with a median of {median_n_rows} rows and a mean of {mean_n_rows} rows per table.
+In order to analyze the collected `SELECT` statements, we used DuckDB~\cite{raasveldt_duckdb_2019} to create a local database for each repository.
+First, we created and populated the tables using the `CREATE TABLE` statements and `INSERT` statements found in the code.
+Then, we executed the `SELECT` statements to retrieve query plans using DuckDB's `EXPLAIN` functionality.
 
-To analyze string usage in the examined repositories, we executed the scraped `SELECT` statements.
 Since queries are rarely written as static strings in the code, we first had to preprocess them by 
 replacing variables and applying minor transformations to make them executable in DuckDB. This way, we where 
 able to execute {select_success_percentage} of the `SELECT` statements resulting in a 
 total number of {select_success_n} statements we could retrieve query plans for. 
+
+Due to errors in the extracted SQL and differences in the features, data types and SQL dialects across systems, we could only execute {percentage_create_table} 
+of the `CREATE TABLE`, {percentage_create_view} of the `CREATE VIEW` and {percentage_insert_statements} of the `INSERT` statements. 
+From this, we could populate {tables_with_data} tables with at least one row, 
+with a median of {median_n_rows} rows and a mean of {mean_n_rows} rows per table.
 
 To then be able to track the usage of columns through the operators, we implemented a special 
 explain function\\footnote{{See \\url{{https://todo}}}} that returns not only information on 
@@ -42,26 +44,26 @@ def generate_dataset_description():
 
     con.execute("""
                 CREATE OR REPLACE TEMP VIEW external_repos AS
-                SELECT *
+                SELECT id
                 FROM repos
                 WHERE lower(get_repo_origin(repo_url)) != 'sqlpile'
                 """
                 )
     con.execute("""
                 CREATE OR REPLACE TEMP VIEW external_tables AS
-                SELECT *
+                SELECT id
                 FROM tables
                 WHERE repo_id IN (SELECT id FROM external_repos)
                 """)
     con.execute("""
-                CREATE OR REPLACE TEMP VIEW external_columns AS
-                SELECT *
+                CREATE OR REPLACE TEMP TABLE external_columns AS
+                SELECT id
                 FROM columns
                 WHERE table_id IN (SELECT id FROM external_tables)
                 """)
     con.execute(f"""
-                CREATE OR REPLACE TEMP VIEW external_queries AS
-                SELECT *
+                CREATE OR REPLACE TEMP TABLE external_queries AS
+                SELECT id
                 FROM {QUERIES_TABLE_NAME}
                 WHERE repo_id IN (SELECT id FROM external_repos)
                 """)
@@ -84,7 +86,7 @@ def generate_dataset_description():
 
     number_of_queries_per_type = con.execute(f"""
         with cnts AS (
-            SELECT repo_id, type, COUNT(DISTINCT sql) as repo_cnt
+            SELECT repo_id, type, COUNT(sql) as repo_cnt
             FROM queries
             WHERE 
                 type in {allowed}
@@ -165,21 +167,9 @@ def generate_dataset_description():
 
     # *** Number of tables with values ***
     table_with_more_then_100_rows, tables_with_data, median_n_rows, mean_n_rows = con.execute(f"""
-        WITH columns_with_values AS  (
-            SELECT column_id, COUNT(*) as value_count
-            FROM column_values
-            GROUP BY column_id
-        ),
-        table_value_cnts AS (
-            SELECT MIN(table_name) as table_name, MIN(value_count) > 100 as more_then_100,  MIN(value_count) > 0 as has_values, MIN(value_count) as n_values
-            FROM tables
-            JOIN columns ON columns.table_id = tables.id
-            JOIN columns_with_values on columns_with_values.column_id = columns.id
-            WHERE tables.id NOT IN (SELECT ID FROM external_tables)
-            GROUP BY tables.id
-        )
-        SELECT SUM(more_then_100), SUM(has_values), MEDIAN(n_values), round(AVG(n_values),2)
-        FROM table_value_cnts
+        SELECT SUM(count > 100) AS tables_with_more_then_100_rows, SUM(count > 0) AS tables_with_data, MEDIAN(count) AS median_n_rows, AVG(count) AS mean_n_rows
+        FROM table_values_count
+        WHERE table_values_count.table_id NOT IN (SELECT ID FROM external_tables)
         """).fetchone()
 
     print(f"Tables with more then 100 rows: {table_with_more_then_100_rows}")
