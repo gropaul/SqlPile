@@ -63,7 +63,8 @@ def main():
 
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         futures = {executor.submit(process_url, url): url for url in urls}
-        for future, url in futures.items():
+        for future in as_completed(futures):
+            url = futures[future]
             try:
                 n_queries = future.result(timeout=timeout_per_task)
                 total_queries += n_queries if n_queries is not None else 0
