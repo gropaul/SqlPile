@@ -30,6 +30,7 @@ KAGGLE_DATASETS_DB_PATH = os.path.join(KAGGLE_DATA_DIR, "kaggle_datasets.duckdb"
 HUGGINFACE_DATA_DIR = os.path.join(DATA_DIR, "huggingface")
 HUGGINFACE_DATA_DB_PATH = os.path.join(HUGGINFACE_DATA_DIR, "huggingface_data.duckdb")
 HUGGINFACE_DATASETS_DB_PATH = os.path.join(HUGGINFACE_DATA_DIR, "huggingface_datasets.duckdb")
+HUGGINFACE_DATASETS_CPY_DB_PATH = os.path.join(HUGGINFACE_DATA_DIR, "huggingface_datasets_cpy.duckdb")
 
 QUERY_RUN_TIMEOUT_SECONDS = 3  # Timeout for running queries in seconds
 

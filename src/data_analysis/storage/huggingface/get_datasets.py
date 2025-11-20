@@ -1,8 +1,13 @@
+import json
+import os
+import time
+
 from huggingface_hub import HfApi
 import yaml
 import duckdb
 
-from src.data_analysis.storage.huggingface.models import ParseResult, DataFile, Config, Columns
+from src.data_analysis.storage.huggingface.get_file_info import get_file_infos
+from src.data_analysis.storage.huggingface.models import ParseResult, DataFile, Config, Columns, Splits
 from src.data_analysis.storage.huggingface.store import store_results
 
 
@@ -10,10 +15,8 @@ def save_result(con: duckdb.DuckDBPyConnection):
     pass
 
 
-def parse_card_data(id: str, card_data_str: str) -> ParseResult | None:
-    if not card_data_str:
-        print("Empty card data string.")
-        return None
+def parse_card_data(id: str, card_data_str: str) -> ParseResult:
+
     # parse the YAML-like string in card_data_str to extract configs and columns
     card_data = yaml.safe_load(card_data_str)
     configs_parsed = []
@@ -23,10 +26,11 @@ def parse_card_data(id: str, card_data_str: str) -> ParseResult | None:
     dataset_size = 0
 
     size_categories = card_data.get('size_categories', '')
+    license = card_data.get('license', '')
     if isinstance(size_categories, list):
         size_categories = ','.join(size_categories)
 
-    splis = []
+    splits_parsed = []
 
     if 'dataset_info' in card_data:
         dataset_info = card_data['dataset_info']
@@ -49,7 +53,7 @@ def parse_card_data(id: str, card_data_str: str) -> ParseResult | None:
                 name = split.get('name', '')
                 num_bytes = split.get('num_bytes', 0.0)
                 num_examples = split.get('num_examples', 0)
-                splis.append((name, num_bytes, num_examples))
+                splits_parsed.append(Splits(name, num_bytes, num_examples))
 
         else:
             print("No features found in dataset_info.")
@@ -79,10 +83,9 @@ def parse_card_data(id: str, card_data_str: str) -> ParseResult | None:
 
             configs_parsed.append(Config(config_name, data_files_parsed))
 
-        return ParseResult(id, configs_parsed, columns_parsed, size_categories, download_size, dataset_size, splis)
+    parquet_files = get_file_infos(id)
 
-    else:
-        return None
+    return ParseResult(id, configs_parsed, columns_parsed, size_categories, download_size, dataset_size, license, splits_parsed, parquet_files)
 
 
 url_params = "modality:tabular,format:parquet"
@@ -93,28 +96,49 @@ dataset = api.list_datasets(
     full=True,
     gated=False,
     direction=-1,
-    limit=100,
+    limit=None,
     token=False
 )
 
 results = []
+
+BLOCK_SIZE = 100
+
+DELAY_SECONDS = 5 * 60 / 200
+DELAY_SECONDS = 0.2
+last_execution = 0  # timestamp of last loop iteration
+
 for i, d in enumerate(dataset):
-    print(f"Dataset {i + 1}: {d.id}")
 
+    now = time.time()
+    elapsed = now - last_execution
+    if elapsed < DELAY_SECONDS:
+        print(f"Sleeping for {DELAY_SECONDS - elapsed:.2f} seconds to respect rate limits...")
+        time.sleep(DELAY_SECONDS - elapsed)
 
-    # list the files in the dataset
-    # files = api.list_repo_files(d.id, repo_type="dataset")
-    # get the card data
+    last_execution = time.time()  # mark loop start time
+
     if not d.cardData:
         print("No card data found.")
         continue
     card_data = d.cardData.to_yaml()
 
-    parse_result = parse_card_data(d.id, card_data)
-    if parse_result is not None:
+    try:
+        parse_result = parse_card_data(d.id, card_data)
         results.append(parse_result)
 
-store_results(results, mode='append')
+    except Exception as e:
+        print(f"Error parsing card data for dataset {d.id}: {e}")
+        continue
+
+    if len(results) >= BLOCK_SIZE:
+        store_results(results, reset=False)
+        results = []
+
+
+store_results(results, reset=False)
+
+
 
 
 

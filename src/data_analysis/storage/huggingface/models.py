@@ -17,8 +17,16 @@ class DataFile:
 
         self.path = "hf://datasets/" + id + "/" + self.path
 
-    def __repr__(self):
-        return f"DataFile(split={self.split}, path={self.path})"
+
+class ParquetFile:
+
+    def __init__(self, id: str, config: str, split: str, path: str, size_bytes: int):
+
+        self.id = id
+        self.split = split
+        self.path = path
+        self.config = config
+        self.size_bytes = size_bytes
 
 
 class Columns:
@@ -58,7 +66,7 @@ class Config:
 
 class ParseResult:
     def __init__(self, id: str, configs: List[Config], columns: List[Columns],
-                 size_categories: str, download_size: int, dataset_size: float, splits: List[Splits]):
+                 size_categories: str, download_size: int, dataset_size: float, license: str, splits: List[Splits], parquet_files: List[ParquetFile]):
         self.id = id
         self.configs = configs
         self.columns = columns
@@ -66,6 +74,8 @@ class ParseResult:
         self.download_size = download_size
         self.dataset_size = dataset_size
         self.splits = splits
+        self.license = license
+        self.parquet_files = parquet_files
 
     def __repr__(self):
         return f"ParseResult(id={self.id}, configs={self.configs}, columns={self.columns})"
