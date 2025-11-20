@@ -602,9 +602,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
-            and 'kaggle' NOT IN repos.repo_url
             {append_filter if mode == 'append' else ''}
-            
         GROUP BY ALL
         ORDER BY repos.id DESC -- from recently added to oldest
     """).fetchall()
@@ -641,7 +639,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
-            execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
+            # execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
 
             analyse_plans(con, repo_id)
 
@@ -707,4 +705,4 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
 
 if __name__ == "__main__":
-    execute_repo_queries(mode='replace', repo_id=None, query_id=None)
+    execute_repo_queries(mode='append', repo_id=None, query_id=None)

@@ -365,6 +365,13 @@ def record_statistics_text(
                             FROM chars_unnested
                             GROUP BY char
                         ),
+                        value_counts AS (
+                            SELECT value, COUNT(*) as cnt
+                            FROM data
+                            GROUP BY value
+                            ORDER BY cnt DESC
+                            LIMIT 1000
+                        ),
                         stats AS (
                             SELECT
                                 column_id,
@@ -410,6 +417,9 @@ def record_statistics_text(
                             QUANTILE_CONT(value_length, 0.75)              AS p75_length,
                             QUANTILE_CONT(value_length, 0.95)              AS p95_length,
                             -- QUANTILE_CONT(value_length, 0.99)              AS p99_length
+                            
+                            -- record the value histogram for the top 1000 values
+                            (SELECT list({{value: value, cnt: cnt}}) FROM value_counts) as value_histogram,
 
                             -- get the distinct chars 
                             (SELECT list({{char: char, cnt: cnt}} ORDER BY cnt) FROM char_counts) as char_histogram,

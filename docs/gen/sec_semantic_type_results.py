@@ -1,12 +1,97 @@
-from src.config import get_con
+import os
+
+from src.config import get_con, LATEX_ASSETS_DIR
+
+MAX_CHARS = 200
+MAX_EXAMPLES_PER_TYPE = 5
+MAX_VALUES_PER_EXAMPLE = 3
+
+
+def semantic_type_percentages():
+
+    con = get_con(read_only=True)
+
+    columns = [
+        "TPC-H", "TPC-DS", "IMDB", "StackOverflow", "kaggle", "SqlPile"
+    ]
+
+    df = con.sql(f"""
+            WITH aggregates AS (
+                SELECT
+                    get_repo_group(repos.repo_url) as repo_group,
+                    semantic_type_llm,
+                    semantic_type_llm_subtype,
+                    COUNT(*) as type_count
+                FROM columns
+                JOIN tables ON tables.id = columns.table_id
+                JOIN repos ON repos.id = tables.repo_id
+                WHERE repo_group != 'Excluded'
+                    AND semantic_type_llm IS NOT NULL
+                    AND semantic_type_llm_subtype IS NOT NULL
+                    AND semantic_type_llm != 'Other'
+                GROUP BY ALL 
+                UNION ALL
+                SELECT
+                    get_repo_group(repos.repo_url) as repo_group,
+                    'Other' as semantic_type_llm,
+                    'N/A'   as semantic_type_llm_subtype,
+                    COUNT(*) as type_count
+                FROM columns
+                JOIN tables ON tables.id = columns.table_id
+                JOIN repos ON repos.id = tables.repo_id
+                WHERE repo_group != 'Excluded' AND  semantic_type_llm = 'Other'
+                GROUP BY repo_group, semantic_type_llm
+            ), 
+            totals AS (
+                SELECT
+                    repo_group,
+                    SUM(type_count) as total_count
+                FROM aggregates
+                GROUP BY repo_group
+            ),
+            percentages AS (
+                SELECT
+                    a.repo_group,
+                    a.semantic_type_llm,
+                    a.semantic_type_llm_subtype,
+                    ROUND(100.0 * a.type_count / t.total_count, 2) as type_percentage,
+                FROM aggregates a
+                JOIN totals t ON a.repo_group = t.repo_group
+            ),
+            pivoted AS (
+                PIVOT percentages
+                ON repo_group
+                USING SUM(type_percentage)
+            )
+            SELECT
+                *
+            FROM pivoted
+            ORDER BY pivoted.semantic_type_llm, pivoted.SqlPile DESC          
+        """).df()
+
+    # rename semantic_type_llm to Semantic Type and semantic_type_llm_subtype to Subtype
+    df = df.rename(columns={
+        "semantic_type_llm": "Semantic Type",
+        "semantic_type_llm_subtype": "Subtype"
+    })
+
+    df["Examples"] = ''
+
+    # add one example column, that is empty for now
+    # order the columns:
+    df = df[["Semantic Type", "Subtype", "Examples", "TPC-H", "TPC-DS", "IMDB", "SO", "Kaggle", "SqlPile"]]
+    path = os.path.join(LATEX_ASSETS_DIR, "semantic_type_percentages.tex")
+    # save this as a latex table
+    with open(path, "w") as f:
+        f.write(df.to_latex(index=False, float_format="%.2f", na_rep="-"))
+
+
 
 
 def semantic_type_example():
     con = get_con(read_only=True)
 
-    MAX_CHARS = 200
-    MAX_EXAMPLES_PER_TYPE = 5
-    MAX_VALUES_PER_EXAMPLE = 3
+
 
     # First, get all combinations with their examples and percentages
     df = con.sql(f"""
@@ -95,8 +180,12 @@ def semantic_type_example():
         subtype = row['semantic_type_llm_subtype']
         type_pct = row['type_percentage']
         subtype_pct = row['subtype_percentage']
-        examples_small = [ex[:MAX_CHARS] + ("..." if len(ex) > MAX_CHARS else "") for ex in row['examples']]
-        examples = "<br>".join(examples_small)
+        # if no examples, put N/A
+        if row['examples'] is not None:
+            examples = "N/A"
+        else:
+            examples_small = [ex[:MAX_CHARS] + ("..." if len(ex) > MAX_CHARS else "") for ex in row['examples']]
+            examples = "<br>".join(examples_small)
         markdown_lines.append(f"| {semantic_type} ({type_pct}%) | {subtype} ({subtype_pct}%) | {examples} |")
     markdown_content = "\n".join(markdown_lines)
     with open("semantic_type_example.md", "w") as f:
@@ -106,4 +195,5 @@ def semantic_type_example():
 
 
 if __name__ == "__main__":
+    semantic_type_percentages()
     semantic_type_example()

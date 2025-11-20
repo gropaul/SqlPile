@@ -80,6 +80,7 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
 
     if table_exists(con, "queries_error_select"):
         con.execute("DELETE FROM queries_error_select WHERE query_id IN (SELECT id FROM queries WHERE repo_id = ?)", (repo_id,))
+        con.execute("DELETE FROM queries_error_select WHERE repo_id = ?", (repo_id,))
 
     if table_exists(con, "queries_error_create"):
         con.execute("DELETE FROM queries_error_create WHERE table_id IN (SELECT id FROM tables WHERE repo_id = ?)", (repo_id,))
@@ -138,6 +139,7 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
             con.execute(f"DELETE FROM {TABLES_DATA_FILES_TABLE_NAME} WHERE repo_id = ?", (repo_id,))
 
         if table_exists(con, "repos"):
+            print("Deleting repo id", repo_id)
             con.execute("DELETE FROM repos WHERE id = ?", (repo_id,))
 
 

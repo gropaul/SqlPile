@@ -2,6 +2,8 @@ import os
 
 import pandas as pd
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
+
 from tqdm import tqdm
 
 from src.config import DATABASE_PATH, logger, get_con
@@ -15,6 +17,7 @@ from src.data_analysis.semantic_type.models import get_prompt, SemanticType, BAS
     SemanticTypeColumnName, BASE_CONFIG, ID_CONFIG, SUB_CONFIGS
 
 DataSetType = Literal['kaggle', 'sqlpile']
+
 
 class OutputSchema(BaseModel):
     """Always use this tool to structure your response to the user."""
@@ -31,7 +34,8 @@ class DataRowJson(TypedDict):
     values: List[str]
 
 
-def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: str | None, filter_semantic_type: str | None) -> List[DataRow]:
+def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: str | None,
+                      filter_semantic_type: str | None) -> List[DataRow]:
     """
     Retrieve column data from the database and organize it into batches.
 
@@ -42,39 +46,46 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: str | 
     filter_null_clause = "" if filter_column_null is None else f" AND {filter_column_null} IS NULL"
     filter_semantic_type_clause = "" if filter_semantic_type is None else f" AND columns.semantic_type_llm = '{filter_semantic_type}'"
     query = f"""
-            WITH ids_to_process AS (SELECT DISTINCT column_id
-                                    FROM column_values 
-                                )
+            WITH ids_to_process AS (
+                SELECT DISTINCT column_id
+                FROM column_values 
+            ),
+            column_values_filtered AS (
+                SELECT *
+                FROM column_values
+                WHERE length(value) > 0
+            )
             SELECT list(DISTINCT column_id) as column_ids,
                    table_name,
                    column_name,
                    list(DISTINCT value)[:20] as "values"
             FROM ids_to_process
-            JOIN column_values USING (column_id)
-            JOIN columns ON column_values.column_id = columns.id
-            JOIN tables ON tables.id = columns.table_id
-            JOIN table_values_count as tvc ON tvc.table_id = tables.id
-            JOIN repos ON tables.repo_id = repos.id
+            LEFT JOIN column_values_filtered USING (column_id)
+            LEFT JOIN columns ON column_values_filtered.column_id = columns.id
+            LEFT JOIN tables ON tables.id = columns.table_id
+            LEFT JOIN table_values_count as tvc ON tvc.table_id = tables.id
+            LEFT JOIN repos ON tables.repo_id = repos.id
             WHERE 
                 ( 
-                    tvc.count > 2000 -- the column will be used for statistics, e.g. kaggle columns
+                    tvc.count > 10 -- the column will be used for statistics, e.g. kaggle columns
                     OR column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
+                    OR '3rd-party' in repo_url
                 )  
-                AND length(value) > 0
+              
+                -- AND '3rd-party-sql-storm' in repo_url
+                -- AND '3rd-party' in repo_url
                 {filter_null_clause}
                 {filter_semantic_type_clause}
             GROUP BY tables.repo_id, table_name, column_name
             ORDER BY tables.repo_id DESC, table_name, column_name
             """
-    print(query)
     result = con.execute(query).fetchall()
     return result
 
 
 def batch_data(data: List[DataRow]) -> List[List[DataRowJson]]:
-    # Create batches of 20 rows
-
     batches: List[List[DataRowJson]] = []
+    BATCH_SIZE = get_batch_size_for_model(MODEL)
     for i in range(0, len(data), BATCH_SIZE):
         input_batch = data[i:i + BATCH_SIZE]
         json_data = []
@@ -95,7 +106,8 @@ def batch_data(data: List[DataRow]) -> List[List[DataRowJson]]:
                 remaining_characters = MAX_WIDTH - total_characters
                 value = values.pop(0)
                 if not value:
-                    logger.error(f"Empty value found for {table_name}.{column_name}. Skipping this value. Remaining values: {values}")
+                    logger.error(
+                        f"Empty value found for {table_name}.{column_name}. Skipping this value. Remaining values: {values}")
                     continue
                 values_reduced.append(value[:remaining_characters])
                 total_characters += len(value)
@@ -116,12 +128,64 @@ def batch_data(data: List[DataRow]) -> List[List[DataRowJson]]:
     return batches
 
 
+Providers = Literal['ollama', 'openai']
+Models = Literal['qwen3:8b', 'gpt-4', 'gpt-3.5-turbo']
+ModelsProviderMap: Dict[Providers, List[Models]] = {
+    'ollama': ['qwen3:8b'],
+    'openai': ['gpt-4', 'gpt-3.5-turbo']
+}
+
+MODEL_ARGS = {
+    'qwen3:8b': {
+        'think': False,
+    },
+    'gpt-4': {},
+    'gpt-3.5-turbo': {},
+}
+
+
+def get_batch_size_for_model(model: Models) -> int:
+    provider = get_provider_from_model(model)
+    if provider == 'ollama':
+        return 10
+    elif provider == 'openai':
+        return 20
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
+
+
+def get_provider_from_model(model: Models) -> Providers:
+    for provider, models in ModelsProviderMap.items():
+        if model in models:
+            return provider
+    raise ValueError(f"Model {model} not found in any provider mapping.")
+
+
 def setup_model() -> BaseLLM:
-    base = ChatOllama(
-        model=MODEL,
-        keep_alive=-1,
-        timeout=60,
-    )
+    provider = get_provider_from_model(MODEL)
+    if provider == 'ollama':
+        base = ChatOllama(
+            model=MODEL,
+            keep_alive=-1,
+            timeout=60,
+        )
+    elif provider == 'openai':
+        # ask the user whether to really use OpenAI as it may incur costs
+
+        if os.environ.get("OPENAI_API_KEY") is None:
+            raise ValueError("OPENAI_API_KEY environment variable not set for OpenAI provider.")
+        result = input(
+            f"You are about to use OpenAI model {MODEL} which may incur costs. Do you want to proceed? (yes/no): ")
+        if result.lower() != 'yes':
+            raise RuntimeError("User aborted OpenAI model usage.")
+        base = ChatOpenAI(
+            model=MODEL,
+            temperature=0,
+            timeout=60,
+            api_key=os.environ.get("OPENAI_API_KEY")
+        )
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
     model = base.with_structured_output(OutputSchema)
 
     # Add retry with keyword args:
@@ -133,8 +197,8 @@ def setup_model() -> BaseLLM:
     return retryable
 
 
-def determine_semantic_types_batch(batch: List[DataRowJson], model: BaseLLM, input_semantic_types: List[SemanticType]) -> List[Optional[str]]:
-
+def determine_semantic_types_batch(batch: List[DataRowJson], model: BaseLLM,
+                                   input_semantic_types: List[SemanticType]) -> List[Optional[str]]:
     system_prompt = get_prompt(input_semantic_types)
 
     try:
@@ -153,7 +217,7 @@ Sample Values: {column_data['values'][:10]}
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ]
-        response = model.invoke(messages, think=False)
+        response = model.invoke(messages, **MODEL_ARGS[MODEL])
         response_semantic_types = response.types
 
         # check if all semantic types are in the expected categories
@@ -163,7 +227,7 @@ Sample Values: {column_data['values'][:10]}
                 {"role": "assistant",
                  "content": f"Invalid semantic types detected: {set(response_semantic_types) - set(allowed_types)}. Please ensure all types are one of the following: {allowed_types}"}
             ]
-            response = model.invoke(messages, think=False)
+            response = model.invoke(messages, **MODEL_ARGS[MODEL])
         semantic_types = response.types
 
         # If the response is not a list, log an error and return None for each column
@@ -191,7 +255,8 @@ Sample Values: {column_data['values'][:10]}
         return [None] * len(batch)
 
 
-def process_batches(batches: List[List[DataRowJson]], output_file: str, semantic_types_input: List[SemanticType], target_column: SemanticTypeColumnName) -> List[Dict[str, Any]]:
+def process_batches(batches: List[List[DataRowJson]], output_file: str, semantic_types_input: List[SemanticType],
+                    target_column: SemanticTypeColumnName) -> List[Dict[str, Any]]:
     model = setup_model()
     results = []
 
@@ -212,7 +277,8 @@ def process_batches(batches: List[List[DataRowJson]], output_file: str, semantic
     return results
 
 
-def save_results(results: List[Dict[str, Any]], target_column: SemanticTypeColumnName, output_file: str = "semantic_types_sqlpile.csv"):
+def save_results(results: List[Dict[str, Any]], target_column: SemanticTypeColumnName,
+                 output_file: str = "semantic_types_sqlpile.csv"):
     # Convert results to DataFrame
     new_df = pd.DataFrame(results)
     new_df = new_df[['column_ids', 'table_name', 'column_name', 'semantic_type']]
@@ -233,10 +299,9 @@ def save_results(results: List[Dict[str, Any]], target_column: SemanticTypeColum
     copy_csv_to_database(new_df, target_column=target_column)
 
 
+# MODEL: Models = 'gpt-3.5-turbo'
+MODEL: Models = 'qwen3:8b'
 
-
-BATCH_SIZE = 5
-MODEL = 'qwen3:8b'
 
 def clear_columns():
     con = duckdb.connect(DATABASE_PATH)
@@ -245,10 +310,12 @@ def clear_columns():
 
     add_columns()
 
+
 def add_columns():
     con = duckdb.connect(DATABASE_PATH)
     con.execute("ALTER TABLE columns ADD COLUMN IF NOT EXISTS semantic_type_llm VARCHAR;")
     con.execute("ALTER TABLE columns ADD COLUMN IF NOT EXISTS semantic_type_llm_subtype VARCHAR;")
+
 
 def copy_csv_to_database(df: pd.DataFrame, target_column: SemanticTypeColumnName):
     con = duckdb.connect(DATABASE_PATH)
@@ -264,7 +331,6 @@ def copy_csv_to_database(df: pd.DataFrame, target_column: SemanticTypeColumnName
 
 
 def run_semantic_type_analysis(output_file: str, config: SemanticTypeRunConfig):
-
     add_columns()
 
     # reset the output file
@@ -273,17 +339,20 @@ def run_semantic_type_analysis(output_file: str, config: SemanticTypeRunConfig):
 
     logger.info("Starting semantic type determination")
     con = get_con(read_only=True)
-    data = get_sql_pile_data(con, filter_column_null=config.target_column, filter_semantic_type=config.filter_semantic_type)
+    data = get_sql_pile_data(con, filter_column_null=config.target_column,
+                             filter_semantic_type=config.filter_semantic_type)
     con.close()
 
     batches = batch_data(data)
     logger.info(f"Retrieved {len(batches)} batches with a total of {sum(len(batch) for batch in batches)} columns")
 
-    results = process_batches(batches, output_file=output_file, semantic_types_input=config.semantic_types, target_column=config.target_column)
+    results = process_batches(batches, output_file=output_file, semantic_types_input=config.semantic_types,
+                              target_column=config.target_column)
     logger.info("Semantic type determination completed")
 
 
 if __name__ == "__main__":
+
     output_file = "semantic_types_sqlpile.csv"
     # run_semantic_type_analysis(output_file, BASE_CONFIG)
 
@@ -291,6 +360,3 @@ if __name__ == "__main__":
         logger.info(f"Running semantic type analysis for config: {sub_config.filter_semantic_type}")
         output_file = f"semantic_types_sqlpile_{sub_config.filter_semantic_type.lower()}.csv"
         run_semantic_type_analysis(output_file, sub_config)
-
-
-

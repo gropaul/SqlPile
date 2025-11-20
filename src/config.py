@@ -27,6 +27,10 @@ KAGGLE_DATA_DIR = os.path.join(DATA_DIR, "kaggle")
 KAGGLE_DATA_DB_PATH = os.path.join(KAGGLE_DATA_DIR, "kaggle_data.duckdb")
 KAGGLE_DATASETS_DB_PATH = os.path.join(KAGGLE_DATA_DIR, "kaggle_datasets.duckdb")
 
+HUGGINFACE_DATA_DIR = os.path.join(DATA_DIR, "huggingface")
+HUGGINFACE_DATA_DB_PATH = os.path.join(HUGGINFACE_DATA_DIR, "huggingface_data.duckdb")
+HUGGINFACE_DATASETS_DB_PATH = os.path.join(HUGGINFACE_DATA_DIR, "huggingface_datasets.duckdb")
+
 QUERY_RUN_TIMEOUT_SECONDS = 3  # Timeout for running queries in seconds
 
 TPC_DATA_DIR = os.path.join(DATA_DIR, "tpc")
@@ -49,7 +53,7 @@ LOG_TO_FILE = False  # Whether to log to a file or not
 
 # create all directories if they do not exist
 DIRS = [DATA_DIR, PLOTS_DIR, REPO_DIR, LOG_DIR, QUERIES_DIR_RAW, TMP_DIR, DATABASE_TMP_DIR, LATEX_GEN_DIR,
-        LATEX_ASSETS_DIR, TPC_DATA_DIR, SQL_STORM_DATA_DIR, KAGGLE_DATA_DIR]
+        LATEX_ASSETS_DIR, TPC_DATA_DIR, SQL_STORM_DATA_DIR, KAGGLE_DATA_DIR, HUGGINFACE_DATA_DIR, SCHEMAPILE_DIR]
 
 for directory in DIRS:
     if not os.path.exists(directory):
@@ -152,6 +156,25 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Opt
         core_count = os.cpu_count() or 1
         threads_to_use = min(max_threads, core_count)
         con.execute(f"PRAGMA threads={threads_to_use};")
+
+    def get_group(repo_url: str) -> str:
+        if "3rd-party-kaggle" in repo_url:
+            return "Kaggle"
+        elif "3rd-party-sql-storm-tpc-h" in repo_url:
+            return "TPC-H"
+        elif "3rd-party-sql-storm-tpc-ds" in repo_url:
+            return "TPC-DS"
+        elif "3rd-party-sql-storm-imdb" in repo_url:
+            return "IMDB"
+        elif "3rd-party-sql-storm-stackoverflow" in repo_url:
+            return "SO"
+        else:
+            if not '3rd-party' in repo_url:
+                return "SqlPile"
+            else:
+                return "Excluded"
+
+    con.create_function("get_group", get_group, [str], str, type="native")
 
     def format_number_as_percentage(value: float) -> str:
         """Format a number as a percentage with two decimal places."""

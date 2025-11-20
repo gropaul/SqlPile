@@ -26,7 +26,7 @@ class SemanticTypeRunConfig:
         self.semantic_types = semantic_types
         self.target_column = target_column
         self.filter_semantic_type = filter_semantic_type
-        self.semantic_types.append(SemanticType("Other", "when none of the other types fit"))
+        self.semantic_types.append(SemanticType("Other", "when none of the other types fit, only use this as a last resort"))
 
     def __repr__(self):
         return f"SemanticTypeRunConfig(semantic_types={self.semantic_types}, filter_null_column={self.target_column}, filter_semantic_type={self.filter_semantic_type})"
@@ -34,10 +34,10 @@ class SemanticTypeRunConfig:
 BASE_SEMANTIC_TYPES = [
     SemanticType("Numeric", "dates, times, timestamps, amounts, counts, prices, scores, sizes, values with unit"),
     SemanticType("Category", "type, role, status, label, class, tag, yes/no flags, is*/has*"),
-    SemanticType("FullText", "descriptions, messages, summaries, notes, comments"),
-    SemanticType("Identifier", "id, uuid, code, hash, token, version, link, url, slug, emails, phone numbers"),
-    SemanticType("Entity", "names of entities and persons, titles, labels, cities, countries, addresses"),
-    SemanticType("Semistructured", "like JSON, CSV or simple lists e.g. 'a,b,c'"),
+    SemanticType("FullText", "natural language like descriptions, messages, summaries, notes, comments"),
+    SemanticType("Identifier", "id, uuid, code, hash, token, version, link, url, slug, emails, phone numbers, ..."),
+    SemanticType("Entity", "entities or names of entities like person (names), titles, labels, cities, countries, addresses"),
+    SemanticType("Structured", "like JSON, CSV or simple lists e.g. 'a,b,c'"),
     SemanticType("Test", "column with content/name that is for testing, e.g. 'test', 'col', 'val1'"),
 ]
 
@@ -50,8 +50,8 @@ BASE_CONFIG = SemanticTypeRunConfig(
 # subtypes of Identifier
 ID_SEMANTIC_TYPES = [
     SemanticType("Path", "web addresses, links, URIs, file paths"),
-    SemanticType("DomainSpecificID", "Ids that are specific to a certain domain, e.g. product codes, SKU, ISBN, vehicle registration numbers, so the id has human readable parts"),
-    SemanticType("DatabaseKey", "generic database keys, UUIDs, auto-incremented IDs, hashes"),
+    SemanticType("Semantic", "Ids that are specific to a certain domain, e.g. product codes, SKU, ISBN, personal ids like emails, phone numbers"),
+    SemanticType("Generic", "generic database keys, UUIDs, auto-incremented IDs, hashes"),
 ]
 
 ID_CONFIG = SemanticTypeRunConfig(
@@ -62,8 +62,7 @@ ID_CONFIG = SemanticTypeRunConfig(
 
 # subtypes of Numeric
 NUMERIC_SEMANTIC_TYPES = [
-    SemanticType("Amount", "monetary or measurable values such as prices, weights, or sizes with units"),
-    SemanticType("Timestamp", "dates, times, or datetimes"),
+    SemanticType("DateTime", "dates, times, or datetime, related"),
 ]
 
 NUMERIC_CONFIG = SemanticTypeRunConfig(
@@ -88,9 +87,8 @@ CATEGORY_CONFIG = SemanticTypeRunConfig(
 
 # subtypes of FullText
 FULLTEXT_SEMANTIC_TYPES = [
-    SemanticType("ShortText", "short phrases or titles providing descriptive content"),
-    SemanticType("LongText", "longer free-form text such as descriptions, comments, or notes"),
-    SemanticType("FormattedText", "text with markup such as Markdown or HTML"),
+    SemanticType("Unformatted", "other plain text without special markup"),
+    SemanticType("Formatted", "text with markup such as Markdown or HTML"),
 ]
 
 FULLTEXT_CONFIG = SemanticTypeRunConfig(
@@ -102,9 +100,9 @@ FULLTEXT_CONFIG = SemanticTypeRunConfig(
 
 # subtypes of Entity
 ENTITY_SEMANTIC_TYPES = [
-    SemanticType("PersonName", "names of individuals"),
-    SemanticType("Organization", "companies, institutions, or brands"),
-    SemanticType("Location", "geographic entities such as cities, regions, or countries"),
+    SemanticType("Person", "names of people, including all variations like first name, last name, full name, initials"),
+    SemanticType("Organization", "companies, institutions, agencies, or other groups"),
+    SemanticType("Location", "geographical locations such as cities, countries, addresses, landmarks"),
 ]
 
 ENTITY_CONFIG = SemanticTypeRunConfig(

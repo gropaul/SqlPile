@@ -98,7 +98,6 @@ def get_operator_table(con: duckdb.DuckDBPyConnection, output_format: OutputForm
                     SQLStorm_op_per_query AS "SQLStorm",
                    TPC_op_per_query  AS "TPC-[H, DS]"
             FROM pivoted;
-
             """
 
     df = con.execute(query).df()

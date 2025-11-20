@@ -4,8 +4,10 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+from docs.gen.sec_semantic_type_results import MAX_VALUES_PER_EXAMPLE
 from docs.gen.utils import get_multi_figure
-from src.config import get_con, LATEX_ASSETS_DIR, LATEX_GEN_DIR
+from src.config import get_con, LATEX_ASSETS_DIR, LATEX_GEN_DIR, MAX_VALUES_TO_ANALYZE_PER_COLUMN
+from src.data_analysis.semantic_type.models import SemanticType, BASE_SEMANTIC_TYPES
 
 SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
@@ -14,14 +16,6 @@ plt.rcParams.update({
     "font.family": "serif",  # set serif font
     "font.serif": ["Computer Modern Roman"],  # or another LaTeX font
 })
-
-# Configure once
-SEMANTIC_TYPES = [
-    "Name", "Location", "DateTime",
-    "Identifier", "FullText", "Category", "Contact", "Semistructured",
-]
-SEMANTIC_TYPES_SQL = ", ".join(f"'{t}'" for t in SEMANTIC_TYPES)
-
 
 def _build_query(metric_col: str, p_low: float = 0.05, p_high: float = 0.95) -> str:
     """
@@ -42,11 +36,7 @@ def _build_query(metric_col: str, p_low: float = 0.05, p_high: float = 0.95) -> 
             FROM column_stats_text AS stats
             JOIN "columns" ON columns.id = stats.column_id
             JOIN tables ON columns.table_id = tables.id
-            JOIN (
-              SELECT column_id AS column_id_llm, semantic_type AS semantic_type_llm
-              FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv'
-            ) AS st ON st.column_id_llm = columns.id
-            WHERE semantic_type_llm IN ('Numeric', 'Category', 'FullText', 'Identifier', 'Entity', 'Semistructured', 'Test')
+            WHERE semantic_type_llm IS NOT NULL
         ),
         data as (
             SELECT 
@@ -98,7 +88,7 @@ def boxplot_by_type(
         x="semantic_type_llm",
         y="metric_value",
         hue="semantic_type_llm",
-        order=SEMANTIC_TYPES,
+        order=[x.name for x in BASE_SEMANTIC_TYPES],
         palette="Set3",
         showfliers=False,
         legend=False,  # suppress duplicate legend
@@ -142,8 +132,92 @@ SECTION_TEMPLATE = """
 {STRING_PROPERTY_FIGURE}
 """
 
+def generate_dups_plot(con):
+    from scipy.stats import gaussian_kde
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    histograms = con.sql(f"""
+        SELECT 
+            if(repos.repo_url LIKE '%tpc-h%' OR repos.repo_url LIKE '%tpc-ds%', 'TPC', 'Other') as repo_group,
+            -- 'Other' as repo_group,
+            semantic_type_llm, 
+            list(count_distinct), 
+            list(value_histogram)
+        FROM column_stats_text AS stats
+        JOIN columns ON columns.id = stats.column_id
+        JOIN tables ON tables.id = columns.table_id
+        JOIN repos ON repos.id = tables.repo_id
+        WHERE 
+            semantic_type_llm IS NOT NULL 
+            AND semantic_type_llm not in ('Other', 'Test') 
+            -- and semantic_type_llm = 'Identifier'
+            AND stats.count = {MAX_VALUES_TO_ANALYZE_PER_COLUMN}
+        GROUP BY ALL
+    """).fetchall()
+
+
+    all_logged = []
+
+    # First pass: compute log data range
+    for (repo_group, semantic_type_llm, distincts, histograms_list,) in histograms:
+        # plot the values on a log scale
+        plt.figure(figsize=(2.5, 4))
+
+        top_1_percentage = []
+        top_10_percentage = []
+        top_100_percentage = []
+        all = []
+        for distinct in distincts:
+            all.append(MAX_VALUES_TO_ANALYZE_PER_COLUMN / distinct)
+
+
+        for hist in histograms_list:
+
+            percentage_sum_1 = 0
+            percentage_sum_10 = 0
+            percentage_sum_100 = 0
+
+
+            for (i, entry) in enumerate(hist):
+                cnt = entry['cnt']
+                percent = cnt
+                if i < 1:
+                    percentage_sum_1 += percent
+                if i < 10:
+                    percentage_sum_10 += percent
+                if i < 100:
+                    percentage_sum_100 += percent
+
+            n_values = len(hist)
+            top_1_percentage.append(percentage_sum_1 )
+            top_10_percentage.append(percentage_sum_10 / min(10, n_values))
+            top_100_percentage.append(percentage_sum_100 / min(100, n_values))
+
+
+        # make 3 boxplots in one figure
+        data = [top_1_percentage, top_10_percentage, top_100_percentage, all]
+
+        plt.boxplot(data, tick_labels=['Top 1', 'Top 10', 'Top 100', 'All'])
+        plt.ylabel('%')
+        plt.yscale('log')
+        # nice y ticks
+        plt.yticks([1, 10, 100, 1000, 10000, 100000], ['1', '10', '100', '1k', '10k', '100k'])
+
+        plt.ylim(0.9, MAX_VALUES_TO_ANALYZE_PER_COLUMN * 1.1)
+        plt.tight_layout()
+        # save to latex assets dir
+        path = os.path.join(LATEX_ASSETS_DIR, 'string_stats', 'duplicates', repo_group)
+        os.makedirs(path, exist_ok=True)
+        plt.savefig(os.path.join(path, f'{semantic_type_llm}_duplicates.pdf'), format='pdf', bbox_inches='tight', dpi=300)
+
+
 
 def generate_section(con):
+    
+    generate_dups_plot(con)
+    
+    
     path = os.path.join(LATEX_ASSETS_DIR, 'string_stats')
     os.makedirs(path, exist_ok=True)
     get_string_prop_plots(con, path=path)
@@ -157,7 +231,7 @@ def generate_section(con):
             os.path.join(local_assets_dir, 'stddev_length.pdf'),
             os.path.join(local_assets_dir, 'count_filtered.pdf'),
             os.path.join(local_assets_dir, 'count_unfiltered.pdf'),
-            os.path.join(local_assets_dir, 'repeat_rate.pdf'),
+            # os.path.join(local_assets_dir, 'repeat_rate.pdf'),
         ],
         caption="String properties per semantic type. The filtered distinct chars only counts the number of chars that make up 95\\% of all chars.",
         captions=[
@@ -165,7 +239,7 @@ def generate_section(con):
             "Std. dev. length",
             "Distinct chars (filtered*)",
             "Distinct chars",
-            "Duplicates",
+            # "Duplicates",
         ]
     )
 

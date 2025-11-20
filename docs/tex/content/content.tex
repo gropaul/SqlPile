@@ -7,14 +7,17 @@ But already in 2018, Vogelsgesang et al.~\cite{vogelsgesang_get_2018} showed wit
 Workbooks that 48.8\% of their columns are of type text.
 Most interestingly, these columns not only occur frequently but are also commonly used in operators and expressions.
 For example, a workload analysis of the Snowflake Data Cloud performed by Szlang et al.~\cite{szlang_workload_2025}
-shows that 46\% of join keys, 58\% of filter columns are text columns.
+shows that 46\% of join keys, 58\% of filter columns contain variable-length text data.
 The reason why strings are so prevalent is that they are a catch-all type for many
-different kinds of data and allow a very pragmatic schema design.
+different kinds of data and allow a very pragmatic schema design~\cite{vogelsgesang_get_2018}.
 However, this often results in data being stored in formats that are inefficient for processing~\cite{vogelsgesang_get_2018}.
+For example, numeric data or dates are often stored as strings instead of their native types, leading to increased storage
+and processing costs\cite{vogelsgesang_get_2018}. (Make an example here?)
 
 This prevalence of variable-length text columns poses significant challenges for query processing and storage management.
-Unlike fixed-length numeric or boolean types, strings require dynamic memory allocation, incur higher CPU costs during
+Unlike fixed-length numeric or boolean types, strings require dynamic memory allocation and incur higher CPU costs during
 standard operations like comparison and hashing.
+Also, their variable length makes SIMD optimizations more difficult~\cite{NEEDED}.
 
 In this paper, we analyze how variable-length text columns are used in \acp{DBMS} and how they affect system performance
 in execution and compression.
@@ -22,12 +25,14 @@ We argue that, to adequately address the heterogeneity of the data these columns
 classify strings according to their semantic type.
 Doing this, we create a \textit{taxonomy of variable-length text columns} by using \acp{LLM} to categorize string
 columns as Numeric, Categorical, FullText, Identifier, Entity, or Semistructured.
-Doing this, we show that which each of these classes we can see distinct physical characteristics
-(length, character distribution) and usage patterns in query execution that can be exploited for efficient query processing.
+We show that which each of these classes we can see distinct physical characteristics
+(length, character distribution) and usage patterns in query execution that can be exploited for efficient storage and
+query processing.
 
-As a data basis for this analysis, we use queries, schema information, and data from publicly available repositories.
+As a data basis for this analysis, we use queries, schema information, and data from publicly available repositories
+by extending the SchemaPile dataset~\cite{dohmen_schemapile_2024}.
 Our work differs from previous studies such as~\cite{van_renen_why_2024, vogelsgesang_get_2018, szlang_workload_2025}
-in that we also release a dataset containing detailed information about the analyzed tables, columns, queries,
+in that we also release a dataset containing detailed information about the analyzed tables, columns, values, queries,
 query execution traces, column usages, and compression results.
 
 In summary, we offer the following contributions:
@@ -58,32 +63,43 @@ Additionally, we analyzed the data and queries from both TPC-H, TPC-DS, and SQLS
 \subsection{SQLPile Dataset}\label{subsec:sqlpile-dataset}
 \input{content/gen/sec_dataset_sqlpile_description}
 
-\begin{itemize}
-    \item We also added SQLStorm and TPC-[H, DS] as benchmarks to compare against
-\end{itemize}
+To compare the usage and properties of string columns to well-known benchmarks, we also performed the same analysis on
+on the queries and dataset of TPC-H, TPC-DS.
+We also included the recently published SQLStorm benchmark~\cite{schmidt_sqlstorm_2025}, which features over 18 K \ac{LLM}-generate queries on
+different datasets.
+These datasets include TPC-H and TPC-DS in addition to two real-world datasets: the IMDB dataset, which is also
+used by the Join Order Benchmark~\cite{leis_how_2015}, and the Stack Overflow dataset,
+which is also used in other benchmarks~\cite{han_cardinality_2021, marcus_bao_2021}.
 
 \subsection{Kaggle Dataset}\label{subsec:kaggle-datasets}
 
 \begin{itemize}
     \item How many datasets, tables, rows, columns
+    \item Problem: Many floats, not that many strings
 \end{itemize}
 
 
-\section{Semantic Type}\label{sec:semantic-type}
-
-Strings are a catch-all storage type; their semantics depend on how they are used.
-To recover those semantics, we used an instruction-following LLM (Qwen3.5 via Ollama, \texttt{qwen3:8b}) with structured output to assign a single semantic label to every string-typed column.
-For each candidate column we collected up to ten \emph{distinct, non-empty} sample values.
-To keep the prompt compact and comparable across columns, the concatenated examples per column were truncated to a maximum length of \(\leq 100\) characters. Columns were processed in mini-batches of \(B=5\) to amortize model overhead while keeping responses aligned.
-
-\subsection{Semantic Type Pipeline}\label{sec:semantic-type-pipeline}
-
-We use and report twelve semantic types in total which are listed in \cref{tab:semantic-types-list}
-along with the description we provided to the model.
+\section{A taxonomy of String Columns}\label{sec:semantic-type}
+Variable-length text columns are a catch-all type for many different kinds of data.
+To understand what users
+of \ac{DBMS} store in these columns and how they use them, we need to understand what these columns represent.
+In this section, we present a taxonomy of variable-length text columns based on their semantic type.
 
 \input{assets/table_semantic_types}
 
-We have one system message that is used for all batches:
+We defined six different semantic types that cover the majority of use cases we found in our dataset:
+Numeric, Category, FullText, Identifier, Entity, and Semi-structured.
+In addition, we added a \texttt{Test} type to capture columns that are only used for testing purposes.
+With the data coming from public repositories, we found a significant number of such columns we wanted to exclude from the analysis.
+To further classify the columns, we defined subcategories for each type that capture more specific use cases.
+All types and their description are summarized in \cref{tab:semantic-types}.
+
+\subsection{Semantic Type Pipeline}\label{sec:semantic-type-pipeline}
+To classify text columns into semantic types, we used an \ac{LLM} (Qwen3.5 via Ollama, \texttt{qwen3:8b}) to assign a single semantic label to every text column.
+For each candidate column we collected up to ten \emph{distinct, non-empty} sample values for the classification.
+To keep the prompts compact, the concatenated examples per column were truncated to a maximum length of \(\leq 200\) characters.
+
+With the type descriptions from \cref{tab:semantic-types}, we constructed the following system prompt:
 \begin{quote}
     \small
     \texttt{Based on the table name, column name, and sample values, determine the semantic type of each column.
@@ -94,8 +110,7 @@ We have one system message that is used for all batches:
     \texttt{You will be given multiple columns at once.
     Return *only* the list of semantic types in the same order as the columns were provided.}
 \end{quote}
-
-Each batch is rendered into a single user message of the form:
+Then, we batch five columns per prompt and constructed the user prompt as follows:
 \begin{quote}
     \small
     \texttt{Determine the semantic type for each of the following columns:}\\
@@ -106,8 +121,8 @@ Each batch is rendered into a single user message of the form:
     \(\dots\)\\
     \texttt{Column N: \dots}
 \end{quote}
-\caption{Semantic types used for string columns and their intended interpretation.}
-\label{tab:semantic-types}
+
+After categorizing all columns into the base types, we performed a second classification step to assign subcategories using the same approach.
 
 Here should then come a detailed analysis in form of a table e.g. that shows example values for each operator and semantic
 type e.g. how do the string columns look like. Also, for each semantic type, I would like to show what expressions where used.
@@ -119,19 +134,26 @@ GROUP BY full\_text\_column LIKE 'foo\%' is probably not that useful.
 
 \subsection{Results}\label{sec:semantic-type-results}
 %    \input{content/gen/sec_semantic_type_results}
+\begin{table*}
+    \input{assets/semantic_type_percentages}
+    \caption{Distribution of semantic types across different datasets.}
+    \label{tab:semantic-type-distribution}
+\end{table*}
 
 
-\section{Storage}\label{sec:storage}
-\input{content/gen/sec_storage_analysis}
-
-
-\section{Properties of Strings}
-\input{content/gen/sec_string_properties}ragraphs 2 through 4
+\section{String Properties}\label{sec:string-properties}
+\input{content/gen/sec_string_properties}
 \begin{itemize}
     \item What physical types do strings of different semantic types share
     \item How do they differ?
     \item How can we use this for execution and compression
 \end{itemize}
+
+\section{Storage}\label{sec:storage}
+\input{content/gen/sec_storage_analysis}
+
+
+
 
 
 \section{Query Processing}\label{sec:query-processing}
