@@ -1,18 +1,6 @@
 from src.config import HUGGINFACE_DATA_DB_PATH
 from src.data_analysis.storage.dataset_adapter import DatasetAdapter
-
-
-def clean_name(name: str) -> str:
-    """
-    Clean a name to be used as a schema/table name.
-    Only - delimiters are allowed in schema names.
-    """
-    name = (name
-            .replace('_', '-')
-            .replace('/', '-')
-            .replace(' ', '-')
-            .lower())
-    return name
+from src.sql_analysis.utils.names import clean_name
 
 
 def save_huggingface_in_database():

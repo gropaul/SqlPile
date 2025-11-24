@@ -25,7 +25,7 @@ To set it up, follow these steps:
 poetry run python main.py
 ```
 
-## Build the Custom DuckDB
+## Build the Custom DuckDB Python Extension
 
 ```shell
 cd  ./external/duckdb-sqlpile/

@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 SYSTEM_PROMPT = """
 Based on the table name, column name, and sample values, determine the semantic type of each column.
@@ -22,7 +22,7 @@ class SemanticType:
 SemanticTypeColumnName = Literal['semantic_type_llm', 'semantic_type_llm_subtype']
 
 class SemanticTypeRunConfig:
-    def __init__(self, semantic_types: List[SemanticType], target_column: SemanticTypeColumnName, filter_semantic_type: str | None):
+    def __init__(self, semantic_types: List[SemanticType], target_column: SemanticTypeColumnName, filter_semantic_type: Optional[str]):
         self.semantic_types = semantic_types
         self.target_column = target_column
         self.filter_semantic_type = filter_semantic_type

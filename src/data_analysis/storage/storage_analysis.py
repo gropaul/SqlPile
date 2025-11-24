@@ -48,14 +48,10 @@ def create_compression_box_plot(con: duckdb.DuckDBPyConnection):
                 uncompressed / onpair AS onpair_ratio,
                 uncompressed / onpairmini AS onpairmini_ratio
             FROM results
-        ), semantics AS (
-            SELECT column_id, unify_llm_type(semantic_type) AS semantic_type_llm
-            FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv' -- both kaggle and sql pile
-            WHERE semantic_type_llm NOT IN ('Test', 'Other')
         )
         SELECT *
         FROM ratios
-        LEFT JOIN semantics USING (column_id)
+        LEFT JOIN columns on columns.id = ratios.column_id
     """).df()
 
     semantic_types = df["semantic_type_llm"].unique()

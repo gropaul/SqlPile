@@ -1,30 +1,95 @@
 
 \begin{figure*}
   \centering
-\begin{subfigure}{0.245\linewidth}
+\begin{subfigure}{0.1583\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/Category_duplicates.pdf}
+  \caption{Category}
+  \label{img:string_properties_dups:category_duplicates}
+\end{subfigure}
+\begin{subfigure}{0.1583\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/Entity_duplicates.pdf}
+  \caption{Entity}
+  \label{img:string_properties_dups:entity_duplicates}
+\end{subfigure}
+\begin{subfigure}{0.1583\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/FullText_duplicates.pdf}
+  \caption{FullText}
+  \label{img:string_properties_dups:fulltext_duplicates}
+\end{subfigure}
+\begin{subfigure}{0.1583\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/Identifier_duplicates.pdf}
+  \caption{Identifier}
+  \label{img:string_properties_dups:identifier_duplicates}
+\end{subfigure}
+\begin{subfigure}{0.1583\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/Numeric_duplicates.pdf}
+  \caption{Numeric}
+  \label{img:string_properties_dups:numeric_duplicates}
+\end{subfigure}
+\begin{subfigure}{0.1583\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/Structured_duplicates.pdf}
+  \caption{Structured}
+  \label{img:string_properties_dups:structured_duplicates}
+\end{subfigure}
+  \label{img:string_properties_dups}
+  \caption{Duplicate value rates per semantic types for all columns excluding TPC-[H/DS] datasets.}
+\end{figure*}
+\begin{figure}
+  \centering
+\begin{subfigure}{0.35\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/TPC/All_duplicates.pdf}
+  \caption{TPC-[H/DS]}
+  \label{img:string_properties_dups_tpc_vs_others:all_duplicates}
+\end{subfigure}
+\begin{subfigure}{0.35\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/All_duplicates.pdf}
+  \caption{Other}
+  \label{img:string_properties_dups_tpc_vs_others:all_duplicates}
+\end{subfigure}
+  \label{img:string_properties_dups_tpc_vs_others}
+  \caption{Duplicate value rates for TPC-[H/DS] datasets vs. all other datasets.}
+\end{figure}
+
+\begin{figure*}
+  \centering
+\begin{subfigure}{0.19\linewidth}
    \centering
   \includegraphics[width=\linewidth]{assets/string_stats/avg_length.pdf}
   \caption{Avg. length}
   \label{img:string_properties:avg_length}
 \end{subfigure}
-\begin{subfigure}{0.245\linewidth}
+\begin{subfigure}{0.19\linewidth}
    \centering
   \includegraphics[width=\linewidth]{assets/string_stats/stddev_length.pdf}
   \caption{Std. dev. length}
   \label{img:string_properties:stddev_length}
 \end{subfigure}
-\begin{subfigure}{0.245\linewidth}
+\begin{subfigure}{0.19\linewidth}
    \centering
   \includegraphics[width=\linewidth]{assets/string_stats/count_filtered.pdf}
   \caption{Distinct chars (filtered*)}
   \label{img:string_properties:count_filtered}
 \end{subfigure}
-\begin{subfigure}{0.245\linewidth}
+\begin{subfigure}{0.19\linewidth}
    \centering
   \includegraphics[width=\linewidth]{assets/string_stats/count_unfiltered.pdf}
   \caption{Distinct chars}
   \label{img:string_properties:count_unfiltered}
 \end{subfigure}
+\begin{subfigure}{0.19\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/empty_or_null_rate.pdf}
+  \caption{Null or empty \%}
+  \label{img:string_properties:empty_or_null_rate}
+\end{subfigure}
   \label{img:string_properties}
-  \caption{String properties per semantic type. The filtered distinct chars only counts the number of chars that make up 95\% of all chars.}
+  \caption{String properties per semantic type. The filtered distinct chars only counts the number of chars that make up 99\% of all chars.}
 \end{figure*}

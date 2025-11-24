@@ -11,17 +11,10 @@ import kagglehub
 from kagglehub import KaggleDatasetAdapter
 from src.data_analysis.storage.kaggle.kaggle_unify_schema import unify_kaggle_table_schema
 import duckdb
+from src.sql_analysis.utils.names import clean_name
 
 from src.config import KAGGLE_DATA_DB_PATH, KAGGLE_DATASETS_DB_PATH
 
-
-def clean_name(name: str) -> str:
-    # only - delimiters are allowed in schema names
-    name = (name
-            .replace('_', '-')
-            .replace('/', '-')
-            .replace(' ', '-').lower())
-    return name
 
 def table_name_from_file(file: str) -> str:
     file_name = file.split('/')[-1]

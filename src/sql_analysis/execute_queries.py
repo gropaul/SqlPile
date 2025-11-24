@@ -11,7 +11,9 @@ from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, RE
     TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, COLUMN_VALUES_TABLE_NAME, TABLE_VALUES_COUNT_TABLE_NAME, \
     COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
-    QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR, KAGGLE_DATA_DB_PATH
+    QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR, KAGGLE_DATA_DB_PATH, HUGGINFACE_DATA_DIR, \
+    HUGGINFACE_DATA_DB_PATH
+from src.sql_analysis.utils.names import clean_name
 from src.sql_analysis.utils.delete_data import delete_repo, reset_statistics_tables
 from src.sql_analysis.execution.create_tables import create_base_tables
 from src.sql_analysis.execution.extra_functions import EXTRA_FUNCTIONS
@@ -602,6 +604,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
+            -- AND '3rd-party-huggingface' IN repos.repo_url  -- only process huggingface for now
             {append_filter if mode == 'append' else ''}
         GROUP BY ALL
         ORDER BY repos.id DESC -- from recently added to oldest
@@ -651,7 +654,13 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             if 'kaggle' in repo_name:
                 database_schema = repo_name.replace('3rd-party-kaggle-', '')
                 sandbox_con.close()
-                sandbox_con = duckdb.connect(KAGGLE_DATA_DB_PATH) # switch to the kaggle database
+                sandbox_database_path = KAGGLE_DATA_DB_PATH
+                sandbox_con = duckdb.connect(sandbox_database_path) # switch to the kaggle database
+            if '3rd-party-huggingface' in repo_name:
+                database_schema = clean_name(repo_name.replace('3rd-party-huggingface-', ''))
+                sandbox_con.close()
+                sandbox_database_path = HUGGINFACE_DATA_DB_PATH
+                sandbox_con = duckdb.connect(sandbox_database_path)
             else:
                 database_schema = ''
 
@@ -705,4 +714,4 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
 
 if __name__ == "__main__":
-    execute_repo_queries(mode='append', repo_id=None, query_id=None)
+    execute_repo_queries(mode='replace', repo_id=None, query_id=None)

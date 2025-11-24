@@ -334,10 +334,11 @@ def record_statistics_text(
                 f"""
                         WITH data AS (
                             SELECT
-                                {column_id}                              AS column_id,
-                                CAST({quote(column_name)} AS VARCHAR)    AS value,
-                                LENGTH(CAST({quote(column_name)} AS VARCHAR)) AS value_length,
-                                strlen(CAST({quote(column_name)} AS VARCHAR)) AS value_bytes,
+                                {column_id}                             AS column_id,
+                                {quote(column_name)}                    AS value,
+                                ifnull({quote(column_name)}, '')        AS value_safe,
+                                LENGTH(value) AS value_length,
+                                strlen(value) AS value_bytes,
                                 split(value, '') as chars
                             FROM {table_qualifier}{quote(table_name)}
                             LIMIT {MAX_VALUES_TO_ANALYZE_PER_COLUMN}
@@ -380,11 +381,10 @@ def record_statistics_text(
                                 value_bytes,
                                 chars,
                             FROM data
-                            WHERE value IS NOT NULL
                         )
                         SELECT
                             column_id,
-                            (SELECT list(value) FROM (FROM data LIMIT 5))         AS sample_values,
+                            (SELECT list(value) FROM (FROM data LIMIT 5))  AS sample_values,
                             (SELECT * FROM total_table_size)               AS total_table_size,
                             COUNT(*)                                       AS count,
                             COUNT(value)                                   AS count_non_null,

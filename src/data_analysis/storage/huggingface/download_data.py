@@ -4,12 +4,13 @@ import urllib.request
 import tempfile
 import ssl
 from pathlib import Path
+from typing import Tuple
 
 from tqdm import tqdm
 import duckdb
 
 from src.config import HUGGINFACE_DATASETS_DB_PATH, HUGGINFACE_DATA_DB_PATH, MAX_VALUES_TO_ANALYZE_PER_COLUMN, \
-    HUGGINFACE_DATASETS_CPY_DB_PATH
+    HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_TABLE
 
 LIMIT = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 2
 
@@ -50,7 +51,8 @@ def format_bytes(size_bytes: int) -> str:
     return f"{s} {size_name[i]}"
 
 
-def download_parquet_file(url: str, local_dir: str, hf_token: str = "") -> str:
+# returns the local path of the downloaded file and its size in bytes
+def download_parquet_file(url: str, local_dir: str, hf_token: str = "") -> Tuple[str, int]:
     local_dir = Path(local_dir)
 
     # Always clear the directory (no caching)
@@ -99,11 +101,12 @@ def download_parquet_file(url: str, local_dir: str, hf_token: str = "") -> str:
                         print(f"\r\tDownloaded: {downloaded} bytes", end="")
 
         print("\n\tDownload complete.")
-        return str(local_path)
+        return str(local_path), downloaded
 
     except Exception as e:
         print(f"\tDownload failed: {e}")
-        raise
+
+
 
 
 
@@ -116,7 +119,7 @@ def download_data(download_locally: bool = False):
                          If False (default), imports directly from remote URLs.
     """
 
-    dataset_con = duckdb.connect(HUGGINFACE_DATASETS_CPY_DB_PATH, read_only=True)
+    dataset_con = duckdb.connect(HUGGINFACE_DATASETS_DB_PATH, read_only=True)
     data_con = duckdb.connect(HUGGINFACE_DATA_DB_PATH)
 
     hf_token = os.environ.get("HF_TOKEN", "")
@@ -151,8 +154,15 @@ def download_data(download_locally: bool = False):
 
     for (dataset_id, paths) in tqdm(datasets):
         print(f"Downloading dataset: {dataset_id}, num files: {len(paths)}")
+        # Use dataset_id as schema name (e.g., "owner/repo" becomes schema name)
+        schema_name = dataset_id.replace('/', '-')
         table_name = f"{dataset_id.replace('/', '_')}"
         rows_remaining = LIMIT
+        gb_bytes_remaining = MAX_GB_TO_DOWNLOAD_PER_TABLE
+        bytes_remaining = gb_bytes_remaining * 1_000_000_000
+
+        # Create schema if not exists
+        data_con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
 
         if table_name in existing_tables_df['table_name'].values:
             print(f"Dataset {dataset_id} already downloaded, skipping.")
@@ -162,12 +172,12 @@ def download_data(download_locally: bool = False):
             if rows_remaining <= 0:
                 break
 
-            print(f"\tProcessing file: {path}, rows remaining: {rows_remaining}")
+            print(f"\tProcessing file: {path}, rows remaining: {rows_remaining}, bytes remaining: {format_bytes(bytes_remaining)}")
 
             # Determine the path to use (local or remote)
             if download_locally:
                 # Download the file locally first
-                local_path = download_parquet_file(path, DOWNLOAD_DIR, hf_token)
+                local_path, bytes_downloaded = download_parquet_file(path, DOWNLOAD_DIR, hf_token)
                 parquet_path = local_path
             else:
                 # Use the remote URL directly
@@ -175,14 +185,14 @@ def download_data(download_locally: bool = False):
 
             if i == 0:
                 file_query = f"""
-                    CREATE TABLE "{table_name}" AS
+                    CREATE TABLE "{schema_name}"."{table_name}" AS
                     SELECT *
                     FROM read_parquet('{parquet_path}')
                     -- LIMIT {rows_remaining};
                 """
             else :
                 file_query = f"""
-                    INSERT INTO "{table_name}"
+                    INSERT INTO "{schema_name}"."{table_name}"
                     SELECT *
                     FROM read_parquet('{parquet_path}')
                     -- LIMIT {rows_remaining};
@@ -190,8 +200,10 @@ def download_data(download_locally: bool = False):
 
             execute_query_with_retries(data_con, file_query)
             # get the number of rows inserted
-            rows_inserted = data_con.execute(f'SELECT COUNT(*) FROM "{table_name}";').fetchone()[0]
+            rows_inserted = data_con.execute(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}";').fetchone()[0]
             rows_remaining = LIMIT - rows_inserted
+            bytes_remaining -= bytes_downloaded
+
 
 
 

@@ -44,6 +44,7 @@ CHARACTERS_BEFORE_AND_AFTER_QUERY = 400
 HEADER_N_LINES = 30  # Number of header lines to keep for each file that contains SQL queries
 MAX_VALUES_TO_SAVE_PER_COLUMN = 5000  # Maximum number of values to save per column in the database
 MAX_VALUES_TO_ANALYZE_PER_COLUMN = 122_880
+MAX_GB_TO_DOWNLOAD_PER_TABLE = 2 # Maximum number of GB to download per table when analyzing 3rd-party datasets
 
 RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing
