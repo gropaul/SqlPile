@@ -111,6 +111,7 @@ def download_dataset(
         datasets_con: duckdb.DuckDBPyConnection,
 ) -> int:
     data_con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
+    data_con.execute(f'CHECKPOINT;')
     try_clear_cache()
 
     bytes_downloaded_so_far = 0
@@ -220,17 +221,19 @@ def download_datasets(reset_errors: bool = False):
     datasets_con.execute(f"DETACH kaggle_data")
     data_con = duckdb.connect(KAGGLE_DATA_DB_PATH)
 
-    total_bytes_downloaded = 0
+
 
     for ref, schema_name, view_count, files in datasets:
         print(f"Downloading {ref} with {len(files)} files with {view_count} views into schema {schema_name}")
-        total_bytes_downloaded += download_dataset(ref, schema_name, files, data_con, datasets_con)
+        download_dataset(ref, schema_name, files, data_con, datasets_con)
 
-        if total_bytes_downloaded >= gb_to_bytes(MAX_GB_TO_DOWNLOAD):
+        # get the size of total_bytes_downloaded from kaggle_dataset_table_info
+        file_size = os.path.getsize(KAGGLE_DATA_DB_PATH)
+        if file_size >= gb_to_bytes(MAX_GB_TO_DOWNLOAD):
             print(f"Reached overall max GB of {MAX_GB_TO_DOWNLOAD} for all datasets, stopping further downloads.")
             break
         else:
-            print(f"Total bytes downloaded so far: {format_bytes(total_bytes_downloaded)}/{format_bytes(gb_to_bytes(MAX_GB_TO_DOWNLOAD))}")
+            print(f"Total bytes downloaded so far: {format_bytes(file_size)}/{format_bytes(gb_to_bytes(MAX_GB_TO_DOWNLOAD))}")
 
 
 if __name__ == "__main__":
