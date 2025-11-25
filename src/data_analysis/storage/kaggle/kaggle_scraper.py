@@ -5,9 +5,15 @@ from time import sleep
 from tqdm import tqdm
 
 from src.config import KAGGLE_DATASETS_DB_PATH
+import site, os
 
+
+
+
+
+python_path = os.path.join(site.getuserbase(), 'bin')
 kaggle.api.authenticate()
-KAGGLE_API_BINARY = "/Users/paul/Library/Python/3.11/bin/kaggle"
+KAGGLE_API_BINARY = os.path.join(python_path, 'kaggle')
 
 
 def download_dataset(dataset: str, unzip: bool = True):
@@ -106,6 +112,9 @@ def scrape_for_datasets_v2(con: duckdb.DuckDBPyConnection, file_type: str, max_p
 
 
 def retrieve_kaggle_datasets():
+    # execute "pip install kaggle"
+    os.system("pip install kaggle --user")
+
     con = duckdb.connect(KAGGLE_DATASETS_DB_PATH)
     scrape_for_datasets_v2(con, "sqlite", max_pages=100)
     scrape_for_datasets_v2(con, "parquet", max_pages=100)
