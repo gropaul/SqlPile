@@ -116,6 +116,7 @@ def retrieve_kaggle_datasets():
     os.system("pip install kaggle --user")
 
     con = duckdb.connect(KAGGLE_DATASETS_DB_PATH)
+    create_schema(con)
     scrape_for_datasets_v2(con, "sqlite", max_pages=100)
     scrape_for_datasets_v2(con, "parquet", max_pages=100)
 
