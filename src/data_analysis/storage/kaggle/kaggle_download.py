@@ -66,7 +66,7 @@ def import_file(file_path: str, con: duckdb.DuckDBPyConnection, schema_name: str
         con.execute(f"ATTACH OR REPLACE DATABASE '{file_path}' AS sqlite_db")
         tables = con.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog='sqlite_db'").fetchall()
         for (table_name,) in tqdm(tables, desc="Importing sqlite tables", unit="table"):
-            con.execute(f"""CREATE TABLE IF EXISTS"{schema_name}"."{table_name}" AS SELECT * FROM sqlite_db."{table_name}" """)
+            con.execute(f"""CREATE TABLE IF EXISTS "{schema_name}"."{table_name}" AS SELECT * FROM sqlite_db."{table_name}" """)
         # Detach the sqlite database after importing
         con.execute("DETACH DATABASE sqlite_db")
     else:
