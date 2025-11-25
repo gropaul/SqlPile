@@ -44,11 +44,19 @@ def main():
         help="Number of threads to use for parallel processing (default: 10)"
     )
 
+    parser.add_argument(
+        "-p", "--permissive_licenses",
+        type=int,
+        default=False,
+        help="Only scrape repos with permissive licenses (default: False)"
+    )
+
     args = parser.parse_args()
     n_threads = args.threads
+    permissive_licenses = args.permissive_licenses
 
     logger.info(f"Starting SQL scraping and analysis with {n_threads} threads...")
-    urls = get_urls(filter_analysed=True, shuffle=True)
+    urls = get_urls(filter_analysed=True, shuffle=True, permissive_licenses=permissive_licenses)
 
     logger.info(f"Total URLs to process: {len(urls)}")
     if not urls:

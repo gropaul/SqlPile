@@ -104,7 +104,6 @@ results = []
 
 BLOCK_SIZE = 100
 
-DELAY_SECONDS = 5 * 60 / 200
 DELAY_SECONDS = 0.2
 last_execution = 0  # timestamp of last loop iteration
 

@@ -209,6 +209,7 @@ def download_datasets(reset_errors: bool = False):
                 size: total_bytes
             }}) AS files
         FROM data_filtered_for_processed
+        WHERE 'romainbeaumont' in ref
         GROUP BY ALL
         ORDER BY download_count DESC
         """
