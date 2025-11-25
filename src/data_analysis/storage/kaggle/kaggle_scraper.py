@@ -99,16 +99,23 @@ def create_schema(con: duckdb.DuckDBPyConnection):
 
 def scrape_for_datasets_v2(con: duckdb.DuckDBPyConnection, file_type: str, max_pages: int = 50):
 
-    for page in range(1, max_pages + 1):
-        cmd = f"{KAGGLE_API_BINARY} datasets list --file-type {file_type} --csv --page {page}  --sort-by votes"
-        query = f"""
-               INSERT INTO kaggle_datasets (
-                   SELECT ref, title, size AS total_bytes, downloadCount AS download_count, voteCount AS vote_count, null AS license_name, {page} AS page
-                   FROM read_csv('{cmd} |')
-                   WHERE ref NOT IN (SELECT ref FROM kaggle_datasets)
-               )
-           """
-        con.execute(query)
+
+        for page in range(1, max_pages + 1):
+            cmd = f"{KAGGLE_API_BINARY} datasets list --file-type {file_type} --csv --page {page}  --sort-by votes"
+            try:
+                query = f"""
+                       INSERT INTO kaggle_datasets (
+                           SELECT ref, title, size AS total_bytes, downloadCount AS download_count, voteCount AS vote_count, null AS license_name, {page} AS page
+                           FROM read_csv('{cmd} |')
+                           WHERE ref NOT IN (SELECT ref FROM kaggle_datasets)
+                       )
+                   """
+                con.execute(query)
+                print(f"Scraped page {page} for file type {file_type}")
+            except Exception as e:
+                print(f"Error scraping datasets for file type {file_type} on page {page}: {e}")
+
+
 
 
 def retrieve_kaggle_datasets():
