@@ -10,6 +10,7 @@ import re
 import kagglehub
 from tqdm import tqdm
 
+from src.data_analysis.storage.huggingface.download_data import format_bytes
 from src.data_analysis.storage.kaggle.kaggle_unify_schema import unify_kaggle_table_schema
 import duckdb
 from src.sql_analysis.utils.names import clean_name
@@ -46,36 +47,62 @@ def try_clear_cache():
         except Exception as e:
             print(f"Error clearing kagglehub cache: {e}")
 
-def import_file(file_path: str, con: duckdb.DuckDBPyConnection, schema_name: str, table_name: str):
+
+class ImportData:
+
+    def __init__(self, table_name, schema_name, from_clause):
+        self.table_name = table_name
+        self.schema_name = schema_name
+        self.from_clause = from_clause
+
+    def import_to_duckdb(self, con: duckdb.DuckDBPyConnection, datasets_con: duckdb.DuckDBPyConnection):
+        con.execute(
+            f"""CREATE TABLE IF NOT EXISTS "{self.schema_name}"."{self.table_name}" AS SELECT * {self.from_clause} LIMIT {MAX_VALUES_TO_DOWNLOAD}""")
+        n_rows = con.execute(f'SELECT COUNT(*) FROM "{self.schema_name}"."{self.table_name}"').fetchone()[0]
+        datasets_con.execute(
+            f"""INSERT INTO kaggle_dataset_table_info (schema_name, table_name, n_rows) VALUES (?, ?, ?)""",
+            (self.schema_name, self.table_name, n_rows))
+        print(f'\tImported table "{self.schema_name}"."{self.table_name}" with {n_rows} rows.')
+
+
+def import_file(file_path: str, con: duckdb.DuckDBPyConnection, schema_name: str, table_name: str,
+                datasets_con: duckdb.DuckDBPyConnection):
+    file_extension = file_path.split('.')[-1].lower()
+    imports = []
+
+    if file_extension == 'csv':
+        imports.append(ImportData(table_name, schema_name,f"""FROM read_csv('{file_path}', strict_mode = False, ignore_errors = True)"""))
+    elif file_extension == 'parquet':
+        imports.append(ImportData(table_name, schema_name, f"""FROM read_parquet('{file_path}')"""))
+
+    elif file_extension == 'sqlite':
+        # For sqlite, we need to attach the database and then read from it
+        con.execute(f"ATTACH OR REPLACE DATABASE '{file_path}' AS sqlite_db")
+        tables = con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_catalog='sqlite_db'").fetchall()
+        for (table_name,) in tqdm(tables, desc="Importing sqlite tables", unit="table"):
+            imports.append(ImportData(table_name, schema_name, f"""FROM sqlite_db."{table_name}" """))
+        # Detach the sqlite database after importing
+
+    else:
+        os.remove(file_path)
+        raise Exception(f"Unsupported file extension: {file_extension}")
 
     timeout_sec = 600
+
     def on_cancel():
         con.interrupt()
         raise Exception(f"Download timed out after {timeout_sec} seconds.")
 
-    file_extension = file_path.split('.')[-1].lower()
     timer = threading.Timer(timeout_sec, on_cancel)
     timer.start()
 
-    if file_extension == 'csv':
-        con.execute(f"""CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM read_csv('{file_path}', strict_mode = False, ignore_errors = True) LIMIT {MAX_VALUES_TO_DOWNLOAD}""")
-    elif file_extension == 'parquet':
-        con.execute(f"""CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM read_parquet('{file_path}') LIMIT {MAX_VALUES_TO_DOWNLOAD}""")
-    elif file_extension == 'sqlite':
-        # For sqlite, we need to attach the database and then read from it
-        con.execute(f"ATTACH OR REPLACE DATABASE '{file_path}' AS sqlite_db")
-        tables = con.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog='sqlite_db'").fetchall()
-        for (table_name,) in tqdm(tables, desc="Importing sqlite tables", unit="table"):
-            con.execute(f"""CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" AS SELECT * FROM sqlite_db."{table_name}" LIMIT {MAX_VALUES_TO_DOWNLOAD}""")
-        # Detach the sqlite database after importing
-        con.execute("DETACH DATABASE sqlite_db")
-    else:
-        timer.cancel()
-        os.remove(file_path)
-        raise Exception(f"Unsupported file extension: {file_extension}")
-
+    for import_data in imports:
+        import_data.import_to_duckdb(con, datasets_con)
+    con.execute("DETACH DATABASE IF EXISTS sqlite_db")
     timer.cancel()
     os.remove(file_path)
+
 
 def download_dataset(
         handle: str, schema_name: str,
@@ -83,7 +110,6 @@ def download_dataset(
         data_con: duckdb.DuckDBPyConnection,
         datasets_con: duckdb.DuckDBPyConnection,
 ) -> int:
-
     data_con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
     try_clear_cache()
 
@@ -97,12 +123,13 @@ def download_dataset(
 
             sleep(3)  # be nice to the kaggle servers
             path = kagglehub.datasets.dataset_download(handle, file)
-            import_file(path, data_con, schema_name, table_name)
+            import_file(path, data_con, schema_name, table_name, datasets_con)
             unify_kaggle_table_schema(schema_name)
 
             bytes_downloaded_so_far += size
-            if bytes_downloaded_so_far >=  gb_to_bytes(MAX_GB_TO_DOWNLOAD_PER_REPO):
-                print(f"Reached max GB of {MAX_GB_TO_DOWNLOAD_PER_REPO} for dataset {handle}, stopping further downloads.")
+            if bytes_downloaded_so_far >= gb_to_bytes(MAX_GB_TO_DOWNLOAD_PER_REPO):
+                print(
+                    f"Reached max GB of {MAX_GB_TO_DOWNLOAD_PER_REPO} for dataset {handle}, stopping further downloads.")
                 break
         except Exception as e:
             error_message = str(e)
@@ -111,13 +138,20 @@ def download_dataset(
     return bytes_downloaded_so_far
 
 
-
 def download_datasets(reset_errors: bool = False):
     datasets_con = duckdb.connect(KAGGLE_DATASETS_DB_PATH)
 
     datasets_con.create_function("clean_name", clean_name)
     datasets_con.create_function("table_name_from_file", table_name_from_file)
     datasets_con.create_function("get_database_file_name_root", get_database_file_name_root)
+
+    datasets_con.execute("""
+        CREATE TABLE IF NOT EXISTS kaggle_dataset_table_info (
+            schema_name TEXT,
+            table_name TEXT,
+            n_rows BIGINT
+        )
+    """)
 
     # attach the kaggle_data database
     datasets_con.execute(f"ATTACH '{KAGGLE_DATA_DB_PATH}' AS kaggle_data")
@@ -132,7 +166,6 @@ def download_datasets(reset_errors: bool = False):
             error_message TEXT
         )
     """)
-
 
     datasets = datasets_con.execute(
         f"""
@@ -196,7 +229,8 @@ def download_datasets(reset_errors: bool = False):
         if total_bytes_downloaded >= gb_to_bytes(MAX_GB_TO_DOWNLOAD):
             print(f"Reached overall max GB of {MAX_GB_TO_DOWNLOAD} for all datasets, stopping further downloads.")
             break
-
+        else:
+            print(f"Total bytes downloaded so far: {format_bytes(total_bytes_downloaded)}/{format_bytes(gb_to_bytes(MAX_GB_TO_DOWNLOAD))}")
 
 
 if __name__ == "__main__":
