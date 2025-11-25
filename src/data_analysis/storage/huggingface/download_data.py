@@ -10,9 +10,7 @@ from tqdm import tqdm
 import duckdb
 
 from src.config import HUGGINFACE_DATASETS_DB_PATH, HUGGINFACE_DATA_DB_PATH, MAX_VALUES_TO_ANALYZE_PER_COLUMN, \
-    HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_TABLE, MAX_GB_TO_DOWNLOAD
-
-LIMIT = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 2
+    HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_REPO, MAX_GB_TO_DOWNLOAD, MAX_VALUES_TO_DOWNLOAD
 
 # clear temp download dir
 
@@ -159,8 +157,8 @@ def download_data(download_locally: bool = False):
         # Use dataset_id as schema name (e.g., "owner/repo" becomes schema name)
         schema_name = dataset_id.replace('/', '-')
         table_name = f"{dataset_id.replace('/', '_')}"
-        rows_remaining = LIMIT
-        gb_bytes_remaining = MAX_GB_TO_DOWNLOAD_PER_TABLE
+        rows_remaining = MAX_VALUES_TO_DOWNLOAD
+        gb_bytes_remaining = MAX_GB_TO_DOWNLOAD_PER_REPO
         bytes_remaining = gb_bytes_remaining * 1_000_000_000
 
         # Create schema if not exists
@@ -175,7 +173,7 @@ def download_data(download_locally: bool = False):
                 break
 
             print(f"\tProcessing file: {path}, rows remaining: {rows_remaining}, bytes remaining: {format_bytes(bytes_remaining)}, total downloaded: {format_bytes(total_downloaded_bytes)}")
-
+            bytes_downloaded = 0
             # Determine the path to use (local or remote)
             if download_locally:
                 # Download the file locally first
@@ -203,7 +201,7 @@ def download_data(download_locally: bool = False):
             execute_query_with_retries(data_con, file_query)
             # get the number of rows inserted
             rows_inserted = data_con.execute(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}";').fetchone()[0]
-            rows_remaining = LIMIT - rows_inserted
+            rows_remaining = MAX_VALUES_TO_DOWNLOAD - rows_inserted
             bytes_remaining -= bytes_downloaded
             total_downloaded_bytes += bytes_downloaded
 

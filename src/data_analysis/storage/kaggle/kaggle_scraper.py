@@ -33,7 +33,7 @@ def scrape_files(con: duckdb.DuckDBPyConnection):
             store_dataset_files(con, dataset_ref)
         except Exception as e:
             print(f"Error fetching files for dataset {dataset_ref}: {e}")
-            sleep(5)
+            sleep(30)
 
 
 def store_dataset_files(con: duckdb.DuckDBPyConnection, dataset_ref: str):

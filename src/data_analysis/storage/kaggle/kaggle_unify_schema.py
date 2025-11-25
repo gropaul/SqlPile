@@ -133,7 +133,6 @@ def unify_kaggle_table_schema(schema_name: str = None):
             """ + where_filter + """
          GROUP BY table_schema """
 
-    print(query)
     tables = data_con.execute(query).fetchall()
 
     n_unified_tables = 0
