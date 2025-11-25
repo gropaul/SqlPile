@@ -10,7 +10,7 @@ from tqdm import tqdm
 import duckdb
 
 from src.config import HUGGINFACE_DATASETS_DB_PATH, HUGGINFACE_DATA_DB_PATH, MAX_VALUES_TO_ANALYZE_PER_COLUMN, \
-    HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_TABLE
+    HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_TABLE, MAX_GB_TO_DOWNLOAD
 
 LIMIT = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 2
 
@@ -135,6 +135,8 @@ def download_data(download_locally: bool = False):
         FROM information_schema.tables
     """).fetchdf()
 
+    total_downloaded_bytes = 0
+
     datasets = dataset_con.execute(f"""
         WITH config_split_sizes AS (
             SELECT parse_result_id, config_name, split, SUM(size_bytes) as total_bytes, list(path ORDER BY path) AS paths
@@ -172,7 +174,7 @@ def download_data(download_locally: bool = False):
             if rows_remaining <= 0:
                 break
 
-            print(f"\tProcessing file: {path}, rows remaining: {rows_remaining}, bytes remaining: {format_bytes(bytes_remaining)}")
+            print(f"\tProcessing file: {path}, rows remaining: {rows_remaining}, bytes remaining: {format_bytes(bytes_remaining)}, total downloaded: {format_bytes(total_downloaded_bytes)}")
 
             # Determine the path to use (local or remote)
             if download_locally:
@@ -203,6 +205,11 @@ def download_data(download_locally: bool = False):
             rows_inserted = data_con.execute(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}";').fetchone()[0]
             rows_remaining = LIMIT - rows_inserted
             bytes_remaining -= bytes_downloaded
+            total_downloaded_bytes += bytes_downloaded
+
+            if total_downloaded_bytes >= MAX_GB_TO_DOWNLOAD * 1_000_000_000:
+                print(f"Reached maximum download limit of {MAX_GB_TO_DOWNLOAD} at {format_bytes(total_downloaded_bytes)}, stopping downloads.")
+                exit(1)
 
 
 

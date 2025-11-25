@@ -29,8 +29,8 @@ def add_kaggle_statistics():
 
 def retrieve_kaggle_datasets():
     from src.data_analysis.storage.kaggle.kaggle_download import download_datasets
-    from src.data_analysis.storage.kaggle.kaggle_scraper import scrape_for_datasets
-    scrape_for_datasets()
+    from src.data_analysis.storage.kaggle.kaggle_scraper import scrape_for_datasets_v1
+    scrape_for_datasets_v1()
     download_datasets()
 
 
