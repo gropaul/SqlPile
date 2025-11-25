@@ -1,6 +1,7 @@
 import kaggle
 import duckdb
 from time import sleep
+import requests
 
 from tqdm import tqdm
 
@@ -47,29 +48,6 @@ def store_dataset_files(con: duckdb.DuckDBPyConnection, dataset_ref: str):
             file.total_bytes
         ))
 
-
-def store_dataset_information(con: duckdb.DuckDBPyConnection, dataset: any, page: int):
-    # check if dataset already exists
-    res = con.execute("SELECT COUNT(*) FROM kaggle_datasets WHERE ref = ?", (dataset.ref,)).fetchone()
-    if res[0] > 0:
-        print(f"Dataset {dataset.ref} already exists in the database. Skipping.")
-        return
-    # insert dataset information into the database
-    # dataset is as json object
-    con.execute("""
-        INSERT INTO kaggle_datasets (ref, title, total_bytes, download_count, vote_count, license_name, page)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
-        dataset.ref,
-        dataset.title,
-        dataset.total_bytes,
-        dataset.download_count,
-        dataset.vote_count,
-        dataset.license_name,
-        page
-    ))
-
-
 def create_schema(con: duckdb.DuckDBPyConnection):
     con.execute("""
         CREATE TABLE IF NOT EXISTS kaggle_datasets (
@@ -95,6 +73,43 @@ def create_schema(con: duckdb.DuckDBPyConnection):
         INSTALL shellfs FROM community;
         LOAD shellfs;
     """)
+def scrape_for_datasets_v1(con: duckdb.DuckDBPyConnection, file_type: str = "parquet", max_pages: int = 100):
+
+    gb_to_bytes = 1024 * 1024 * 1024
+    for page in tqdm(range(1, max_pages + 1), desc="Pages", unit="page"):
+        try:
+            url = f"https://www.kaggle.com/api/v1/datasets/list?group=public&sortby=votes&size=all&filetype={file_type}&license=all&viewed=unspecified&minsize=536870912&page={page}"
+            # use python's requests library to get the data
+            response = requests.get(url)
+            if response.status_code != 200:
+                print(f"Error fetching datasets on page {page}: {response.status_code}")
+                sleep(30)
+                continue
+
+            body = response.json()
+            for dataset in body:
+                # check if dataset already exists
+                res = con.execute("SELECT COUNT(*) FROM kaggle_datasets WHERE ref = ?", (dataset['ref'],)).fetchone()
+                if res[0] > 0:
+                    continue
+                # insert dataset information into the database
+                # dataset is as json object
+                con.execute("""
+                        INSERT INTO kaggle_datasets (ref, title, total_bytes, download_count, vote_count, license_name, page)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                    dataset['ref'],
+                    dataset['title'],
+                    dataset['totalBytes'],
+                    dataset['downloadCount'],
+                    dataset['voteCount'],
+                    dataset['licenseName'],
+                    page
+                ))
+
+        except Exception as e:
+            print(f"Error fetching datasets on page {page}: {e}")
+            sleep(2)
 
 
 def scrape_for_datasets_v2(con: duckdb.DuckDBPyConnection, file_type: str, max_pages: int = 50):
@@ -114,19 +129,21 @@ def scrape_for_datasets_v2(con: duckdb.DuckDBPyConnection, file_type: str, max_p
                 print(f"Scraped page {page} for file type {file_type}")
             except Exception as e:
                 print(f"Error scraping datasets for file type {file_type} on page {page}: {e}")
+                if "No datasets found" in str(e):
+                    return
 
 
 
 
 def retrieve_kaggle_datasets():
     # execute "pip install kaggle"
-    os.system("pip install kaggle --user")
+    if not os.path.exists(KAGGLE_API_BINARY):
+        os.system("pip install kaggle --user")
 
     con = duckdb.connect(KAGGLE_DATASETS_DB_PATH)
     create_schema(con)
-    scrape_for_datasets_v2(con, "sqlite", max_pages=100)
-    scrape_for_datasets_v2(con, "parquet", max_pages=100)
-
+    scrape_for_datasets_v2(con, "sqlite", max_pages=30)
+    scrape_for_datasets_v1(con, "parquet", max_pages=200)
     scrape_files(con)
 
 
