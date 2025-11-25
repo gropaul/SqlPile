@@ -44,7 +44,7 @@ CHARACTERS_BEFORE_AND_AFTER_QUERY = 400
 HEADER_N_LINES = 30  # Number of header lines to keep for each file that contains SQL queries
 MAX_VALUES_TO_SAVE_PER_COLUMN = 5000  # Maximum number of values to save per column in the database
 MAX_VALUES_TO_ANALYZE_PER_COLUMN = 122_880
-MAX_VALUES_TO_DOWNLOAD = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 3
+MAX_VALUES_TO_DOWNLOAD = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 4
 MAX_GB_TO_DOWNLOAD_PER_REPO = 25 # Maximum number of GB to download per repository table when analyzing 3rd-party datasets
 MAX_GB_TO_DOWNLOAD = 1000  # Maximum number of GB to download in total when analyzing 3rd-party datasets
 

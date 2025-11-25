@@ -60,19 +60,22 @@ def import_file(file_path: str, con: duckdb.DuckDBPyConnection, schema_name: str
     if file_extension == 'csv':
         con.execute(f"""CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM read_csv('{file_path}', strict_mode = False, ignore_errors = True) LIMIT {MAX_VALUES_TO_DOWNLOAD}""")
     elif file_extension == 'parquet':
-        con.execute(f"""CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM read_parquet('{file_path}')""")
+        con.execute(f"""CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM read_parquet('{file_path}') LIMIT {MAX_VALUES_TO_DOWNLOAD}""")
     elif file_extension == 'sqlite':
         # For sqlite, we need to attach the database and then read from it
         con.execute(f"ATTACH OR REPLACE DATABASE '{file_path}' AS sqlite_db")
         tables = con.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog='sqlite_db'").fetchall()
         for (table_name,) in tqdm(tables, desc="Importing sqlite tables", unit="table"):
-            con.execute(f"""CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" AS SELECT * FROM sqlite_db."{table_name}" """)
+            con.execute(f"""CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" AS SELECT * FROM sqlite_db."{table_name}" LIMIT {MAX_VALUES_TO_DOWNLOAD}""")
         # Detach the sqlite database after importing
         con.execute("DETACH DATABASE sqlite_db")
     else:
         timer.cancel()
+        os.remove(file_path)
         raise Exception(f"Unsupported file extension: {file_extension}")
+
     timer.cancel()
+    os.remove(file_path)
 
 def download_dataset(
         handle: str, schema_name: str,
