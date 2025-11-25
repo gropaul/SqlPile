@@ -109,7 +109,7 @@ def download_dataset(
 
 
 
-def download_datasets():
+def download_datasets(reset_errors: bool = False):
     datasets_con = duckdb.connect(KAGGLE_DATASETS_DB_PATH)
 
     datasets_con.create_function("clean_name", clean_name)
@@ -119,6 +119,8 @@ def download_datasets():
     # attach the kaggle_data database
     datasets_con.execute(f"ATTACH '{KAGGLE_DATA_DB_PATH}' AS kaggle_data")
 
+    if reset_errors:
+        datasets_con.execute("DROP TABLE IF EXISTS kaggle_dataset_download_errors")
     # create a table for all the errors
     datasets_con.execute("""
         CREATE TABLE IF NOT EXISTS kaggle_dataset_download_errors (
@@ -127,6 +129,7 @@ def download_datasets():
             error_message TEXT
         )
     """)
+
 
     datasets = datasets_con.execute(
         f"""
@@ -194,4 +197,4 @@ def download_datasets():
 
 
 if __name__ == "__main__":
-    download_datasets()
+    download_datasets(reset_errors=True)
