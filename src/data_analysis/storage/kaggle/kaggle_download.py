@@ -117,10 +117,10 @@ def download_dataset(
     bytes_downloaded_so_far = 0
     stop_at_threshold = False
 
-    for file_dict in files:
+    for (i, file_dict) in enumerate(files):
 
         file, table_name, size = file_dict['file'], file_dict['table_name'], file_dict['size']
-        print(f"\tDownloading file {file} into table {schema_name}.{table_name}: {format_bytes(size)} bytes")
+        print(f"\tDownloading file {file} into table {schema_name}.{table_name}: {format_bytes(size)} bytes ({(i + 1)}/{len(files)})")
         try:
 
             sleep(3)  # be nice to the kaggle servers
@@ -140,7 +140,10 @@ def download_dataset(
             error_message = str(e)
             log_error(datasets_con, handle, file, error_message)
 
-    unify_kaggle_table_schema(schema_name)
+    try:
+        unify_kaggle_table_schema(schema_name)
+    except Exception as e:
+        print(f"Error unifying schema for {schema_name}: {e}")
 
     return bytes_downloaded_so_far
 
