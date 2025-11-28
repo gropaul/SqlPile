@@ -165,6 +165,7 @@ def download_datasets(reset_errors: bool = False):
 
     if reset_errors:
         datasets_con.execute("DROP TABLE IF EXISTS kaggle_dataset_download_errors")
+
     # create a table for all the errors
     datasets_con.execute("""
         CREATE TABLE IF NOT EXISTS kaggle_dataset_download_errors (
@@ -215,7 +216,6 @@ def download_datasets(reset_errors: bool = False):
                 size: total_bytes
             }}) AS files
         FROM data_filtered_for_processed
-        WHERE 'romainbeaumont' in ref
         GROUP BY ALL
         ORDER BY download_count DESC
         """
