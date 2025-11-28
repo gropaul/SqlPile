@@ -120,7 +120,7 @@ def download_dataset(
     for file_dict in files:
 
         file, table_name, size = file_dict['file'], file_dict['table_name'], file_dict['size']
-        print(f"\tDownloading file {file} into table {schema_name}.{table_name}")
+        print(f"\tDownloading file {file} into table {schema_name}.{table_name}: {format_bytes(size)} bytes")
         try:
 
             sleep(3)  # be nice to the kaggle servers
