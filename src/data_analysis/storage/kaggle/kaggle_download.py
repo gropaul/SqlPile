@@ -126,7 +126,6 @@ def download_dataset(
             sleep(3)  # be nice to the kaggle servers
             path = kagglehub.datasets.dataset_download(handle, file)
             import_file(path, data_con, schema_name, table_name, datasets_con)
-            unify_kaggle_table_schema(schema_name)
 
             bytes_downloaded_so_far += size
 
@@ -140,6 +139,8 @@ def download_dataset(
         except Exception as e:
             error_message = str(e)
             log_error(datasets_con, handle, file, error_message)
+
+    unify_kaggle_table_schema(schema_name)
 
     return bytes_downloaded_so_far
 
