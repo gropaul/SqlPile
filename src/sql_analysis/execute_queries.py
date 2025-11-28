@@ -577,13 +577,23 @@ def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb
         os.remove(result_path)
 
 
+class ExecutionSettings:
 
-def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, query_id: Optional[int] = None):
+    def __init__(self, mode: ExecutionMode, repo_id: Optional[int] = None, query_id: Optional[int] = None, execute: bool = True, collect_statistics: bool = True, compress: bool = True):
+        self.mode = mode
+        self.repo_id = repo_id
+        self.query_id = query_id
+        self.execute = execute
+        self.collect_statistics = collect_statistics
+        self.compress = compress
+
+
+def execute_repo_queries(settings: ExecutionSettings):
     con = get_con()
 
-    create_base_tables(con, mode)
+    create_base_tables(con, settings.mode)
 
-    if mode == 'restart':
+    if settings.mode == 'restart':
         reset_statistics_tables(con)
 
     con.close()
@@ -591,6 +601,9 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
     # if the mode is append we have to get rid of the queries already executed
     append_filter = "AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids)"
+
+    query_id = settings.query_id
+    repo_id = settings.repo_id
 
     repos = con.execute(f"""
         SELECT repos.id, repos.repo_url, repos.repo_name, COUNT(queries.id) AS query_count
@@ -605,7 +618,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
             -- AND '3rd-party-huggingface' IN repos.repo_url  -- only process huggingface for now
-            {append_filter if mode == 'append' else ''}
+            {append_filter if settings.mode == 'append' else ''}
         GROUP BY ALL
         ORDER BY repos.id DESC -- from recently added to oldest
     """).fetchall()
@@ -621,7 +634,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
         for repo_id, repo_url, repo_name, cnt in pbar:
             logging.info(f"Processing repository {repo_id} ({repo_url}) with {cnt} queries")
 
-            if mode == 'replace':
+            if settings.mode == 'replace':
                 delete_repo(con, repo_id, mode='execution_only')
 
             # initialize the sandbox connection
@@ -642,9 +655,9 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             populate_tables_with_files(repo_id, con, sandbox_con, tables)
             artificial_populated_ids = populate_empty_tables(tables, sandbox_con)
 
-            # execute_queries(repo_id, repo_url, sandbox_con, con, tables,  id_manager, query_id)
-
-            analyse_plans(con, repo_id)
+            if settings.execute:
+                execute_queries(repo_id, repo_url, sandbox_con, con, tables, id_manager, query_id)
+                analyse_plans(con, repo_id)
 
             save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids)
             save_table_counts(repo_id, con, sandbox_con, artificial_populated_ids)
@@ -664,18 +677,21 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
             else:
                 database_schema = ''
 
-            record_statistics_for_repo(con, sandbox_con, repo_id, database_schema)
+            if settings.collect_statistics:
+                record_statistics_for_repo(con, sandbox_con, repo_id, database_schema)
+
             sandbox_con.close()
 
 
             # *** COMPRESSION BENCHMARK ***
 
-            output_path = os.path.join(TMP_DIR, f"compression_benchmark_repo_{repo_id}.csv")
-            try:
-                run_compression_benchmark(sandbox_database_path, output_path)
-                save_columns_compression_results(repo_id, output_path, con)
-            except Exception as e:
-                print(f"Failed to run compression benchmark for repo {repo_id}: {e}")
+            if settings.compress:
+                output_path = os.path.join(TMP_DIR, f"compression_benchmark_repo_{repo_id}.csv")
+                try:
+                    run_compression_benchmark(sandbox_database_path, output_path)
+                    save_columns_compression_results(repo_id, output_path, con)
+                except Exception as e:
+                    print(f"Failed to run compression benchmark for repo {repo_id}: {e}")
 
             # Close the sandbox connection, save progress, and checkpoint
             con.execute("CHECKPOINT;")
@@ -714,4 +730,7 @@ def execute_repo_queries(mode: ExecutionMode, repo_id: Optional[int] = None, que
 
 
 if __name__ == "__main__":
-    execute_repo_queries(mode='replace', repo_id=None, query_id=None)
+
+    settings = ExecutionSettings(
+        mode='append', execute=False, collect_statistics=False, compress=True, repo_id=41556)
+    execute_repo_queries(settings)

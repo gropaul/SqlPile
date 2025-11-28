@@ -115,6 +115,7 @@ def download_dataset(
     try_clear_cache()
 
     bytes_downloaded_so_far = 0
+    stop_at_threshold = False
 
     for file_dict in files:
 
@@ -128,10 +129,14 @@ def download_dataset(
             unify_kaggle_table_schema(schema_name)
 
             bytes_downloaded_so_far += size
-            if bytes_downloaded_so_far >= gb_to_bytes(MAX_GB_TO_DOWNLOAD_PER_REPO):
-                print(
-                    f"Reached max GB of {MAX_GB_TO_DOWNLOAD_PER_REPO} for dataset {handle}, stopping further downloads.")
-                break
+
+            if stop_at_threshold:
+                if bytes_downloaded_so_far >= gb_to_bytes(MAX_GB_TO_DOWNLOAD_PER_REPO):
+                    print(
+                        f"Reached max GB of {MAX_GB_TO_DOWNLOAD_PER_REPO} for dataset {handle}, stopping further downloads.")
+                    break
+            else:
+                print(f"\tDownloaded {format_bytes(bytes_downloaded_so_far)}/{format_bytes(gb_to_bytes(MAX_GB_TO_DOWNLOAD_PER_REPO))} for dataset {handle}, but stopping further downloads is disabled.")
         except Exception as e:
             error_message = str(e)
             log_error(datasets_con, handle, file, error_message)

@@ -12,7 +12,7 @@ The reason why strings are so prevalent is that they are a catch-all type for ma
 different kinds of data and allow a very pragmatic schema design~\cite{vogelsgesang_get_2018}.
 However, this often results in data being stored in formats that are inefficient for processing~\cite{vogelsgesang_get_2018}.
 For example, numeric data or dates are often stored as strings instead of their native types, leading to increased storage
-and processing costs\cite{vogelsgesang_get_2018}. (Make an example here?)
+and processing costs\cite{vogelsgesang_get_2018}.
 
 This prevalence of variable-length text columns poses significant challenges for query processing and storage management.
 Unlike fixed-length numeric or boolean types, strings require dynamic memory allocation and incur higher CPU costs during
@@ -44,21 +44,58 @@ In summary, we offer the following contributions:
     \item Based on our findings, we provide recommendations for future research directions.
 \end{itemize}
 
-\section{Dataset Collection}\label{sec:data-collection}
+\section{Introducing DBPile}\label{sec:data-collection}
 
-To analyze the usage of text columns in \ac{DBMS}, we require both queries and corresponding populated tables.
+As outlined before, variable-length text columns are very heterogeneous and can have a wide range of properties.
+To quantitatively analyze and understand their properties and usages, we need a dataset that contains many
+real-world database schemas, queries, and sufficiently populated tables.
+So far, there is no such dataset publicly available that meets these requirements.
+While the studies on the Snowflake Data Cloud~\cite{szlang_workload_2025} and Amazon Redshift~\cite{van_renen_why_2024}
+analyze real-world workloads; however, the underlying data is not publicly available.
 
-One publicly available dataset that offers this is SchemaPile~\cite{dohmen_schemapile_2024}, which is a collection of database schemas extracted from DDL and DML statements found in SQL files across public code repositories.
-However, as SchemaPile only contains data from SQL table dumps instead of database files or csv/parquet files.
+One publicly available dataset that offers over 200k schemas is SchemaPile~\cite{dohmen_schemapile_2024}, a collection
+of database schemas extracted from DDL and DML statements found in SQL files across public code repositories.
+However, as this dataset only contains the schema information together with data retrieved from insert statements.
 This leads to a table only containing 27.6 values on average.
-Since SchemaPile only provides schema and table information but no \texttt{SELECT} statements, we revisited the corresponding repositories to scrape such statements.
-This process and resulting dataset characteristics are described in \cref{subsec:sqlpile-dataset}.
+In addition, SchemaPile only provides schema and table information and limit data in the tables, but no \texttt{SELECT} statements.
 
-To complement the data with information on larger tables, we additionally analyzed data found publicly on kaggle.
-These datasets are mostly designed for analytical workloads and contain both the data and the schema; however, they rarely include queries.
-More information on this can be found in \cref{subsec:kaggle-datasets}.
+One other source of publicly available generated datasets is the TPC benchmark suite.
+Combining the SELECT statements from TPC-H and TPC-DS leads to a total of 22 + 99 = 121 queries on 8 + 24 = 32 tables, which is too small for a comprehensive analysis.
+One additional point of criticism that we already anticipate here but will discuss later is that the text from the columns is very unrealistic.
+For example, the \texttt{customer.c\_name} has the format \texttt{Customer\#0000000X}, while the \texttt{customer.c\_address} contains random strings of characters.
+Therefore, we cannot use these datasets as our baseline for analyzing string properties.
+On the contrary, we will compare our findings against these benchmarks later in the paper to recommend improvements for future benchmark designs.
 
-Additionally, we analyzed the data and queries from both TPC-H, TPC-DS, and SQLStorm to identify further string usage patterns and to compare these benchmarks against the other datasets.
+Another benchmark available on real-world data is the Join Order Benchmark~\cite{leis_how_2015}, which uses the IMDB dataset.
+This benchmark features 113 queries on 21 tables, not enough for a comprehensive analysis.
+
+A recent benchmark published is SQLStorm~\cite{schmidt_sqlstorm_2025}.
+SQLStorm v1.0 features over 18 K \ac{LLM}-generated queries on the Stack Overflow dataset, 11 K queries on the IMDB dataset, 17 K queries on TPC-H, and 15 K queries on TPC-DS, totalizing to over 61 K queries on four different datasets.
+While this benchmark is great for analyzing a lot of different query patterns, for our use case the number of different datasets is too small.
+For DBPile, we included SQLStorm as a reference dataset to compare the characteristics of string columns and their usage patterns against the other datasets.
+
+In addition, there are publicly available datasets used for ML and AI applications on platforms like Kaggle and HuggingFace.
+Kaggle, in particular, features many datasets as a single denormalized table, with 4k stored as parquet and 251k stored as CSV. In addition,
+there are 379 not denormalized datasets available as SQLite databases and 84 as BigQuery datasets.
+HuggingFace features over 300k datasets stored as parquet.
+The problem with these datasets is that they usually do not come with queries and that they are normalized, meaning that
+they usually contain only a single (wide) table.
+
+In order to create a dataset that meets our requirements, we decided to combine multiple data sources.
+First, we extended the SchemaPile dataset by rescraping the original repositories to extract all SQL statements, including \texttt{SELECT} statements, as
+outlined in \cref{subsec:sqlpile-dataset}.
+This way, we have schemas and queries; however, the tables are still sparsely populated.
+Because of this we also add datasets from Kaggle and HuggingFace, as outlined in \cref{subsec:kaggle-datasets}.
+We aim to use the first to analyze the usage of string columns in queries, while we use the latter to analyze the properties of string columns in populated tables.
+As refrence datasets, we also include TPC-H, TPC-DS, and SQLStorm in DBPile to compare our findings against well-known benchmarks.
+
+Using this combination of dataset, we created a taxonomy of variable-length text columns in \cref{sec:semantic-type}
+and analyzed their properties in \cref{sec:string-properties}, storage characteristics in \cref{sec:storage},
+and query processing patterns in \cref{sec:query-processing}.
+
+\subsection{Dataset Schema}\label{subsec:data-collection-pipeline}
+
+
 
 \subsection{SQLPile Dataset}\label{subsec:sqlpile-dataset}
 \input{content/gen/sec_dataset_sqlpile_description}
