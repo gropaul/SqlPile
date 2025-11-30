@@ -34,8 +34,8 @@ class DataRowJson(TypedDict):
     values: List[str]
 
 
-def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: str | None,
-                      filter_semantic_type: str | None) -> List[DataRow]:
+def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: Optional[str],
+                      filter_semantic_type: Optional[str]) -> List[DataRow]:
     """
     Retrieve column data from the database and organize it into batches.
 
@@ -304,6 +304,12 @@ MODEL: Models = 'qwen3:8b'
 
 
 def clear_columns():
+
+    # wait for user confirmation
+    user_input = input("Are you sure you want to clear the semantic type columns in the database? This action cannot be undone. (yes/no): ")
+    if user_input.lower() != 'yes':
+        print("Operation cancelled by user.")
+        return
     con = duckdb.connect(DATABASE_PATH)
     con.execute("ALTER TABLE columns DROP COLUMN IF EXISTS semantic_type_llm;")
     con.execute("ALTER TABLE columns DROP COLUMN IF EXISTS semantic_type_llm_subtype;")
@@ -352,7 +358,7 @@ def run_semantic_type_analysis(output_file: str, config: SemanticTypeRunConfig):
 
 
 if __name__ == "__main__":
-
+    # clear_columns()
     output_file = "semantic_types_sqlpile.csv"
     # run_semantic_type_analysis(output_file, BASE_CONFIG)
 

@@ -11,7 +11,7 @@ import kagglehub
 from tqdm import tqdm
 
 from src.data_analysis.storage.huggingface.download_data import format_bytes
-from src.data_analysis.storage.kaggle.kaggle_unify_schema import unify_kaggle_table_schema
+from src.data_analysis.storage.kaggle_unify_schema import unify_schema
 import duckdb
 from src.sql_analysis.utils.names import clean_name
 
@@ -141,7 +141,7 @@ def download_dataset(
             log_error(datasets_con, handle, file, error_message)
 
     try:
-        unify_kaggle_table_schema(schema_name)
+        unify_schema(schema_name)
     except Exception as e:
         print(f"Error unifying schema for {schema_name}: {e}")
 
@@ -190,7 +190,7 @@ def download_datasets(reset_errors: bool = False):
             FROM kaggle_dataset_files
             WHERE 
                 lower(split(parse_filename(file_name, false), '.')[-1]) IN ('parquet', 'csv', 'sqlite') 
-                AND total_bytes < {gb_to_bytes(MAX_GB_TO_DOWNLOAD_PER_REPO)}  -- less than max per repo
+                -- AND total_bytes < {gb_to_bytes(MAX_GB_TO_DOWNLOAD_PER_REPO)}  -- less than max per repo
                 AND total_bytes > 0  -- more than 0 bytes
             GROUP BY dataset_ref, stem
         ),

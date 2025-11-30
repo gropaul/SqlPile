@@ -1,5 +1,7 @@
 import os
 
+import pandas as pd
+
 from src.config import get_con, LATEX_ASSETS_DIR
 
 MAX_CHARS = 200
@@ -11,14 +13,10 @@ def semantic_type_percentages():
 
     con = get_con(read_only=True)
 
-    columns = [
-        "TPC-H", "TPC-DS", "IMDB", "StackOverflow", "kaggle", "SqlPile"
-    ]
-
     df = con.sql(f"""
             WITH aggregates AS (
                 SELECT
-                    get_repo_group(repos.repo_url) as repo_group,
+                    get_group(repos.repo_url) as repo_group,
                     semantic_type_llm,
                     semantic_type_llm_subtype,
                     COUNT(*) as type_count
@@ -32,14 +30,14 @@ def semantic_type_percentages():
                 GROUP BY ALL 
                 UNION ALL
                 SELECT
-                    get_repo_group(repos.repo_url) as repo_group,
-                    'Other' as semantic_type_llm,
+                    get_group(repos.repo_url) as repo_group,
+                    semantic_type_llm,
                     'N/A'   as semantic_type_llm_subtype,
                     COUNT(*) as type_count
                 FROM columns
                 JOIN tables ON tables.id = columns.table_id
                 JOIN repos ON repos.id = tables.repo_id
-                WHERE repo_group != 'Excluded' AND  semantic_type_llm = 'Other'
+                WHERE repo_group != 'Excluded' AND  semantic_type_llm IN ('Other' , 'Test')
                 GROUP BY repo_group, semantic_type_llm
             ), 
             totals AS (
@@ -54,7 +52,7 @@ def semantic_type_percentages():
                     a.repo_group,
                     a.semantic_type_llm,
                     a.semantic_type_llm_subtype,
-                    ROUND(100.0 * a.type_count / t.total_count, 2) as type_percentage,
+                    ROUND(100.0 * a.type_count / t.total_count, 1) as type_percentage,
                 FROM aggregates a
                 JOIN totals t ON a.repo_group = t.repo_group
             ),
@@ -65,8 +63,7 @@ def semantic_type_percentages():
             )
             SELECT
                 *
-            FROM pivoted
-            ORDER BY pivoted.semantic_type_llm, pivoted.SqlPile DESC          
+            FROM pivoted   
         """).df()
 
     # rename semantic_type_llm to Semantic Type and semantic_type_llm_subtype to Subtype
@@ -75,12 +72,60 @@ def semantic_type_percentages():
         "semantic_type_llm_subtype": "Subtype"
     })
 
-    df["Examples"] = ''
-
     # add one example column, that is empty for now
     # order the columns:
-    df = df[["Semantic Type", "Subtype", "Examples", "TPC-H", "TPC-DS", "IMDB", "SO", "Kaggle", "SqlPile"]]
+
+    datasets = ["TPC-H", "TPC-DS", "IMDB", "Stack Overflow", "Kaggle", "HuggingFace", "DBPile"]
+    columns = ["Semantic Type", "Subtype"] + datasets
+    # check if all columns exist
+    for col in columns:
+        if col not in df.columns:
+            df[col] = None
+            print(f"Warning: Column {col} not found in dataframe, adding it with None values.")
+            print(f"Warning: Column {col} not found in dataframe, adding it with None values.")
+            print(f"Warning: Column {col} not found in dataframe, adding it with None values.")
+    df = df[columns]
+
     path = os.path.join(LATEX_ASSETS_DIR, "semantic_type_percentages.tex")
+
+    # add one column that has the average percentage across all datasets
+    # replace all NaN with 0 for the purpose of averaging
+    df[datasets] = df[datasets].fillna(0)
+    df["Average"] = df[datasets].mean(axis=1)
+
+    datasets = datasets + ["Average"]
+
+    unique_types = df["Semantic Type"].unique()
+    original_df = df.copy()  # so we don't sum over rows we add later
+    rows_to_add = []
+
+    for semantic_type in unique_types:
+        type_rows = original_df[original_df["Semantic Type"] == semantic_type]
+        if len(type_rows) > 1:
+            # start from the first row as a template
+            sum_row = type_rows.iloc[0].copy()
+            sum_row["Subtype"] = "All"
+            for col in datasets:
+                sum_row[col] = type_rows[col].sum()
+            rows_to_add.append(sum_row)
+
+
+    # add all "All" rows at once
+    df = pd.concat([df, pd.DataFrame(rows_to_add)], ignore_index=True)
+
+    df = df.sort_values(by=["Semantic Type", "DBPile"], ascending=[True, False])
+
+    # format all the datasets columns as percentages with 1 decimal place
+    for col in datasets:
+        df[col] = df[col].apply(lambda x: str(round(x, 1)) + '\%' if( pd.notnull(x) and pd.notna(x)  and x is not None and x != 0) else '-')
+
+
+    # for all columns where there is not an 'All' or 'N/A', make the type empty
+    def format_subtype(row):
+        if row["Subtype"] not in ["All", "N/A"]:
+            return ""
+        return row["Semantic Type"]
+    df["Semantic Type"] = df.apply(format_subtype, axis=1)
     # save this as a latex table
     with open(path, "w") as f:
         f.write(df.to_latex(index=False, float_format="%.2f", na_rep="-"))

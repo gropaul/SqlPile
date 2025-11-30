@@ -6,15 +6,15 @@
 \toprule
 \textbf{Operator} & \textbf{SqlPile} & \textbf{SQLStorm} & \textbf{TPC-[H, DS]} \\
 \midrule
-Projection & 1.264 & 3.613 & 4.000 \\
-Scan & 0.750 & 4.171 & 4.050 \\
-Filtered Scan & 0.386 & 1.200 & 3.142 \\
-Join & 0.253 & 4.473 & 6.042 \\
-Filter & 0.240 & 0.883 & 1.233 \\
-Order By & 0.124 & 1.015 & 0.892 \\
-Ungrouped Aggregate & 0.105 & 0.293 & 0.717 \\
-Grouped Aggregate & 0.071 & 1.540 & 1.542 \\
-Window Function & 0.004 & 0.581 & 0.175 \\
+Projection & 1.278 & 3.659 & 4.025 \\
+Scan & 0.742 & 4.478 & 4.142 \\
+Filtered Scan & 0.391 & 1.448 & 3.317 \\
+Filter & 0.247 & 0.941 & 1.308 \\
+Join & 0.210 & 4.916 & 6.158 \\
+Order By & 0.116 & 1.015 & 0.892 \\
+Ungrouped Aggregate & 0.105 & 0.310 & 0.733 \\
+Grouped Aggregate & 0.066 & 1.590 & 1.550 \\
+Window Function & 0.005 & 0.585 & 0.175 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -26,17 +26,16 @@ This comes from the fact that a lot of the queries in SqlPile are simple \texttt
 while the TPC benchmarks resemble an analytical workload with complex joins and aggregations.
 
 \begin{table}
-\caption{Most common logical column types of the tables in SqlPile. Fir SqlPile, the most columns are of type \texttt{Text} while for TPC-[H, DS] benchmarks, the most common type is \texttt{Integer}.}
+\caption{Most common logical column types in DBPile, IMDB, Stackoverflow (SO), TPC-[H, DS], Kaggle and HuggingFace (HF). For DBPile, the most columns are of type \texttt{Text} while for TPC-[H, DS] benchmarks, the most common type is \texttt{Integer}. Kaggle and HuggingFace feature a lot of float columns, coming from wide ML feature tables.}
 \label{tab:column-types}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Logical Type} & \textbf{SqlPile} & \textbf{SQLStorm} & \textbf{TPC-[H, DS]} \\
+\textbf{Type} & \textbf{DBPile} & \textbf{Kaggle} & \textbf{HF} & \textbf{IMDB} & \textbf{SO} & \textbf{TPC} \\
 \midrule
-Text & 42.50\% & 36.56\% & 35.80\% \\
-Int & 40.73\% & 45.96\% & 42.80\% \\
-DateTime & 8.64\% & 3.96\% & 3.09\% \\
-Float & 3.45\% & 13.07\% & 18.31\% \\
-OTHER & 2.48\% & NaN & NaN \\
+Text & 43\% & 59\% & 17\% & 45\% & 30\% & 36\% \\
+Int & 40\% & 20\% & 48\% & 55\% & 53\% & 43\% \\
+DateTime & 9\% & 2\% & NaN & NaN & 14\% & 3\% \\
+Float & 3\% & 19\% & 32\% & NaN & NaN & 18\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -49,6 +48,6 @@ similar to findings in Redset~\cite{van_renen_why_2024} and the Public BI~\cite{
   \centering
   \includegraphics[width=\linewidth]{assets/column_usage/physical_type/column_cnt.pdf}
   \caption{Distribution of physical column types in SqlPile.}
-  \Description{Distribution of physical column types in SqlPile.}
-    \label{fig:column-physical-type-usage}
+  \Description{fig:column-physical-type-usage}
+  \label{fig:column-physical-type-usage}
 \end{figure}

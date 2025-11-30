@@ -46,6 +46,23 @@ def generate_storage_analysis():
         f.write(description)
 
 
+def compression_per_semantic_type():
+    con = get_con(read_only=True)
+    df = con.sql("""
+        WITH best_algo_per_column AS (
+          SELECT column_id, first(algorithm ORDER BY compressed_size) as best_algo, MIN(uncompressed_size) /  MIN(compressed_size) as compression_rate
+          FROM "columns_compression_results"
+          GROUP BY column_id
+        ) 
+        SELECT semantic_type_llm, best_algo, COUNT(*), list(compression_rate)
+        FROM best_algo_per_column
+        JOIN columns ON columns.id = best_algo_per_column.column_id
+        GROUP BY ALL
+        ORDER BY ALL
+    """).fetchdf()
+    print(df)
+
+
 if __name__ == "__main__":
     generate_storage_analysis()
 

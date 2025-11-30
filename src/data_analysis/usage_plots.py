@@ -422,7 +422,7 @@ def column_semantic_type_syntactic_usage_plot(con: duckdb.DuckDBPyConnection):
     # create_stacked_bar_plot(all_results, 'repo_cnt', dir)
 
 
-print('Warning: Semistructured, Boolean and Numeric, Semistructured, Url are transformed to Other. Mention this in the text!')
+print('Warning: Structured, Boolean and Numeric, Structured, Url are transformed to Other. Mention this in the text!')
 
 
 def column_semantic_type_llm_usage_plot(con: duckdb.DuckDBPyConnection, output_dir: str = PLOTS_DIR):

@@ -1,11 +1,12 @@
 
-In order to analyze the string usage in the scraped repositories, we tried first create and populate the tables featured in the 
-repository to then execute the select queries. We decided to use DuckDB~\cite{raasveldt_duckdb_2019} as the database system, as it is fast 
-and easy to use locally.
+In order to analyze the string usage in the scraped repositories, we first create and populate the tables featured in the
+repository to then execute the select queries.
+We decided to use DuckDB~\cite{raasveldt_duckdb_2019} as the database system, as it is fast
+and easy to set up locally.
 
-In total we retrieved 36,991,829 queries from 27,389 repositories, 
-with 752,655 \texttt{SELECT}. By parsing the \texttt{CREATE} SQL statements, we could extract 
-701,382 distinct tables with 4,794,784 columns. In order to execute the queries 
+In total, we retrieved 36,991,829 queries from 27,389 repositories,
+with 752,655 \texttt{SELECT}. By parsing the \texttt{CREATE} SQL statements, we could extract
+701,382 distinct tables with 4,794,784 columns. In order to execute the queries
 later in DuckDB, we unified the system specific column types into abstract types like \texttt{INTEGER}, \texttt{FLOAT}, 
 \texttt{TEXT} or \texttt{DATETIME} to then later map them to the DuckDB types. 
 

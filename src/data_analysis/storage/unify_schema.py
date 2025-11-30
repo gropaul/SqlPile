@@ -2,11 +2,10 @@ from typing import List
 
 from tqdm import tqdm
 
-from src.config import KAGGLE_DATA_DB_PATH
 import duckdb
 
+from src.config import KAGGLE_DATA_DB_PATH, HUGGINFACE_DATA_DB_PATH
 
-# many kaggle datasets have multiple parquet/csv files that belong to the same table. We need to unify them into a single table.
 
 class ColumnDefinition:
     name: str
@@ -41,6 +40,7 @@ class TableDefinition:
 
     def is_duplicate_of(self, other_table: 'TableDefinition') -> bool:
         if len(self.columns) != len(other_table.columns):
+            # print(f"Table {self.name} is not duplicate of {other_table.name}: different number of columns")
             return False
         # order the columns by position
         self_columns_sorted = sorted(self.columns, key=lambda c: c.position)
@@ -48,6 +48,7 @@ class TableDefinition:
 
         for col1, col2 in zip(self_columns_sorted, other_columns_sorted):
             if col1.data_type != col2.data_type:
+                # print(f"Table {self.name} is not duplicate of {other_table.name}: different data types in columns {col1.name} and {col2.name}")
                 return False
 
         # the name of all columns must be similar
@@ -57,6 +58,7 @@ class TableDefinition:
             name2_set = set(col2.name)
             common_chars = name1_set.intersection(name2_set)
             if len(common_chars) < min(len(name1_set), len(name2_set)) / 2:
+                # print(f"Table {self.name} is not duplicate of {other_table.name}: different column names in columns {col1.name} and {col2.name}")
                 return False
 
         return True
@@ -117,8 +119,8 @@ class SchemaDefinition:
         return string
 
 
-def unify_kaggle_table_schema(schema_name: str = None):
-    data_con = duckdb.connect(KAGGLE_DATA_DB_PATH)
+def unify_schema(database_path: str, schema_name: str = None):
+    data_con = duckdb.connect(database_path)
 
     where_filter = "" if schema_name is None else f" WHERE table_schema = '{schema_name}' "
 
@@ -135,9 +137,11 @@ def unify_kaggle_table_schema(schema_name: str = None):
 
     tables = data_con.execute(query).fetchall()
 
+    print(f"Found {len(tables)} schemas to process for unification.")
+
     n_unified_tables = 0
 
-    with tqdm(total=len(tables), desc="Unifying Kaggle table schemas") as pbar:
+    with tqdm(total=len(tables), desc="Unifying database table schemas") as pbar:
         for table_schema, tables_in_schema in tables:
             schema_def = SchemaDefinition(table_schema, tables_in_schema)
             schema_def.find_unification()
@@ -149,4 +153,5 @@ def unify_kaggle_table_schema(schema_name: str = None):
 
 
 if __name__ == "__main__":
-    unify_kaggle_table_schema()
+    unify_schema(KAGGLE_DATA_DB_PATH)
+    unify_schema(HUGGINFACE_DATA_DB_PATH)

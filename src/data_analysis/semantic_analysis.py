@@ -35,6 +35,7 @@ def main():
         textprops={'fontsize': 18}
     )
     plt.title(r"\textbf{Distribution of Semantic Types}")
+
     plt.ylabel("")  # Remove the y-label for clarity
     plt.tight_layout()
     plt.savefig("/Users/paul/workspace/SqlPile/src/data_analysis/semantic_type_distribution.png", dpi=300)

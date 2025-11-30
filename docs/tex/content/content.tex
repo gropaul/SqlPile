@@ -1,6 +1,5 @@
 \section{Introduction}
-\label{sec:introduction}
-Recent studies show that variable-length text types are among the most commonly used column data types in \acp{DBMS}.
+\label{sec:iassets/dbpile_schemaies show that variable-length text types are among the most commonly used column data types in \acp{DBMS}.
 For example, van Renen et al~\cite{van_renen_why_2024} showed that 52.1\% of all columns in the
 Amazon Redshift are of this type.
 But already in 2018, Vogelsgesang et al.~\cite{vogelsgesang_get_2018} showed with their analysis of Public Tableau
@@ -24,7 +23,7 @@ in execution and compression.
 We argue that, to adequately address the heterogeneity of the data these columns can represent, it is necessary to
 classify strings according to their semantic type.
 Doing this, we create a \textit{taxonomy of variable-length text columns} by using \acp{LLM} to categorize string
-columns as Numeric, Categorical, FullText, Identifier, Entity, or Semistructured.
+columns as Numeric, Categorical, FullText, Identifier, Entity, or Structured.
 We show that which each of these classes we can see distinct physical characteristics
 (length, character distribution) and usage patterns in query execution that can be exploited for efficient storage and
 query processing.
@@ -93,13 +92,32 @@ Using this combination of dataset, we created a taxonomy of variable-length text
 and analyzed their properties in \cref{sec:string-properties}, storage characteristics in \cref{sec:storage},
 and query processing patterns in \cref{sec:query-processing}.
 
-\subsection{Dataset Schema}\label{subsec:data-collection-pipeline}
+\subsection{Dataset Content and Schema}\label{subsec:data-collection-pipeline}
+
+An abstracted overview of the DBPile schema is shown in \cref{fig:figure}.
+The basic building blocks of the dataset are \texttt{Repositories}, for which we store the queries contained in them.
+For repositories coming from SchemaPile, we scrape all code files as explained in \cref{subsec:sqlpile-dataset}.
+For benchmark datasets like TPC-H, TPC-DS, and SQLStorm, we retrieve the queries from their repositories.
+The DDL and DML statements are then parsed to extract the \texttt{Tables} and \texttt{Columns} contained in them.
+To analyze one repository, we first create the database schema by creating all tables and populating them with the data.
+Then we execute all \texttt{SELECT} statements found in the repository and store their \texttt{QueryPlans} and
+\texttt{QueryResults}.
+After populating the tables, we determine the semantic type of all variable-length text columns
+as described in \cref{sec:semantic-type}.
+For all columns of all tables, we also store 5000 sampled \texttt{Values} and analyze their
+Properties based on up to 122.880 sampled values per column.
+Finally, we also store the results of compressing the column in blocks of 122.880 values with different compression algorithms.
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{assets/dbpile_schema}
+  \caption{Distribution of physical column types in SqlPile.}
+  \Description{Distribution of physical column types in SqlPile.}\label{fig:figure}
+\end{figure}
 
 
-
-\subsection{SQLPile Dataset}\label{subsec:sqlpile-dataset}
+\subsection{Extending SchemaPile to DBPile}
+\label{subsec:sqlpile-dataset}
 \input{content/gen/sec_dataset_sqlpile_description}
-
 To compare the usage and properties of string columns to well-known benchmarks, we also performed the same analysis on
 on the queries and dataset of TPC-H, TPC-DS.
 We also included the recently published SQLStorm benchmark~\cite{schmidt_sqlstorm_2025}, which features over 18 K \ac{LLM}-generate queries on
@@ -108,12 +126,8 @@ These datasets include TPC-H and TPC-DS in addition to two real-world datasets: 
 used by the Join Order Benchmark~\cite{leis_how_2015}, and the Stack Overflow dataset,
 which is also used in other benchmarks~\cite{han_cardinality_2021, marcus_bao_2021}.
 
-\subsection{Kaggle Dataset}\label{subsec:kaggle-datasets}
-
-\begin{itemize}
-    \item How many datasets, tables, rows, columns
-    \item Problem: Many floats, not that many strings
-\end{itemize}
+\subsection{Adding Kaggle and Huggingface}\label{subsec:kaggle-datasets}
+\input{content/gen/sec_dataset_kaggle_description}
 
 
 \section{A taxonomy of String Columns}\label{sec:semantic-type}

@@ -22,11 +22,12 @@ class SemanticType:
 SemanticTypeColumnName = Literal['semantic_type_llm', 'semantic_type_llm_subtype']
 
 class SemanticTypeRunConfig:
-    def __init__(self, semantic_types: List[SemanticType], target_column: SemanticTypeColumnName, filter_semantic_type: Optional[str]):
+    def __init__(self, semantic_types: List[SemanticType], target_column: SemanticTypeColumnName, filter_semantic_type: Optional[str], allow_other: bool = True):
         self.semantic_types = semantic_types
         self.target_column = target_column
         self.filter_semantic_type = filter_semantic_type
-        self.semantic_types.append(SemanticType("Other", "when none of the other types fit, only use this as a last resort"))
+        if allow_other:
+            self.semantic_types.append(SemanticType("Other", "when none of the other types fit"))
 
     def __repr__(self):
         return f"SemanticTypeRunConfig(semantic_types={self.semantic_types}, filter_null_column={self.target_column}, filter_semantic_type={self.filter_semantic_type})"
@@ -57,7 +58,8 @@ ID_SEMANTIC_TYPES = [
 ID_CONFIG = SemanticTypeRunConfig(
     semantic_types=ID_SEMANTIC_TYPES,
     target_column="semantic_type_llm_subtype",
-    filter_semantic_type="Identifier"
+    filter_semantic_type="Identifier",
+    allow_other=False
 )
 
 # subtypes of Numeric
@@ -75,7 +77,6 @@ NUMERIC_CONFIG = SemanticTypeRunConfig(
 # subtypes of Category
 CATEGORY_SEMANTIC_TYPES = [
     SemanticType("Boolean", "binary yes/no or true/false indicators such as is_active or has_value"),
-    SemanticType("Category", "discrete labels or types such as status, role, or type"),
 ]
 
 CATEGORY_CONFIG = SemanticTypeRunConfig(
@@ -94,7 +95,8 @@ FULLTEXT_SEMANTIC_TYPES = [
 FULLTEXT_CONFIG = SemanticTypeRunConfig(
     semantic_types=FULLTEXT_SEMANTIC_TYPES,
     target_column="semantic_type_llm_subtype",
-    filter_semantic_type="FullText"
+    filter_semantic_type="FullText",
+    allow_other=False
 )
 
 
@@ -112,17 +114,17 @@ ENTITY_CONFIG = SemanticTypeRunConfig(
 )
 
 
-# subtypes of Semistructured
-SEMISTRUCTURED_SEMANTIC_TYPES = [
+# subtypes of Structured
+Structured_SEMANTIC_TYPES = [
     SemanticType("JSON", "JSON-like structured data"),
     SemanticType("CSV", "comma- or delimiter-separated text values"),
     SemanticType("List", "simple lists such as 'a,b,c' or '[1,2,3]'"),
 ]
 
-SEMISTRUCTURED_CONFIG = SemanticTypeRunConfig(
-    semantic_types=SEMISTRUCTURED_SEMANTIC_TYPES,
+STRUCTURED_CONFIG = SemanticTypeRunConfig(
+    semantic_types=Structured_SEMANTIC_TYPES,
     target_column="semantic_type_llm_subtype",
-    filter_semantic_type="Semistructured"
+    filter_semantic_type="Structured"
 )
 
 SUB_CONFIGS = [
@@ -131,7 +133,7 @@ SUB_CONFIGS = [
     CATEGORY_CONFIG,
     FULLTEXT_CONFIG,
     ENTITY_CONFIG,
-    SEMISTRUCTURED_CONFIG,
+    STRUCTURED_CONFIG,
 ]
 
 

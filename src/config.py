@@ -167,6 +167,8 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Opt
     def get_group(repo_url: str) -> str:
         if "3rd-party-kaggle" in repo_url:
             return "Kaggle"
+        elif "3rd-party-huggingface" in repo_url:
+            return "HuggingFace"
         elif "3rd-party-sql-storm-tpc-h" in repo_url:
             return "TPC-H"
         elif "3rd-party-sql-storm-tpc-ds" in repo_url:
@@ -174,10 +176,10 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Opt
         elif "3rd-party-sql-storm-imdb" in repo_url:
             return "IMDB"
         elif "3rd-party-sql-storm-stackoverflow" in repo_url:
-            return "SO"
+            return "Stack Overflow"
         else:
             if not '3rd-party' in repo_url:
-                return "SqlPile"
+                return "DBPile"
             else:
                 return "Excluded"
 
@@ -187,7 +189,7 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Opt
         """Format a number as a percentage with two decimal places."""
         if value is None:
             return "NULL"
-        return f"{value * 100:.2f}%"
+        return f"{round(value * 100)}%"
 
     # Register the custom function to format numbers as percentages
     con.create_function("as_percentage", format_number_as_percentage, [float], str, type="native")

@@ -38,7 +38,7 @@
   \label{img:string_properties_dups:structured_duplicates}
 \end{subfigure}
   \label{img:string_properties_dups}
-  \caption{Duplicate value rates per semantic types for all columns excluding TPC-[H/DS] datasets.}
+  \caption{Duplicates per row group (122,880 values) per semantic types for all columns excluding TPC-[H/DS] datasets. Only strings that are not null or empty are considered.}
 \end{figure*}
 \begin{figure}
   \centering
@@ -58,38 +58,26 @@
   \caption{Duplicate value rates for TPC-[H/DS] datasets vs. all other datasets.}
 \end{figure}
 
-\begin{figure*}
+\begin{figure}
   \centering
-\begin{subfigure}{0.19\linewidth}
+\begin{subfigure}{0.3167\linewidth}
    \centering
   \includegraphics[width=\linewidth]{assets/string_stats/avg_length.pdf}
   \caption{Avg. length}
   \label{img:string_properties:avg_length}
 \end{subfigure}
-\begin{subfigure}{0.19\linewidth}
+\begin{subfigure}{0.3167\linewidth}
    \centering
   \includegraphics[width=\linewidth]{assets/string_stats/stddev_length.pdf}
   \caption{Std. dev. length}
   \label{img:string_properties:stddev_length}
 \end{subfigure}
-\begin{subfigure}{0.19\linewidth}
-   \centering
-  \includegraphics[width=\linewidth]{assets/string_stats/count_filtered.pdf}
-  \caption{Distinct chars (filtered*)}
-  \label{img:string_properties:count_filtered}
-\end{subfigure}
-\begin{subfigure}{0.19\linewidth}
-   \centering
-  \includegraphics[width=\linewidth]{assets/string_stats/count_unfiltered.pdf}
-  \caption{Distinct chars}
-  \label{img:string_properties:count_unfiltered}
-\end{subfigure}
-\begin{subfigure}{0.19\linewidth}
+\begin{subfigure}{0.3167\linewidth}
    \centering
   \includegraphics[width=\linewidth]{assets/string_stats/empty_or_null_rate.pdf}
   \caption{Null or empty \%}
   \label{img:string_properties:empty_or_null_rate}
 \end{subfigure}
   \label{img:string_properties}
-  \caption{String properties per semantic type. The filtered distinct chars only counts the number of chars that make up 99\% of all chars.}
-\end{figure*}
+  \caption{String properties per semantic type for columns with at least 10,000 rows (n=1039). The filtered distinct chars only counts the number of chars that make up 99\% of all chars.}
+\end{figure}

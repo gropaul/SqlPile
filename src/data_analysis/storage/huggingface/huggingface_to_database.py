@@ -16,7 +16,6 @@ def save_huggingface_in_database():
         source_db_path=HUGGINFACE_DATA_DB_PATH,
         source_db_alias='huggingface_data',
         repo_prefix='huggingface',
-        clean_name_fn=clean_name
     )
 
     adapter.connect()
@@ -32,7 +31,6 @@ def delete_huggingface_repos():
         source_db_path=HUGGINFACE_DATA_DB_PATH,
         source_db_alias='huggingface_data',
         repo_prefix='huggingface',
-        clean_name_fn=clean_name
     )
 
     adapter.connect()

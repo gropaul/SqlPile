@@ -1,5 +1,4 @@
 from src.config import KAGGLE_DATA_DB_PATH
-from src.data_analysis.storage.kaggle.kaggle_download import clean_name
 from src.data_analysis.storage.dataset_adapter import DatasetAdapter
 
 
@@ -16,7 +15,6 @@ def save_kaggle_in_database():
         source_db_path=KAGGLE_DATA_DB_PATH,
         source_db_alias='kaggle_data',
         repo_prefix='kaggle',
-        clean_name_fn=clean_name
     )
 
     adapter.connect()
@@ -32,7 +30,6 @@ def delte_kaggle_repos():
         source_db_path=KAGGLE_DATA_DB_PATH,
         source_db_alias='kaggle_data',
         repo_prefix='kaggle',
-        clean_name_fn=clean_name
     )
 
     adapter.connect()

@@ -35,8 +35,13 @@ def generate_logical_analysis():
         con,
         output_format='latex',
         label='tab:column-types',
-        caption='Most common logical column types of the tables in SqlPile. Fir SqlPile, the most columns are of type `Text` while for TPC-[H, DS] benchmarks, the most common type is `Integer`.'
+        caption='Most common logical column types in DBPile, IMDB, Stackoverflow (SO), TPC-[H, DS], '
+                'Kaggle and HuggingFace (HF). For DBPile, the most columns are of type `Text` while '
+                'for TPC-[H, DS] benchmarks, the most common type is `Integer`. Kaggle and HuggingFace '
+                'feature a lot of float columns, coming from wide ML feature tables.'
     )
+
+    print(column_type_tbl)
 
     column_physical_type_usage_plot(con, output_dir=LATEX_ASSETS_DIR)
     figure_column_physical_type_usage = get_figure(

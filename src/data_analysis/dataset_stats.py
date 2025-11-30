@@ -4,7 +4,7 @@ from typing import Literal
 import duckdb
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
+# import seaborn as sns
 
 from src.config import PLOTS_DIR, DATABASE_PATH, get_con
 
@@ -113,16 +113,37 @@ def test_get_operator_table():
     con = get_con(read_only=True)
     print(get_operator_table(con, 'latex'))  # type: ignore
 
+
+def get_repo_group(repo_url):
+    if '3rd-party-kaggle' in repo_url:
+        return 'Kaggle'
+    elif '3rd-party-huggingface' in repo_url:
+        return 'HF'
+    elif '3rd-party-sql-storm-imdb' in repo_url:
+        return 'IMDB'
+    elif '3rd-party-sql-storm-stackoverflow' in repo_url:
+        return 'SO'
+    elif '3rd-party-sql-storm-tp' in repo_url:
+        return 'TPC'
+
+    if not '3rd-party' in repo_url:
+        return 'DBPile'
+
+    return 'Other'
+
+
 def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputFormat = 'markdown',
                           label: str = 'tab-number-of-operators',
                           caption: str = 'Distribution of Operator Types in Queries') -> str:
+    con.create_function("get_repo_group", get_repo_group, [str], str, type="native")
     query = """
             WITH column_counts AS (SELECT column_base_type,
-                                          get_repo_origin(repos.repo_url) as repo_origin,
-                                          COUNT(*)                        AS column_count
+                                          get_repo_group(repos.repo_url) AS repo_origin,
+                                          COUNT(*)                       AS column_count
                                    FROM columns
                                             JOIN TABLES ON columns.table_id = tables.id
                                             JOIN REPOS ON tables.repo_id = repos.id
+                                   WHERE repo_origin != 'Other'
                                    GROUP BY column_base_type, repo_origin),
                  columns_total_count AS (SELECT repo_origin, SUM(column_count) as total_count
                                          FROM column_counts
@@ -139,17 +160,18 @@ def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputF
                 PIVOT counts_aggregated
             ON repo_origin
                 USING MIN(column_count) as column_count, MIN(column_perc) as column_perc
-            ORDER BY SqlPile_column_perc
-            DESC
+            ORDER BY DBPile_column_perc DESC
                 )
-            SELECT column_base_type                 AS "Logical Type",
-                   as_percentage(SqlPile_column_perc) AS "SqlPile",
-                 as_percentage(SQLStorm_column_perc)  AS "SQLStorm",
-                   as_percentage(TPC_column_perc)  AS "TPC-[H, DS]",
+            SELECT column_base_type                 AS "Type",
+                   as_percentage(DBPile_column_perc) AS "DBPile",
+                   as_percentage(Kaggle_column_perc) AS "Kaggle",
+                   as_percentage(HF_column_perc) AS "HF",
+                   as_percentage(IMDB_column_perc) AS "IMDB",
+                   as_percentage(SO_column_perc) AS "SO",
+                   as_percentage(TPC_column_perc)  AS "TPC"
             FROM pivoted
+            WHERE column_base_type NOT IN ('Boolean', 'OTHER')
             """
-
-
 
     df = con.execute(query).df()
     table_operators = format_df(df, output_format, label, caption)
@@ -176,7 +198,7 @@ def create_queries_per_repo_plot(con: duckdb.DuckDBPyConnection) -> str:
 
     # Create the violin plot
     plt.figure(figsize=(10, 6))
-    sns.violinplot(y=df['query_count'])
+    # sns.violinplot(y=df['query_count'])
     plt.title('Distribution of Queries per Repository')
     plt.ylabel('Number of Queries')
     plt.tight_layout()
@@ -316,7 +338,7 @@ def get_usages_informations():
 
 
 if __name__ == "__main__":
-    con = get_con('/Users/paul/workspace/SqlPile/data/schemapile_tmp.duckdb')
+    con = get_con()
 
     tb_1, tb_2 = get_query_type_query(con)
     plot_path = create_queries_per_repo_plot(con)
