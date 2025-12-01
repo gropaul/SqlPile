@@ -95,13 +95,17 @@ def import_file(file_path: str, con: duckdb.DuckDBPyConnection, schema_name: str
         con.interrupt()
         print(f"Download timed out after {timeout_sec} seconds.")
 
-    timer = threading.Timer(timeout_sec, on_cancel)
-    timer.start()
+
 
     for import_data in imports:
-        import_data.import_to_duckdb(con, datasets_con)
+        timer = threading.Timer(timeout_sec, on_cancel)
+        timer.start()
+        try:
+            import_data.import_to_duckdb(con, datasets_con)
+        except Exception as e:
+            print(f"Error importing {file_path} into table {schema_name}.{import_data.table_name}: {e}")
+        timer.cancel()
     con.execute("DETACH DATABASE IF EXISTS sqlite_db")
-    timer.cancel()
     os.remove(file_path)
 
 
