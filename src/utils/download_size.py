@@ -5,6 +5,12 @@ from src.data_analysis.storage.huggingface.download_data import format_bytes
 
 
 def print_file_size(path: str) -> None:
+
+    # check if the file exists
+    if not os.path.exists(path):
+        print(f"File: {path} does not exist.")
+        return
+
     size_bytes = os.path.getsize(path)
     bytes_string = format_bytes(size_bytes)
     print(f"File: {path}, Size: {bytes_string}")

@@ -93,7 +93,7 @@ def import_file(file_path: str, con: duckdb.DuckDBPyConnection, schema_name: str
 
     def on_cancel():
         con.interrupt()
-        raise Exception(f"Download timed out after {timeout_sec} seconds.")
+        print(f"Download timed out after {timeout_sec} seconds.")
 
     timer = threading.Timer(timeout_sec, on_cancel)
     timer.start()
@@ -123,8 +123,7 @@ def download_dataset(
         file, table_name, size = file_dict['file'], file_dict['table_name'], file_dict['size']
         print(f"\tDownloading file {file} into table {schema_name}.{table_name}: {format_bytes(size)} bytes ({(i + 1)}/{len(files)})")
         try:
-
-            sleep(3)  # be nice to the kaggle servers
+            # sleep(3)  # be nice to the kaggle servers
             path = kagglehub.datasets.dataset_download(handle, file)
             import_file(path, data_con, schema_name, table_name, datasets_con)
 

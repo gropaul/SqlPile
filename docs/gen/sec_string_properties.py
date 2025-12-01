@@ -225,7 +225,7 @@ def generate_dups_plot(con, mode: Mode, skip_null_or_empty: bool = False, ):
 
 
             n_values = values_looked_at
-            top_3_percentage.append(percentage_sum_3)
+            top_3_percentage.append(percentage_sum_3 / min(3, n_values))
             top_10_percentage.append(percentage_sum_10 / min(10, n_values))
             top_100_percentage.append(percentage_sum_100 / min(100, n_values))
 
