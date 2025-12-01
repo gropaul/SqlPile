@@ -122,7 +122,6 @@ def create_compression_box_plot(con: duckdb.DuckDBPyConnection):
             f"{row['OnPair']:<10.1f} "
             f"{row['OnPairMini']:<12.1f} "
             f"{row['Total']:<10}"
-
         )
 
 
@@ -276,12 +275,7 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
 
     # con.execute("CALL start_ui()")
     query = f"""
-        WITH semantics AS (
-            SELECT *, unify_llm_type(semantic_type) AS semantic_type_llm 
-            FROM '/Users/paul/workspace/SqlPile/src/data_analysis/*.csv' -- both kaggle and sql pile
-            WHERE semantic_type_llm != 'Test'
-        ),
-        columns_with_size AS (
+        WITH columns_with_size AS (
             -- these are all the columns with a fixed size
             SELECT 
                 columns.id as id, tables.id as table_id, columns.column_type, {group_key}, 
@@ -289,7 +283,6 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
             FROM columns
             JOIN tables ON tables.id = columns.table_id
             JOIN table_values_count ON table_values_count.table_id = columns.table_id
-            LEFT JOIN semantics ON semantics.column_id = columns.id
             LEFT JOIN column_sizes ON column_sizes.column_id = columns.id
         ),
         storage_per_repo AS (
@@ -408,7 +401,6 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
         data[key_value_percentage].append((key_value_percentage, repo_origin, group, value_percentage))
         data[key_compressed].append((key_uncompressed, repo_origin, group, compressed_percentage))
         data[key_uncompressed].append((key_compressed, repo_origin, group, uncompressed_percentage))
-
 
     plot = create_stacked_bar_plot(data, group_key, output_dir, all_usage_times)
 

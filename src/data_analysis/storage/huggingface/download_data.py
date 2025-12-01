@@ -103,6 +103,7 @@ def download_parquet_file(url: str, local_dir: str, hf_token: str = "") -> Tuple
 
     except Exception as e:
         print(f"\tDownload failed: {e}")
+        return "", 0
 
 
 
@@ -169,45 +170,53 @@ def download_data(download_locally: bool = False):
             continue
 
         for (i, path) in enumerate(paths):
-            if rows_remaining <= 0:
-                break
+            try:
+                if rows_remaining <= 0:
+                    break
 
-            print(f"\tProcessing file: {path}, rows remaining: {rows_remaining}, bytes remaining: {format_bytes(bytes_remaining)}, total downloaded: {format_bytes(total_downloaded_bytes)}")
-            bytes_downloaded = 0
-            # Determine the path to use (local or remote)
-            if download_locally:
-                # Download the file locally first
-                local_path, bytes_downloaded = download_parquet_file(path, DOWNLOAD_DIR, hf_token)
-                parquet_path = local_path
-            else:
-                # Use the remote URL directly
-                parquet_path = path
+                print(f"\tProcessing file: {path}, rows remaining: {rows_remaining}, bytes remaining: {format_bytes(bytes_remaining)}, total downloaded: {format_bytes(total_downloaded_bytes)}")
+                bytes_downloaded = 0
+                # Determine the path to use (local or remote)
+                if download_locally:
+                    # Download the file locally first
+                    local_path, bytes_downloaded = download_parquet_file(path, DOWNLOAD_DIR, hf_token)
+                    if not local_path:
+                        print(f"\tFailed to download {path}, skipping.")
+                        continue
+                    parquet_path = local_path
+                else:
+                    # Use the remote URL directly
+                    parquet_path = path
 
-            if i == 0:
-                file_query = f"""
-                    CREATE TABLE "{schema_name}"."{table_name}" AS
-                    SELECT *
-                    FROM read_parquet('{parquet_path}')
-                    -- LIMIT {rows_remaining};
-                """
-            else :
-                file_query = f"""
-                    INSERT INTO "{schema_name}"."{table_name}"
-                    SELECT *
-                    FROM read_parquet('{parquet_path}')
-                    -- LIMIT {rows_remaining};
-                """
+                if i == 0:
+                    file_query = f"""
+                        CREATE TABLE "{schema_name}"."{table_name}" AS
+                        SELECT *
+                        FROM read_parquet('{parquet_path}')
+                        -- LIMIT {rows_remaining};
+                    """
+                else:
+                    file_query = f"""
+                        INSERT INTO "{schema_name}"."{table_name}"
+                        SELECT *
+                        FROM read_parquet('{parquet_path}')
+                        -- LIMIT {rows_remaining};
+                    """
 
-            execute_query_with_retries(data_con, file_query)
-            # get the number of rows inserted
-            rows_inserted = data_con.execute(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}";').fetchone()[0]
-            rows_remaining = MAX_VALUES_TO_DOWNLOAD - rows_inserted
-            bytes_remaining -= bytes_downloaded
-            total_downloaded_bytes += bytes_downloaded
+                execute_query_with_retries(data_con, file_query)
+                # get the number of rows inserted
+                rows_inserted = data_con.execute(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}";').fetchone()[0]
+                rows_remaining = MAX_VALUES_TO_DOWNLOAD - rows_inserted
+                bytes_remaining -= bytes_downloaded
+                total_downloaded_bytes += bytes_downloaded
 
-            if total_downloaded_bytes >= MAX_GB_TO_DOWNLOAD * 1_000_000_000:
-                print(f"Reached maximum download limit of {MAX_GB_TO_DOWNLOAD} at {format_bytes(total_downloaded_bytes)}, stopping downloads.")
-                exit(1)
+                if total_downloaded_bytes >= MAX_GB_TO_DOWNLOAD * 1_000_000_000:
+                    print(
+                        f"Reached maximum download limit of {MAX_GB_TO_DOWNLOAD} at {format_bytes(total_downloaded_bytes)}, stopping downloads.")
+                    exit(1)
+            except Exception as e:
+                print(f"\tError processing file {path}: {e}, skipping.")
+                continue
 
 
 

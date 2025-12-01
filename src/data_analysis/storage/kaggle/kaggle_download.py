@@ -11,8 +11,9 @@ import kagglehub
 from tqdm import tqdm
 
 from src.data_analysis.storage.huggingface.download_data import format_bytes
-from src.data_analysis.storage.kaggle_unify_schema import unify_schema
 import duckdb
+
+from src.data_analysis.storage.unify_schema import unify_schema
 from src.sql_analysis.utils.names import clean_name
 
 from src.config import KAGGLE_DATA_DB_PATH, KAGGLE_DATASETS_DB_PATH, MAX_VALUES_TO_DOWNLOAD, \
