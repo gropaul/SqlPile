@@ -22,3 +22,5 @@ if __name__ == "__main__":
         KAGGLE_DATA_DB_PATH,
         DATABASE_PATH
     ]
+
+    print_files_sizes(paths)
