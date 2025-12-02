@@ -9,9 +9,20 @@ import duckdb
 SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
 section = """
-In this section, we want to analyze how much storage is used for different logical types and semantic types.
+In this section, we analyze the compressibility of the different groups in our string taxonomy to investigate
+which types of strings compress well and which could benefit from further research. \\cref{{img:compression_per_semantic_type}}
+shows the compression ratios achieved by different algorithms for each semantic type in our taxonomy.
 
 {figure_compression_rate}
+
+By analyzing the compressed and uncompressed sizes of each column and grouping the columns by semantic type, 
+we can quantify how much data of each type is stored in compressed and uncompressed form. As a first step, we 
+show how many columns of each semantic type occur across all datasets and how many values they contain. We then 
+examine how much storage space the values of each semantic type occupy both in their uncompressed form and when 
+compressed using the best available algorithm.
+The results of these analyses are shown in \\cref{{fig:storage-semantic-type-llm}} and \\cref{{fig:storage-column-base-type}}.
+
+\\cref{{fig:storage-semantic-type-llm}} shows ... 
 
 {figure_storage_column_base_type}
 
@@ -158,7 +169,7 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
 
     return get_multi_figure(
         label="img:compression_per_semantic_type",
-        caption="Compression ratios per semantic type and compression algorithm. Red diamonds indicate the median compression ratio for each algorithm if this algorithm is the best for one columns, with size proportional to the percentage of columns best compressed by that algorithm.",
+        caption="Compression ratios by semantic type and algorithm. Percentages indicate how often each algorithm achieved the best compression. Red diamonds show the median compression ratio in the columns where the algorithm performed best, with symbol size proportional to its share of best-compressed columns.",
         paths=paths,
         captions=captions
     )

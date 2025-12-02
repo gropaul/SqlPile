@@ -7,8 +7,6 @@ DataSet = Literal['kaggle', 'huggingface']
 CLUSTER_ROOT = '/export/scratch2/home/gross/SqlPile'
 CLUSTER_NAME = 'diamonds4'
 
-
-
 def download_from_cluster(dataset: DataSet) -> str:
     local_path = ''
 
