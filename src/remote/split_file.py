@@ -8,7 +8,7 @@ from src.remote.load_queries_from_cluster import QUERIES_DIAMOND4_PATH, LOCAL_QU
 print(f"DuckDB version: {duckdb.__version__}")
 
 
-def partition_data(chunk_size):
+def partition_data(chunk_size, source: str):
     n_elements = duckdb.sql(f"""
         SELECT COUNT(*) FROM '{QUERIES_DIAMOND4_PATH}'
     """).fetchone()[0]

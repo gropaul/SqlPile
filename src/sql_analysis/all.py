@@ -12,8 +12,8 @@ def all(download: bool = True) -> None:
         download_data_from_remote()
         partition_data(chunk_size=1000)
 
-    # load_schemapile_json_to_database(ask=False)
-    # load_queries_to_database(ask=False)
+    load_schemapile_json_to_database(ask=False)
+    load_queries_to_database(ask=False)
     # todo: this does not work because of python problem
     # add_all_benchmarks()
     get_schemas_from_create_query()

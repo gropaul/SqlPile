@@ -28,10 +28,16 @@ def unifiy_file():
 
     # copy to parquet_queries_tmp (COPY (SELECT * FROM tbl) TO 'output.parquet' (FORMAT parquet);)
     copy_quey = f""" 
-    COPY ({from_query}) TO '{CLUSTER_UNIFIED_FILE_PATH}' (FORMAT parquet, OVERWRITE TRUE, COMPRESSION ZSTD, ROW_GROUP_SIZE 5)
+    COPY ({from_query}) TO '{CLUSTER_UNIFIED_FILE_PATH}' (FORMAT parquet, OVERWRITE TRUE, COMPRESSION ZSTD);
     """
 
-    print(f"Running query: \n{copy_quey}")
+    import duckdb
+    con = duckdb.connect()
+    print(f"Creating unified file at {CLUSTER_UNIFIED_FILE_PATH}")
+    con.execute(copy_quey)
+
+
+
 
 
 if __name__ == "__main__":

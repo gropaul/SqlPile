@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.config import DATABASE_PATH, logger, QUERIES_DIR_PARTITIONED, REPO_TABLE_NAME, FILES_TABLE_NAME, \
-    FILES_META_DATA_TABLE_NAME, QUERIES_TABLE_NAME
+    FILES_META_DATA_TABLE_NAME, QUERIES_TABLE_NAME, QUERIES_DIR_RAW
 
 
 def get_all_parquet_files(root: str) -> List[str]:
@@ -172,7 +172,7 @@ def load_queries_for_repo(repo_url: str, file_name: str, con: duckdb.DuckDBPyCon
 
 
 
-def load_queries_to_database(ask: bool = True):
+def load_queries_to_database(source_path: str, ask: bool = True):
     # Ask the user if they want to (re)import the data, as the old data will be removed
     if ask:
         confirm = input(
@@ -233,7 +233,7 @@ def load_queries_to_database(ask: bool = True):
 
     # Get all unique repo URLs
     urls = con.execute(f"""
-        SELECT repo_url, arbitrary(filename) FROM read_parquet('{QUERIES_DIR_PARTITIONED}/*/*.parquet', union_by_name = true)
+        SELECT repo_url, arbitrary(filename) FROM read_parquet(, union_by_name = true)
         WHERE len(file_results) > 0
         GROUP BY repo_url
     """).fetchall()
@@ -279,4 +279,10 @@ def load_queries_to_database(ask: bool = True):
 
 
 if __name__ == "__main__":
-    load_queries_to_database(ask=False)
+
+    partioned_path = f'{QUERIES_DIR_PARTITIONED}/*/*.parquet'
+    raw_path = f'{QUERIES_DIR_RAW}/*.parquet'
+
+    source = raw_path
+
+    load_queries_to_database(ask=False, source_path=source)
