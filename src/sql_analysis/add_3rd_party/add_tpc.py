@@ -4,10 +4,10 @@ import duckdb
 from typing import Literal, List
 
 from src.config import DATABASE_PATH, DATA_DIR, TABLES_DATA_FILES_TABLE_NAME, TPC_DATA_DIR
+from src.sql_analysis.add_3rd_party.add_all_3rd_paries import TPC_SF
 from src.sql_analysis.add_3rd_party.utils import RepoTableData, RepoQuery, RepoData, add_3rd_party
 
 Benchmark = Literal['tpc-h', 'tpc-ds']
-SF = 5
 
 def create_benchmark_data(benchmark: Benchmark):
 
@@ -22,9 +22,9 @@ def create_benchmark_data(benchmark: Benchmark):
     con = duckdb.connect(db_path)
 
     if benchmark == 'tpc-h':
-        con.execute(f"CALL dbgen(sf={SF})")
+        con.execute(f"CALL dbgen(sf={TPC_SF})")
     elif benchmark == 'tpc-ds':
-        con.execute(f"CALL dsdgen(sf={SF})")
+        con.execute(f"CALL dsdgen(sf={TPC_SF})")
     else:
         raise ValueError(f"Unknown benchmark: {benchmark}")
 

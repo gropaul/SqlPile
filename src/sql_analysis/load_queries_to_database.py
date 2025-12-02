@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.config import DATABASE_PATH, logger, QUERIES_DIR_PARTITIONED, REPO_TABLE_NAME, FILES_TABLE_NAME, \
-    FILES_META_DATA_TABLE_NAME, QUERIES_TABLE_NAME, QUERIES_DIR_RAW
+    FILES_META_DATA_TABLE_NAME, QUERIES_TABLE_NAME, QUERIES_DIR_RAW, QUERIES_LEGACY_DIR
 
 
 def get_all_parquet_files(root: str) -> List[str]:
@@ -282,7 +282,9 @@ if __name__ == "__main__":
 
     partioned_path = f'{QUERIES_DIR_PARTITIONED}/*/*.parquet'
     raw_path = f'{QUERIES_DIR_RAW}/*/*.parquet'
+    combined = f'{QUERIES_DIR_RAW}/*/*.parquet'
+    legacy = f'{QUERIES_LEGACY_DIR}/*/*.parquet'
 
-    source = raw_path
+    source = partioned_path
 
-    load_queries_to_database(ask=False, source_path=source)
+    load_queries_to_database(ask=False, source_path=legacy)

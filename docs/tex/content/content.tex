@@ -1,15 +1,17 @@
 \section{Introduction}
-\label{sec:iassets/dbpile_schemaies show that variable-length text types are among the most commonly used column data types in \acp{DBMS}.
+\label{sec:introduction}
+Recent studies show that variable-length text types are among the most commonly used column data types in \acp{DBMS}.
 For example, van Renen et al~\cite{van_renen_why_2024} showed that 52.1\% of all columns in the
 Amazon Redshift are of this type.
-But already in 2018, Vogelsgesang et al.~\cite{vogelsgesang_get_2018} showed with their analysis of Public Tableau
+Also Vogelsgesang et al.~\cite{vogelsgesang_get_2018} showed with their analysis of Public Tableau
 Workbooks that 48.8\% of their columns are of type text.
 Most interestingly, these columns not only occur frequently but are also commonly used in operators and expressions.
 For example, a workload analysis of the Snowflake Data Cloud performed by Szlang et al.~\cite{szlang_workload_2025}
-shows that 46\% of join keys, 58\% of filter columns contain variable-length text data.
+shows that in Snowflake BI workloads, 46\% of join keys, 58\% of filter columns contain variable-length text data.
+
 The reason why strings are so prevalent is that they are a catch-all type for many
 different kinds of data and allow a very pragmatic schema design~\cite{vogelsgesang_get_2018}.
-However, this often results in data being stored in formats that are inefficient for processing~\cite{vogelsgesang_get_2018}.
+However, this often results in data being stored in formats that are inefficient for storage and processing~\cite{vogelsgesang_get_2018}.
 For example, numeric data or dates are often stored as strings instead of their native types, leading to increased storage
 and processing costs\cite{vogelsgesang_get_2018}.
 
@@ -28,20 +30,23 @@ We show that which each of these classes we can see distinct physical characteri
 (length, character distribution) and usage patterns in query execution that can be exploited for efficient storage and
 query processing.
 
-As a data basis for this analysis, we use queries, schema information, and data from publicly available repositories
-by extending the SchemaPile dataset~\cite{dohmen_schemapile_2024}.
-Our work differs from previous studies such as~\cite{van_renen_why_2024, vogelsgesang_get_2018, szlang_workload_2025}
-in that we also release a dataset containing detailed information about the analyzed tables, columns, values, queries,
-query execution traces, column usages, and compression results.
 
-In summary, we offer the following contributions:
-\begin{itemize}
-    \item We release a public dataset of real-world schemas, queries, and query plans.
-    \item We present a reproducible pipeline for dataset creation.
-    \item We propose a taxonomy for variable-length text columns and analyze their physical properties, usage patterns, and compressibility.
-    \item We examine variable-length text column usage in the TPC-[H, DS] and SqlStorm benchmarks.
-    \item Based on our findings, we provide recommendations for future research directions.
-\end{itemize}
+
+\begin{enumerate}
+    \item[(RQ1)] Is there an effective and meaningful way to classify variable-length text columns based on their semantic type?
+    \item[(RQ2)] What characteristic physical properties distinguish variable-length text columns across different semantic groups?
+    \item[(RQ3)] How are variable-length text columns distributed across real-world databases, and what share of storage (uncompressed and compressed) does each type account for?
+    \item[(RQ4)] How are variable-length text columns used in real-world analytical and transactional workloads, and which operators and execution patterns dominate their processing?
+    \item[(RQ5)] Do existing benchmarks like TPC-H and TPC-DS adequately represent the diversity and characteristics of variable-length text columns found in real-world databases?
+    \item[(RQ6)] Based on our findings, what recommendations can we provide for the design of future database systems and benchmarks to better handle variable-length text columns?
+\end{enumerate}
+
+As the data basis for answering these research questions, we draw on queries, schema information, and data from
+publicly available repositories by extending the SchemaPile dataset~\cite{dohmen_schemapile_2024} and combining it with
+datasets from Kaggle and HuggingFace to form \textit{DBPile}, as described in \cref{sec:data-collection}.
+Our work differs from previous studies such as~\cite{van_renen_why_2024, vogelsgesang_get_2018, szlang_workload_2025}
+in that we also release this dataset containing detailed information about the analyzed tables, columns, values, queries,
+query execution traces, column usages, and compression results.
 
 \section{Introducing DBPile}\label{sec:data-collection}
 
@@ -175,16 +180,7 @@ Then, we batch five columns per prompt and constructed the user prompt as follow
 
 After categorizing all columns into the base types, we performed a second classification step to assign subcategories using the same approach.
 
-Here should then come a detailed analysis in form of a table e.g. that shows example values for each operator and semantic
-type e.g. how do the string columns look like. Also, for each semantic type, I would like to show what expressions where used.
-For example, if there is a group by on a full text column, the query could look like
-GROUP BY full\_text\_column LIKE 'foo\%' is probably not that useful.
-\begin{itemize}
-    \item
-\end{itemize}
-
 \subsection{Results}\label{sec:semantic-type-results}
-%    \input{content/gen/sec_semantic_type_results}
 \begin{table*}
     \input{assets/semantic_type_percentages}
     \caption{Distribution of semantic types across different datasets.}
@@ -208,7 +204,10 @@ GROUP BY full\_text\_column LIKE 'foo\%' is probably not that useful.
 
 
 \section{Query Processing}\label{sec:query-processing}
-
+Here should then come a detailed analysis in form of a table e.g. that shows example values for each operator and semantic
+type e.g. how do the string columns look like. Also, for each semantic type, I would like to show what expressions where used.
+For example, if there is a group by on a full text column, the query could look like
+GROUP BY full\_text\_column LIKE 'foo\%' is probably not that useful.
 \begin{itemize}
     \item Describe what we did to execute the queries
     \item Move parts from the dataset description here

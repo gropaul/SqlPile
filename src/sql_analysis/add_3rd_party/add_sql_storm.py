@@ -6,7 +6,7 @@ import re
 import duckdb
 
 from src.sql_analysis.add_3rd_party.add_tpc import Benchmark, add_tpc
-from src.sql_analysis.add_3rd_party.utils import RepoQuery, RepoTableData, RepoData, add_3rd_party
+from src.sql_analysis.add_3rd_party.utils import RepoData, add_3rd_party
 
 
 class StackOverflowDownloadResult:
