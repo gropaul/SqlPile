@@ -281,7 +281,7 @@ def load_queries_to_database(source_path: str, ask: bool = True):
 if __name__ == "__main__":
 
     partioned_path = f'{QUERIES_DIR_PARTITIONED}/*/*.parquet'
-    raw_path = f'{QUERIES_DIR_RAW}/*.parquet'
+    raw_path = f'{QUERIES_DIR_RAW}/*/*.parquet'
 
     source = raw_path
 
