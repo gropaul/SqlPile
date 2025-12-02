@@ -11,7 +11,9 @@ SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 section = """
 In this section, we analyze the compressibility of the different groups in our string taxonomy to investigate
 which types of strings compress well and which could benefit from further research. \\cref{{img:compression_per_semantic_type}}
-shows the compression ratios achieved by different algorithms for each semantic type in our taxonomy.
+shows the compression ratios achieved by different algorithms for each group in our taxonomy.
+
+The performance of a compression algorithm heavily depends on how it is used. As we want to foucs on
 
 {figure_compression_rate}
 

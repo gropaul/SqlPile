@@ -3,10 +3,10 @@ import os
 import duckdb
 from typing import Literal, List
 
-from src.config import DATABASE_PATH, DATA_DIR, TABLES_DATA_FILES_TABLE_NAME, TPC_DATA_DIR
-from src.sql_analysis.add_3rd_party.add_all_3rd_paries import TPC_SF
+from src.config import DATABASE_PATH, DATA_DIR, TPC_DATA_DIR
 from src.sql_analysis.add_3rd_party.utils import RepoTableData, RepoQuery, RepoData, add_3rd_party
 
+TPC_SF = 5
 Benchmark = Literal['tpc-h', 'tpc-ds']
 
 def create_benchmark_data(benchmark: Benchmark):

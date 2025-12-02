@@ -84,7 +84,7 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
 
     print(f"Max column id: {max_columns_id}")
 
-    create_queries = con.execute(f"""
+    create_queries = con.execute(f"""---dash
     WITH distrinct_queries AS (
         SELECT sql, id, repo_id, type
         FROM {QUERIES_TABLE_NAME}
@@ -129,4 +129,4 @@ def get_schemas_from_create_query(repo_id: Optional[int] = None):
 
 
 if __name__ == "__main__":
-    get_schemas_from_create_query(repo_id=40979)
+    get_schemas_from_create_query(repo_id=None)
