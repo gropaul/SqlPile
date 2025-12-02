@@ -233,7 +233,7 @@ def load_queries_to_database(source_path: str, ask: bool = True):
 
     # Get all unique repo URLs
     urls = con.execute(f"""
-        SELECT repo_url, arbitrary(filename) FROM read_parquet({source_path}, union_by_name = true)
+        SELECT repo_url, arbitrary(filename) FROM read_parquet('{source_path}', union_by_name = true)
         WHERE len(file_results) > 0
         GROUP BY repo_url
     """).fetchall()
