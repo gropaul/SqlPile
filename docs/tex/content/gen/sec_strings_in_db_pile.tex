@@ -1,0 +1,15 @@
+
+\begin{table}
+\caption{Most common logical column types in DBPile, IMDB, Stackoverflow (SO), TPC-[H, DS], Kaggle and HuggingFace (HF). For DBPile, the most columns are of type \texttt{Text} while for TPC-[H, DS] benchmarks, the most common type is \texttt{Integer}. Kaggle and HuggingFace feature a lot of float columns, coming from wide ML feature tables.}
+\label{tab:column-types}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Type} & \textbf{DBPile} & \textbf{Kaggle} & \textbf{HF} & \textbf{IMDB} & \textbf{SO} & \textbf{TPC} \\
+\midrule
+Text & 43\% & 53\% & 17\% & 45\% & 30\% & 36\% \\
+Int & 40\% & 22\% & 48\% & 55\% & 53\% & 43\% \\
+DateTime & 9\% & 1\% & NaN & NaN & 14\% & 3\% \\
+Float & 3\% & 24\% & 32\% & NaN & NaN & 18\% \\
+\bottomrule
+\end{tabular}
+\end{table}

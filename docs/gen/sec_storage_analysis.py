@@ -10,21 +10,36 @@ SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
 section = """
 In this section, we analyze the compressibility of the different groups in our string taxonomy to investigate
-which types of strings compress well and which could benefit from further research. \\cref{{img:compression_per_semantic_type}}
+which types of strings compress well and which could benefit from further research. \\cref{{fig:compression_per_semantic_type}}
 shows the compression ratios achieved by different algorithms for each group in our taxonomy.
 
-The performance of a compression algorithm heavily depends on how it is used. As we want to foucs on
-
 {figure_compression_rate}
+
+We benchmarked four widely used compression algorithms that are known to perform well on string data. First, we consider 
+standard dictionary compression, which builds a dictionary of frequently occurring strings and replaces each string 
+with a shorter code. Next, we evaluate FSST, a specialized string compression algorithm that identifies repeated 
+substrings, stores them in a dictionary, and replaces them with one-byte codes. We also include FSST12, a 
+variant of FSST that uses 12-bit codes to support a larger symbol table. Additionally, we evaluate OnPair, 
+which—similar to FSST—uses a dictionary and code assignments to replace substrings. 
+In contrast, OnPair16 employs 16-bit codes and a novel algorithm for identifying repeated substrings.
+Finally, we benchmark LZ4, a general-purpose compression algorithm.
+
+The effectiveness of a compression algorithm strongly depends on how it is integrated into the target system. 
+Our benchmarking setup closely follows the approach used in DuckDB: each column is compressed independently 
+on a per–row-group basis, with each row group containing 128,000 values. 
+Thus a single FSST symbol table is built and applied to one such 128k-value row group.
+In contrast to Dictionary and FSST, LZ4 compresses an entire block of data at 
+once and therefore does not support random access to individual values. As the block granularity, we 
+follow DuckDB’s default vector size of 2048 values, which is also the block size used in their LZ4 
+implementation.
 
 By analyzing the compressed and uncompressed sizes of each column and grouping the columns by semantic type, 
 we can quantify how much data of each type is stored in compressed and uncompressed form. As a first step, we 
 show how many columns of each semantic type occur across all datasets and how many values they contain. We then 
 examine how much storage space the values of each semantic type occupy both in their uncompressed form and when 
-compressed using the best available algorithm.
-The results of these analyses are shown in \\cref{{fig:storage-semantic-type-llm}} and \\cref{{fig:storage-column-base-type}}.
+compressed using the best available algorithm. The results of these analyses are shown in 
+\\cref{{fig:storage-semantic-type-llm}} and \\cref{{fig:storage-column-base-type}}.
 
-\\cref{{fig:storage-semantic-type-llm}} shows ... 
 
 {figure_storage_column_base_type}
 
@@ -170,7 +185,7 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
 
 
     return get_multi_figure(
-        label="img:compression_per_semantic_type",
+        label="fig:compression_per_semantic_type",
         caption="Compression ratios by semantic type and algorithm. Percentages indicate how often each algorithm achieved the best compression. Red diamonds show the median compression ratio in the columns where the algorithm performed best, with symbol size proportional to its share of best-compressed columns.",
         paths=paths,
         captions=captions

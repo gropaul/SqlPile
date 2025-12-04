@@ -2,7 +2,7 @@ import os
 
 from docs.gen.utils import format_latex_string, get_figure
 from src.config import LATEX_GEN_DIR, get_con, LATEX_ASSETS_DIR
-from src.data_analysis.dataset_stats import get_query_type_query, get_operator_table, get_column_type_table
+from src.data_analysis.dataset_stats import get_operator_table
 from src.data_analysis.usage_plots import column_physical_type_usage_plot
 
 SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
@@ -16,8 +16,6 @@ We analyzed the operator usage of SqlPile queries and compared them to the TPC-H
 This comes from the fact that a lot of the queries in SqlPile are simple `SELECT` statements from a transactional workload,
 while the TPC benchmarks resemble an analytical workload with complex joins and aggregations.
 
-{column_type_tbl}
-
 We analyzed the distribution of logical column types used in SqlPile, which are shown in \\cref{{tab:column-types}}, which is 
 similar to findings in Redset~\\cite{{van_renen_why_2024}} and the Public BI~\\cite{{vogelsgesang_get_2018}} benchmark.
 
@@ -30,18 +28,7 @@ def generate_logical_analysis():
     con = get_con(read_only=True)
 
     operator_tbl = get_operator_table(con, output_format='latex', label=LABEL_TABLE_OPERATOR_COUNTS,
-                                      caption='Logical Operators per query for SqlPile and TPC-[H, DS] benchmarks. The SQLPile queries are far less complex.')
-    column_type_tbl = get_column_type_table(
-        con,
-        output_format='latex',
-        label='tab:column-types',
-        caption='Most common logical column types in DBPile, IMDB, Stackoverflow (SO), TPC-[H, DS], '
-                'Kaggle and HuggingFace (HF). For DBPile, the most columns are of type `Text` while '
-                'for TPC-[H, DS] benchmarks, the most common type is `Integer`. Kaggle and HuggingFace '
-                'feature a lot of float columns, coming from wide ML feature tables.'
-    )
-
-    print(column_type_tbl)
+                                      caption='Logical Operators per query for SqlPile and TPC-[H, DS] benchmarks. The SQLPile queries are far less complex.')\
 
     column_physical_type_usage_plot(con, output_dir=LATEX_ASSETS_DIR)
     figure_column_physical_type_usage = get_figure(
@@ -52,7 +39,6 @@ def generate_logical_analysis():
 
     description = text.format(
         op_usage_table=operator_tbl,
-        column_type_tbl=column_type_tbl,
         figure_column_physical_type_usage=figure_column_physical_type_usage
     )
     description = format_latex_string(description)

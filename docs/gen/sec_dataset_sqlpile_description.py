@@ -1,6 +1,6 @@
 import os.path
 
-from docs.gen.utils import format_number, join_list_with_and, format_latex_string
+from docs.gen.utils import format_number, join_list, format_latex_string
 from src.config import LATEX_GEN_DIR, get_con, QUERIES_TABLE_NAME
 import duckdb
 
@@ -111,7 +111,7 @@ def generate_dataset_description():
         text_item = f"{number_formatted} distinct `{query_type}`"
     percentages_per_type.append(text_item)
 
-    number_of_queries_per_type_str = join_list_with_and(percentages_per_type, final_word="statements")
+    number_of_queries_per_type_str = join_list(percentages_per_type, final_word="statements")
 
     # *** CREATE STATEMENTS ***
     number_of_create_statements = con.execute(f"""

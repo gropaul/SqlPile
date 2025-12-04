@@ -108,8 +108,9 @@ def get_multi_figure(paths: List[str], caption: str, captions: List[str], label:
 
     figure_text = "figure" if not two_column else "figure*"
     backslash_n = "\n"
+    position_identifier = "[h!]"
     template = (
-        f"\\begin{{{figure_text}}}\n"
+        f"\\begin{{{figure_text}}}{position_identifier}\n"
         "  \\centering\n"
         f"{backslash_n.join(subfigures)}\n"
         f"  {overall_label_str}\n"
@@ -141,6 +142,9 @@ def format_latex_string(latex_str: str) -> str:
 
     # Escape %
     formatted = formatted.replace('%', r'\%')
+
+    # Escape #
+    formatted = formatted.replace('#', r'\#')
 
     lines = formatted.splitlines()
     out_lines = []
@@ -189,7 +193,17 @@ def format_number(number: int) -> str:
     return f"{number:,}"
 
 
-def join_list_with_and(lst: list, final_word: str = '') -> str:
+def join_list_v2(values: List[str]) -> str:
+    """
+    Join a list of strings with commas, and 'and' before the last item.
+    """
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    return ", ".join(values[:-1]) + " and " + values[-1]
+
+def join_list(lst: list, final_word: str = '') -> str:
     """
     Join a list of strings with commas, and 'and' before the last item.
     """

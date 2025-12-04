@@ -756,7 +756,7 @@ def execute_repo_queries(settings: ExecutionSettings):
 if __name__ == "__main__":
     settings = ExecutionSettings(
         mode='append',
-        execute=False, collect_statistics=False, compress=True,
+        execute=True, collect_statistics=True, compress=True,
         repo_id=None, repo_contains_str=None
     )
     execute_repo_queries(settings)

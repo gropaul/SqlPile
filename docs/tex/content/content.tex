@@ -142,9 +142,15 @@ of \ac{DBMS} store in these columns and how they use them, we need to understand
 In this section, we present a taxonomy of variable-length text columns based on their semantic type.
 
 \input{assets/table_semantic_types}
+Our taxonomy design was guided by four goals: (1) intuitive categories that reflect real-world use cases,
+(2) minimal category count, (3) mutual exclusivity, and (4) high coverage without overreliance on an `Other` category.
 
-We defined six different semantic types that cover the majority of use cases we found in our dataset:
-Numeric, Category, FullText, Identifier, Entity, and Semi-structured.
+We developed our taxonomy through an iterative process.
+By examining samples of columns from our dataset, we repeatedly refined an initial set of manually
+defined categories until we achieved both high coverage and clear boundaries with as few categories as possible.
+The resulting taxonomy consists of six groups, each reflecting a distinct semantic type that captures the
+majority of use cases observed in our data: Numeric, Category, FullText, Identifier, Entity, and Semi-structured.
+
 In addition, we added a \texttt{Test} type to capture columns that are only used for testing purposes.
 With the data coming from public repositories, we found a significant number of such columns we wanted to exclude from the analysis.
 To further classify the columns, we defined subcategories for each type that capture more specific use cases.
@@ -179,9 +185,8 @@ Then, we batch five columns per prompt and constructed the user prompt as follow
 \end{quote}
 
 After categorizing all columns into the base types, we performed a second classification step to assign subcategories using the same approach.
-
 \subsection{Results}\label{sec:semantic-type-results}
-\begin{table*}
+\begin{table*}[ht]
     \input{assets/semantic_type_percentages}
     \caption{Distribution of semantic types across different datasets.}
     \label{tab:semantic-type-distribution}
@@ -190,16 +195,9 @@ After categorizing all columns into the base types, we performed a second classi
 
 \section{String Properties}\label{sec:string-properties}
 \input{content/gen/sec_string_properties}
-\begin{itemize}
-    \item What physical types do strings of different semantic types share
-    \item How do they differ?
-    \item How can we use this for execution and compression
-\end{itemize}
 
 \section{Storage}\label{sec:storage}
 \input{content/gen/sec_storage_analysis}
-
-
 
 
 

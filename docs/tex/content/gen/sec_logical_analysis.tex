@@ -23,23 +23,7 @@ Window Function & 0.005 & 0.585 & 0.175 \\
 We analyzed the operator usage of SqlPile queries and compared them to the TPC-H and TPC-DS benchmarks. As depicted in 
 \cref{tab:op-usage}, SqlPile queries use far fewer logical operators than the TPC benchmarks.
 This comes from the fact that a lot of the queries in SqlPile are simple \texttt{SELECT} statements from a transactional workload,
-while the TPC benchmarks resemble an analytical workload with complex joins and aggregations.
-
-\begin{table}
-\caption{Most common logical column types in DBPile, IMDB, Stackoverflow (SO), TPC-[H, DS], Kaggle and HuggingFace (HF). For DBPile, the most columns are of type \texttt{Text} while for TPC-[H, DS] benchmarks, the most common type is \texttt{Integer}. Kaggle and HuggingFace feature a lot of float columns, coming from wide ML feature tables.}
-\label{tab:column-types}
-\begin{tabular}{lcccccc}
-\toprule
-\textbf{Type} & \textbf{DBPile} & \textbf{Kaggle} & \textbf{HF} & \textbf{IMDB} & \textbf{SO} & \textbf{TPC} \\
-\midrule
-Text & 43\% & 59\% & 17\% & 45\% & 30\% & 36\% \\
-Int & 40\% & 20\% & 48\% & 55\% & 53\% & 43\% \\
-DateTime & 9\% & 2\% & NaN & NaN & 14\% & 3\% \\
-Float & 3\% & 19\% & 32\% & NaN & NaN & 18\% \\
-\bottomrule
-\end{tabular}
-\end{table}
-
+while the TPC benchmarks resemble an analytical workload with complex joins and aggregations
 
 We analyzed the distribution of logical column types used in SqlPile, which are shown in \cref{tab:column-types}, which is 
 similar to findings in Redset~\cite{van_renen_why_2024} and the Public BI~\cite{vogelsgesang_get_2018} benchmark.

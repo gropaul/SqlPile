@@ -1,47 +1,67 @@
 
 In this section, we analyze the compressibility of the different groups in our string taxonomy to investigate
-which types of strings compress well and which could benefit from further research. \cref{img:compression_per_semantic_type}
-shows the compression ratios achieved by different algorithms for each semantic type in our taxonomy.
+which types of strings compress well and which could benefit from further research. \cref{fig:compression_per_semantic_type}
+shows the compression ratios achieved by different algorithms for each group in our taxonomy.
 
-\begin{figure*}
+We benchmarked four widely used compression algorithms that are known to perform well on string data. First, we consider 
+standard dictionary compression, which builds a dictionary of frequently occurring strings and replaces each string 
+with a shorter code. Next, we evaluate FSST, a specialized string compression algorithm that identifies repeated 
+substrings, stores them in a dictionary, and replaces them with one-byte codes. We also include FSST12, a 
+variant of FSST that uses 12-bit codes to support a larger symbol table. Additionally, we evaluate OnPair, 
+which—similar to FSST—uses a dictionary and code assignments to replace substrings. 
+In contrast, OnPair16 employs 16-bit codes and a novel algorithm for identifying repeated substrings.
+Finally, we benchmark LZ4, a general-purpose compression algorithm that performs well across many data 
+types, including strings.
+
+The effectiveness of a compression algorithm strongly depends on how it is integrated into the target system. 
+Our benchmarking setup closely follows the approach used in DuckDB: each column is compressed independently 
+on a per–row-group basis, with each row group containing 128,000 values. 
+Thus a single FSST symbol table is built and applied to one such 128k-value row group.
+In contrast to Dictionary and FSST, LZ4 compresses an entire block of data at
+once and therefore does not support random access to individual values.
+As the block granularity, we
+follow DuckDB’s default vector size of 2048 values, which is also the block size used in their LZ4
+implementation.
+
+\begin{figure*}[ht]
   \centering
 \begin{subfigure}{0.1583\linewidth}
    \centering
   \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Category.pdf}
   \caption{Category}
-  \label{img:compression_per_semantic_type:compression_category}
+  \label{fig:compression_per_semantic_type:compression_category}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
   \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Entity.pdf}
   \caption{Entity}
-  \label{img:compression_per_semantic_type:compression_entity}
+  \label{fig:compression_per_semantic_type:compression_entity}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
   \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_FullText.pdf}
   \caption{FullText}
-  \label{img:compression_per_semantic_type:compression_fulltext}
+  \label{fig:compression_per_semantic_type:compression_fulltext}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
   \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Identifier.pdf}
   \caption{Identifier}
-  \label{img:compression_per_semantic_type:compression_identifier}
+  \label{fig:compression_per_semantic_type:compression_identifier}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
   \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Numeric.pdf}
   \caption{Numeric}
-  \label{img:compression_per_semantic_type:compression_numeric}
+  \label{fig:compression_per_semantic_type:compression_numeric}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
   \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Structured.pdf}
   \caption{Structured}
-  \label{img:compression_per_semantic_type:compression_structured}
+  \label{fig:compression_per_semantic_type:compression_structured}
 \end{subfigure}
-  \label{img:compression_per_semantic_type}
+  \label{fig:compression_per_semantic_type}
   \caption{Compression ratios by semantic type and algorithm. Percentages indicate how often each algorithm achieved the best compression. Red diamonds show the median compression ratio in the columns where the algorithm performed best, with symbol size proportional to its share of best-compressed columns.}
 \end{figure*}
 

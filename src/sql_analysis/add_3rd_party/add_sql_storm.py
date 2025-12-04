@@ -71,6 +71,8 @@ def add_sql_storm_stack_overflow(replace_existing: bool = True):
     schema_queries = schema_content.split(';')
 
     stackoverflow_queries_dir = os.path.join(SQL_STORM_REPO_DIR, 'v1.0', 'stackoverflow', 'queries')
+    os.makedirs(stackoverflow_queries_dir, exist_ok=True)
+
     sql_files = [f for f in os.listdir(stackoverflow_queries_dir) if f.endswith('.sql')]
     benchmark_queries = [
         open(os.path.join(stackoverflow_queries_dir, sql_file), 'r').read() for sql_file in sql_files
@@ -91,7 +93,7 @@ def add_sql_storm_tpc(tpc_benchmark: Benchmark):
     else:
         raise ValueError(f"Unknown TPC benchmark: {tpc_benchmark}")
     stackoverflow_queries_dir = os.path.join(SQL_STORM_REPO_DIR, 'v1.0', dir_name, 'queries')
-
+    os.makedirs(stackoverflow_queries_dir, exist_ok=True)
     sql_files = [f for f in os.listdir(stackoverflow_queries_dir) if f.endswith('.sql')]
     benchmark_queries = [
         open(os.path.join(stackoverflow_queries_dir, sql_file), 'r').read() for sql_file in sql_files

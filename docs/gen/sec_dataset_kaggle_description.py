@@ -1,6 +1,6 @@
 import os.path
 
-from docs.gen.utils import format_number, join_list_with_and, format_latex_string
+from docs.gen.utils import format_number, join_list, format_latex_string
 from src.config import LATEX_GEN_DIR, get_con, HUGGINFACE_DATA_DB_PATH, KAGGLE_DATA_DB_PATH, KAGGLE_DATASETS_DB_PATH, \
     MAX_VALUES_TO_DOWNLOAD
 import duckdb
