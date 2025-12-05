@@ -131,7 +131,7 @@ for i, d in enumerate(dataset):
         continue
 
     if len(results) >= BLOCK_SIZE:
-        store_results(results, reset=True)
+        store_results(results, reset=False)
         results = []
 
 
