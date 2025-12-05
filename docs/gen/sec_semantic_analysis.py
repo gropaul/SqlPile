@@ -21,7 +21,7 @@ In the following, we will discuss how which semantic type is used in which opera
 """
 
 
-def generate_semantic_analysis():
+def main():
     con = get_con(read_only=True)
 
     column_semantic_type_llm_usage_plot(con, output_dir=LATEX_ASSETS_DIR)
@@ -43,6 +43,6 @@ def generate_semantic_analysis():
 
 
 if __name__ == "__main__":
-    generate_semantic_analysis()
+    main()
 
 

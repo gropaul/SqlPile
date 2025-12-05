@@ -20,6 +20,7 @@ def store_results(results: List[ParseResult], db_path: str = HUGGINFACE_DATASETS
             id VARCHAR PRIMARY KEY,
             size_categories VARCHAR,
             download_size BIGINT,
+            downloads BIGINT,
             license VARCHAR,
             dataset_size DOUBLE
         )
@@ -76,8 +77,8 @@ def store_results(results: List[ParseResult], db_path: str = HUGGINFACE_DATASETS
                 print(f"Result {result.id} already exists, skipping.")
                 continue
 
-            con.execute("INSERT INTO parse_results VALUES (?, ?, ?, ?, ?)",
-                        [result.id, result.size_categories, result.download_size,
+            con.execute("INSERT INTO parse_results VALUES (?, ?, ?, ?, ?, ?)",
+                        [result.id, result.size_categories, result.download_size, result.downloads,
                          result.license, result.dataset_size])
 
             for config in result.configs:
@@ -89,7 +90,8 @@ def store_results(results: List[ParseResult], db_path: str = HUGGINFACE_DATASETS
 
             for parquet_file in result.parquet_files:
                 con.execute("INSERT INTO parquet_files VALUES (?, ?, ?, ?, ?)",
-                            [result.id, parquet_file.config, parquet_file.split, parquet_file.path, parquet_file.size_bytes])
+                            [result.id, parquet_file.config, parquet_file.split, parquet_file.path,
+                             parquet_file.size_bytes])
 
             for column in result.columns:
                 con.execute("INSERT INTO columns VALUES (?, ?, ?)",

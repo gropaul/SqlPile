@@ -114,28 +114,12 @@ def test_get_operator_table():
     print(get_operator_table(con, 'latex'))  # type: ignore
 
 
-def get_repo_group(repo_url):
-    if '3rd-party-kaggle' in repo_url:
-        return 'Kaggle'
-    elif '3rd-party-huggingface' in repo_url:
-        return 'HF'
-    elif '3rd-party-sql-storm-imdb' in repo_url:
-        return 'IMDB'
-    elif '3rd-party-sql-storm-stackoverflow' in repo_url:
-        return 'SO'
-    elif '3rd-party-sql-storm-tp' in repo_url:
-        return 'TPC'
 
-    if not '3rd-party' in repo_url:
-        return 'DBPile'
-
-    return 'Other'
 
 
 def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputFormat = 'markdown',
                           label: str = 'tab-number-of-operators',
                           caption: str = 'Distribution of Operator Types in Queries') -> str:
-    con.create_function("get_repo_group", get_repo_group, [str], str, type="native")
     query = """
             WITH column_counts AS (SELECT column_base_type,
                                           get_repo_group(repos.repo_url) AS repo_origin,

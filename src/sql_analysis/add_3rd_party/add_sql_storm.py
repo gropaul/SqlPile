@@ -147,10 +147,10 @@ def add_sql_storm_job():
 
 def main():
     """Main function to download and import StackOverflow data."""
-    # add_sql_storm_stack_overflow()
+    add_sql_storm_stack_overflow()
     add_sql_storm_tpc('tpc-h')
-    # add_sql_storm_tpc('tpc-ds')
-    # add_sql_storm_job()
+    add_sql_storm_tpc('tpc-ds')
+    add_sql_storm_job()
 
 
 if __name__ == "__main__":

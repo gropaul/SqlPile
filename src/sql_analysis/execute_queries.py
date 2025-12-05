@@ -538,16 +538,27 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
 
 def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb.DuckDBPyConnection,
                                      schema: str = 'main'):
+
     # create the compression benchmark results table if it doesn't exist
     con.execute(f"""
         CREATE TABLE IF NOT EXISTS columns_compression_results (
             repo_id INTEGER,
             column_id INTEGER,
+            row_offset INTEGER,
+            row_group_idx INTEGER,
+            
             n_rows BIGINT,
             n_rows_not_empty BIGINT,
+            
             algorithm TEXT,
             uncompressed_size BIGINT,
             compressed_size BIGINT,
+            compressed_size_dictionary_strings BIGINT,
+            compressed_size_dictionary_lengths BIGINT,
+            compressed_size_dictionary BIGINT,
+            size_data_codes BIGINT,
+            compressed_size_data_lengths BIGINT,
+            compressed_size_data BIGINT,
             compression_time_ms DOUBLE,
             decompression_time_ms_full DOUBLE,
             decompression_time_ms_vector DOUBLE,
@@ -566,7 +577,8 @@ def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb
                 JOIN {TABLES_TABLE_NAME} ON {COLUMNS_TABLE_NAME}.table_id = {TABLES_TABLE_NAME}.id
                 WHERE {TABLES_TABLE_NAME}.repo_id = {repo_id}
             ), joined_data AS (
-                SELECT {repo_id} as repo_id, column_id, n_rows, n_rows_not_empty, algorithm, uncompressed_size, compressed_size, compression_time_ms, decompression_time_ms_full,decompression_time_ms_vector,decompression_time_ms_random
+                SELECT {repo_id} as repo_id, column_id, 
+                    row_offset, row_group_idx, n_rows, n_rows_not_empty, algorithm, uncompressed_size, compressed_size, compressed_size_dictionary_strings, compressed_size_dictionary_lengths, compressed_size_dictionary, size_data_codes, compressed_size_data_lengths, compressed_size_data, compression_time_ms, decompression_time_ms_full, decompression_time_ms_vector, decompression_time_ms_random
                 FROM columns_full
                 JOIN read_csv_auto('{escape_for_insert(result_path)}') AS results
                     ON lower(results.table) = lower(full_quoted_table_name) 
@@ -592,7 +604,7 @@ class ExecutionSettings:
 
     def __init__(self, mode: ExecutionMode, repo_id: Optional[int] = None, query_id: Optional[int] = None,
                  execute: bool = True, collect_statistics: bool = True, compress: bool = True,
-                 repo_contains_str: Optional[str] = None):
+                 repo_contains_str: Optional[str] = None, repo_not_contains_str: Optional[str] = None):
         self.mode = mode
         self.repo_id = repo_id
         self.query_id = query_id
@@ -600,6 +612,7 @@ class ExecutionSettings:
         self.collect_statistics = collect_statistics
         self.compress = compress
         self.repo_contains_str = repo_contains_str
+        self.repo_not_contains_str = repo_not_contains_str
 
 
 def execute_repo_queries(settings: ExecutionSettings):
@@ -632,7 +645,7 @@ def execute_repo_queries(settings: ExecutionSettings):
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
             and repos.id NOT IN ({', '.join(map(str, EXCLUDED_REPOS))})
             and {f"repos.repo_name LIKE '%{settings.repo_contains_str}%'" if settings.repo_contains_str else 'True'}
-            -- AND '3rd-party-huggingface' IN repos.repo_url  -- only process huggingface for now
+            and {f"repos.repo_name NOT LIKE '%{settings.repo_not_contains_str}%'" if settings.repo_not_contains_str else 'True'}
             {append_filter if settings.mode == 'append' else ''}
         GROUP BY ALL
         ORDER BY repos.id DESC -- from recently added to oldest
@@ -755,8 +768,8 @@ def execute_repo_queries(settings: ExecutionSettings):
 
 if __name__ == "__main__":
     settings = ExecutionSettings(
-        mode='append',
+        mode='replace',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str=None
+        repo_id=None, repo_contains_str=None, repo_not_contains_str='3rd-party-'
     )
     execute_repo_queries(settings)

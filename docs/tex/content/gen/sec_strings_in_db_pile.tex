@@ -6,10 +6,17 @@
 \toprule
 \textbf{Type} & \textbf{DBPile} & \textbf{Kaggle} & \textbf{HF} & \textbf{IMDB} & \textbf{SO} & \textbf{TPC} \\
 \midrule
-Text & 43\% & 53\% & 17\% & 45\% & 30\% & 36\% \\
-Int & 40\% & 22\% & 48\% & 55\% & 53\% & 43\% \\
-DateTime & 9\% & 1\% & NaN & NaN & 14\% & 3\% \\
-Float & 3\% & 24\% & 32\% & NaN & NaN & 18\% \\
+Text & 43\% & 35\% & 33\% & 45\% & 30\% & 36\% \\
+Int & 41\% & 23\% & 37\% & 55\% & 53\% & 43\% \\
+DateTime & 9\% & 4\% & NaN & NaN & 14\% & 3\% \\
+Float & 3\% & 37\% & 27\% & NaN & NaN & 18\% \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+
+\Cref{tab:column-types} shows the most common logical column types in DBPile, IMDB, Stackoverflow, TPC-[H, DS], Kaggle and HuggingFace. 
+For DBPile. the most common column type is \texttt{Text}. For Stackoverflow, IMDB and the TPC-[H, DS] benchmarks, the most common type is \texttt{Integer},
+while Kaggle and HuggingFace feature a lot of \texttt{Float} columns. This comes from many wide ML feature tables in these datasets.
+
+Todo: Add Redset, Snowflake data here. 

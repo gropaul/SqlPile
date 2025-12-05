@@ -287,6 +287,25 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Opt
 
     con.create_function("get_repo_origin", get_repo_origin, [str], str, type="native")
 
+    def get_repo_group(repo_url):
+        if '3rd-party-kaggle' in repo_url:
+            return 'Kaggle'
+        elif '3rd-party-huggingface' in repo_url:
+            return 'HF'
+        elif '3rd-party-sql-storm-imdb' in repo_url:
+            return 'IMDB'
+        elif '3rd-party-sql-storm-stackoverflow' in repo_url:
+            return 'SO'
+        elif '3rd-party-sql-storm-tp' in repo_url:
+            return 'TPC'
+
+        if not '3rd-party' in repo_url:
+            return 'DBPile'
+
+        return 'Other'
+
+    con.create_function("get_repo_group", get_repo_group, [str], str, type="native")
+
     def udf_get_table_name_from_create(query: str) -> Optional[str]:
         # Remove extra whitespace and normalize casing for matching
         cleaned_query = re.sub(r'\s+', ' ', query.strip()).lower()

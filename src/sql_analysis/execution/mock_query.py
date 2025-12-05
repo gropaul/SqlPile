@@ -96,9 +96,16 @@ def try_to_mock_and_execute_query( sandbox_con: duckdb.DuckDBPyConnection, sql: 
         logical_plan_json = json.loads(plans[0][1])[0]
         logical_plan_optimized = json.loads(plans[1][1])[0]
         logical_plan_optimized_detailed = json.loads(plans[2][1])[0]
+
+        # exit if there are no 4 plans as then we use the wrong explain output
+        if len(plans) < 4:
+            print(f"Expected 4 plans from EXPLAIN, got {len(plans)}: You are not using the custom DuckDB build required for this functionality.")
+            exit(1)
+
         physical_plan = json.loads(plans[3][1])[0]
 
     except Exception as e:
+        print(e)
         successful = False
         last_error = e
 

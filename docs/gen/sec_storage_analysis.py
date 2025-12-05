@@ -48,7 +48,7 @@ compressed using the best available algorithm. The results of these analyses are
 """
 
 
-def generate_storage_analysis():
+def main():
 
     get_storage_percentage_table('column_base_type', output_dir=LATEX_ASSETS_DIR)
     figure_storage_semantic_type = get_figure(
@@ -196,7 +196,7 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
 
 
 if __name__ == "__main__":
-    generate_storage_analysis()
+    main()
 
 
 

@@ -39,7 +39,7 @@ the operators used to execute the queries but also the details on the expression
 """
 
 
-def generate_dataset_description():
+def main():
     con = get_con(read_only=True)
 
     con.execute("""
@@ -208,4 +208,4 @@ def generate_dataset_description():
 
 
 if __name__ == "__main__":
-    print(generate_dataset_description())
+    print(main())

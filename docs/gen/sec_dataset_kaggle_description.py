@@ -34,7 +34,7 @@ duckdb database with different schemas per dataset, leading to a total database 
 """
 
 
-def generate_dataset_description():
+def main():
     con = get_con(read_only=True)
     hf_con = duckdb.connect(HUGGINFACE_DATA_DB_PATH, read_only=True)
     kaggle_con = duckdb.connect(KAGGLE_DATA_DB_PATH, read_only=True)
@@ -113,4 +113,4 @@ def generate_dataset_description():
 
 
 if __name__ == "__main__":
-    print(generate_dataset_description())
+    print(main())

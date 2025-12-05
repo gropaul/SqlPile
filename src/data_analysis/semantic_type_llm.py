@@ -71,9 +71,7 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: Option
                     OR column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
                     OR '3rd-party' in repo_url
                 )  
-              
-                -- AND '3rd-party-sql-storm' in repo_url
-                -- AND '3rd-party' in repo_url
+                AND '3rd-party' in repo_url
                 {filter_null_clause}
                 {filter_semantic_type_clause}
             GROUP BY tables.repo_id, table_name, column_name
@@ -360,7 +358,9 @@ def run_semantic_type_analysis(output_file: str, config: SemanticTypeRunConfig):
 if __name__ == "__main__":
     # clear_columns()
     output_file = "semantic_types_sqlpile.csv"
-    # run_semantic_type_analysis(output_file, BASE_CONFIG)
+    print("FILTERING FOR 3rd-part")
+
+    run_semantic_type_analysis(output_file, BASE_CONFIG)
 
     for sub_config in SUB_CONFIGS:
         logger.info(f"Running semantic type analysis for config: {sub_config.filter_semantic_type}")

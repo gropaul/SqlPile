@@ -8,6 +8,12 @@ SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
 section = """
 {column_type_tbl}
+
+\Cref{{tab:column-types}} shows the most common logical column types in DBPile, IMDB, Stackoverflow, TPC-[H, DS], Kaggle and HuggingFace. 
+For DBPile. the most common column type is `Text`. For Stackoverflow, IMDB and the TPC-[H, DS] benchmarks, the most common type is `Integer`,
+while Kaggle and HuggingFace feature a lot of `Float` columns. This comes from many wide ML feature tables in these datasets.
+
+Todo: Add Redset, Snowflake data here. 
 """
 
 def main():

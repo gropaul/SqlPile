@@ -66,7 +66,7 @@ class Config:
 
 class ParseResult:
     def __init__(self, id: str, configs: List[Config], columns: List[Columns],
-                 size_categories: str, download_size: int, dataset_size: float, license: str, splits: List[Splits], parquet_files: List[ParquetFile]):
+                 size_categories: str, download_size: int, dataset_size: float, license: str, splits: List[Splits], parquet_files: List[ParquetFile], downloads: int):
         self.id = id
         self.configs = configs
         self.columns = columns
@@ -76,6 +76,7 @@ class ParseResult:
         self.splits = splits
         self.license = license
         self.parquet_files = parquet_files
+        self.downloads = downloads
 
     def __repr__(self):
         return f"ParseResult(id={self.id}, configs={self.configs}, columns={self.columns})"

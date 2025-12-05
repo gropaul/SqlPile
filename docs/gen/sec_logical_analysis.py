@@ -24,7 +24,7 @@ similar to findings in Redset~\\cite{{van_renen_why_2024}} and the Public BI~\\c
 """
 
 
-def generate_logical_analysis():
+def main():
     con = get_con(read_only=True)
 
     operator_tbl = get_operator_table(con, output_format='latex', label=LABEL_TABLE_OPERATOR_COUNTS,
@@ -52,4 +52,4 @@ def generate_logical_analysis():
 
 
 if __name__ == "__main__":
-    print(generate_logical_analysis())
+    print(main())

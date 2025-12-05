@@ -217,7 +217,7 @@ def generate_colors(n: int, brightness: float = 0.8, saturation: float = 0.9):
     return [hsv_to_hex(i * step, saturation, brightness) for i in range(n)]
 
 
-def generate_colors_from_cmap(n: int, cmap_name: str = "Dark2"):
+def generate_colors_from_cmap(n: int, cmap_name: str = "Set2"):
     """
     Generate `n` colors from a given qualitative colormap (like Dark2).
     """
@@ -284,7 +284,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir, all_usage_types
 
     n_usage_types = len(all_usage_types)
 
-    height_per_plot = (1.3 / 3) * len(all_data_sources)
+    height_per_plot = (1 / 3) * len(all_data_sources)
     fig, axes = plt.subplots(
         nrows=n_usage_types,
         ncols=1,
@@ -344,7 +344,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir, all_usage_types
                 if group_type not in all_group_types_filtered:
                     all_group_types_filtered.append(group_type)
 
-        bar_height = 0.7  # smaller than 0.6 → slimmer boxes
+        bar_height = 0.8
 
         lefts = np.zeros(n_data_sources)
 
@@ -370,18 +370,17 @@ def create_stacked_bar_plot(all_results, count_type, output_dir, all_usage_types
             format_percent = lambda percentage, left: f"{round(percentage * 100)}\%" if percentage > 0.015 and left + (percentage / 2) > 0.15 else ""  # format for percentages
             labels = [format_percent(percentage, left) for percentage, left in zip(percentages, lefts)]
             ax.bar_label(p, label_type='center', fontsize=10, labels=labels,
-                         color='white',
-                         padding=0, weight='bold', rotation=0)
+                         padding=0, rotation=0)
 
             # Remove default y-axis tick labels
             ax.set_yticks([])
             lefts += percentages
 
-            # Add custom labels inside the bars, aligned right from y-axis
-            for i, source in enumerate(all_data_sources):
-                ax.text(0.01, i, source, va='center', ha='left', color='white', fontsize=10)
+        # Add custom labels inside the bars, aligned right from y-axis
+        for i, source in enumerate(all_data_sources):
+            ax.text(0.01, i, source, va='center', ha='left', color='black', weight='normal', fontsize=10)
 
-        ax.set_title(f"{data_usage_type}", fontsize=12, fontweight='bold', color='black', pad=4)
+        ax.set_title(f"{data_usage_type}", fontsize=12, color='black', pad=4)
         handles, labels = ax.get_legend_handles_labels()
         for h, l in zip(handles, labels):
             if l not in labels_all:  # prevent duplicates
@@ -395,7 +394,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir, all_usage_types
     fig.suptitle('c', color='white', fontsize=title_size)  # hide the super title, but we need space for the legend
 
     fig.legend(handles_all, labels_all, loc='upper center', bbox_to_anchor=(0.5, 1.0),
-               ncol=n_cols, fontsize=10, borderaxespad=0., alignment='center')
+               ncol=n_cols, fontsize=10, borderaxespad=0., alignment='center', frameon=False)
 
     # save as pdf
     output_file = os.path.join(output_dir, f"{count_type}.{OUTPUT_FORMAT}")

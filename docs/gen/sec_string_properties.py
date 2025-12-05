@@ -466,7 +466,7 @@ def generate_section(con):
         f.write(section)
 
 
-if __name__ == "__main__":
+def main():
     con = get_con()
     query = f"""
             CREATE OR REPLACE TEMP VIEW temp_summary AS 
@@ -480,3 +480,8 @@ if __name__ == "__main__":
             """
     con.execute(query)
     generate_section(con)
+
+
+
+if __name__ == "__main__":
+    main()

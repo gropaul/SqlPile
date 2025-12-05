@@ -32,99 +32,6 @@ def count_best_algorithm(df):
     return algo_best_counts
 
 
-def create_compression_box_plot(con: duckdb.DuckDBPyConnection):
-
-    df = con.execute("""
-        WITH results AS (
-            SELECT column_id, uncompressed, dictionary, fsst, fsst12, onpair16, onpair, onpairmini
-            FROM column_sizes_text
-        ), ratios AS (
-            SELECT 
-                column_id,
-                uncompressed / dictionary AS dict_ratio,
-                uncompressed / fsst AS fsst_ratio,
-                uncompressed / fsst12 AS fsst12_ratio,
-                uncompressed / onpair16 AS onpair16_ratio,
-                uncompressed / onpair AS onpair_ratio,
-                uncompressed / onpairmini AS onpairmini_ratio
-            FROM results
-        )
-        SELECT *
-        FROM ratios
-        LEFT JOIN columns on columns.id = ratios.column_id
-    """).df()
-
-    semantic_types = df["semantic_type_llm"].unique()
-    n_types = len(semantic_types)
-
-    fig, axes = plt.subplots(1,n_types, figsize=(2 * n_types, 3))
-
-    # If only one semantic type, axes won't be an array
-    if n_types == 1:
-        axes = [axes]
-
-    best_collector = {}
-
-    for ax, sem_type in zip(axes, semantic_types):
-        subset = df[df["semantic_type_llm"] == sem_type]
-        n_values = len(subset)
-        subset.boxplot(
-            column=["dict_ratio", "fsst_ratio", "fsst12_ratio", "onpair16_ratio", "onpair_ratio", "onpairmini_ratio"],
-            ax=ax,
-            showfliers=False,
-        )
-        # set nice labels
-        method_labels = {
-            "dict_ratio": "Dict",
-            "fsst_ratio": "FSST",
-            "fsst12_ratio": "FSST12",
-            "onpair16_ratio": "OnPair16",
-            "onpair_ratio": "OnPair",
-            "onpairmini_ratio": "OnPairMini"
-        }
-        ax.set_xticklabels([method_labels[col] for col in list(subset.columns) if col in method_labels])
-        ax.set_title(f"{sem_type} (n={n_values})")
-        ax.set_ylabel("Ratio")
-        ax.tick_params(axis="x", rotation=90)
-
-        best_count = count_best_algorithm(subset)
-        best_collector[sem_type] = best_count
-
-    plt.tight_layout()
-    plt.show()
-
-    df_best = []
-    for sem_type, counts in best_collector.items():
-        total = sum(counts.values())
-        row = {
-            "semantic_type": sem_type,
-            "Dict": counts["Dict"] / total * 100 if total else 0,
-            "FSST": counts["FSST"] / total * 100 if total else 0,
-            "FSST12": counts["FSST12"] / total * 100 if total else 0,
-            "OnPair16": counts["OnPair16"] / total * 100 if total else 0,
-            "OnPair": counts.get("OnPair", 0) / total * 100 if total else 0,
-            "OnPairMini": counts.get("OnPairMini", 0) / total * 100 if total else 0,
-            "Total": total
-        }
-        df_best.append(row)
-
-    df_best = sorted(df_best, key=lambda x: x["Total"], reverse=True)
-
-    print("Best algorithm percentages per semantic type:")
-    print(f"{'Semantic Type':<20} {'Dict %':<10} {'FSST %':<10} {'FSST12 %':<10} {'OnPair16 %':<12} {'OnPair %':<10} {'OnPairMini %':<12} {'Total':<10}")
-    for row in df_best:
-        print(
-            f"{str(row['semantic_type']):<20} "
-            f"{row['Dict']:<10.1f} "
-            f"{row['FSST']:<10.1f} "
-            f"{row['FSST12']:<10.1f} "
-            f"{row['OnPair16']:<12.1f} "
-            f"{row['OnPair']:<10.1f} "
-            f"{row['OnPairMini']:<12.1f} "
-            f"{row['Total']:<10}"
-        )
-
-
 def create_columns_storage_view(con: duckdb.DuckDBPyConnection):
     create_sql_type_size_table(con)
 
@@ -132,12 +39,13 @@ def create_columns_storage_view(con: duckdb.DuckDBPyConnection):
     con.execute("""
         CREATE OR REPLACE VIEW column_sizes_text AS ( 
             WITH results AS ( 
-              SELECT column_id, compressed_size, algorithm FROM columns_compression_results
+                SELECT column_id,( compressed_size / n_rows_not_empty) as bytes_per_row_compressed , (uncompressed_size / n_rows_not_empty) as bytes_per_row_uncompressed, algorithm,  FROM columns_compression_results
+                WHERE row_group_idx = 0
             ), 
             compression_pivot AS (
                 PIVOT results 
-                ON algorithm IN ('FSST', 'FSST12', 'OnPair16', 'OnPairMini', 'OnPair', 'Dictionary')
-                USING MIN(compressed_size)
+                ON algorithm IN ('FSST', 'FSST12', 'OnPair16', 'OnPairMini', 'OnPair', 'Dictionary', 'LZ4')
+                USING MIN(bytes_per_row_compressed)
                 ORDER BY column_id
             )
             SELECT 
@@ -151,28 +59,20 @@ def create_columns_storage_view(con: duckdb.DuckDBPyConnection):
                 all_offsets_bytes: count * offset_size_bytes,
                 all_offsets_bytes_bitpacked: ceil((count * offset_size_bits_bitpacked)/8),
                 
-                uncompressed: count_non_null * avg_bytes + all_offsets_bytes,
+                uncompressed: bytes_per_row_uncompressed * count + all_offsets_bytes,
                 
-                -- dict_code_size_bitpacked_bits: greatest(log2(count_distinct), 1),
-                -- dict_codes_bytes: ceil((dict_code_size_bitpacked_bits * count) / 8),
-                -- dict_offset_size_bits_bitpacked: log2(count_distinct),
-                -- all_dict_offset_size_bytes_bitpacked: ceil((count_distinct * dict_offset_size_bits_bitpacked) / 8),
-                -- dict_entries_bytes: ceil(total_distinct_bytes + all_dict_offset_size_bytes_bitpacked), 
-                -- dict_compressed: dict_codes_bytes + dict_entries_bytes,
-                
-                dictionary: dictionary,
-            
-                fsst: fsst + all_offsets_bytes_bitpacked,
-                fsst12: fsst12 + all_offsets_bytes_bitpacked,
-                onpair16: onpair16 + all_offsets_bytes_bitpacked,
-                onpair: onpair + all_offsets_bytes_bitpacked,
-                onpairmini: onpairmini + all_offsets_bytes_bitpacked,
-
-                compressed: least(uncompressed, dictionary, fsst, fsst12, onpair16, onpair, onpairmini),
+                dictionary_compressed: dictionary * count,
+                fsst_compressed: fsst * count + all_offsets_bytes_bitpacked,
+                fsst12_compressed: fsst12 * count  + all_offsets_bytes_bitpacked,
+                onpair16_compressed: onpair16  * count  + all_offsets_bytes_bitpacked,
+                onpair_compressed: onpair  * count  + all_offsets_bytes_bitpacked,
+                onpairmini_compressed: onpairmini  * count  + all_offsets_bytes_bitpacked,
+                lz4_compressed: lz4 * count + all_offsets_bytes,
+                compressed: least(fsst_compressed, fsst12_compressed, onpair16_compressed, lz4_compressed, dictionary_compressed),
                 compression_rate: round(uncompressed / compressed, 2)
             FROM column_stats_text
             JOIN compression_pivot USING (column_id)
-            WHERE count_distinct > 0
+            ORDER BY compression_rate DESC
         ) 
         """)
 
@@ -267,9 +167,7 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
 
     con = get_con()
 
-
     create_columns_storage_view(con)
-    create_compression_box_plot(con)
     df_view = con.execute("SELECT * FROM column_sizes").df()
     print(f"Column sizes view has {len(df_view)} rows")
 
@@ -283,13 +181,13 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
             FROM columns
             JOIN tables ON tables.id = columns.table_id
             JOIN table_values_count ON table_values_count.table_id = columns.table_id
-            LEFT JOIN column_sizes ON column_sizes.column_id = columns.id
+            JOIN column_sizes ON column_sizes.column_id = columns.id
         ),
         storage_per_repo AS (
             SELECT 
                 tables.repo_id,
                 {group_key},
-                get_repo_origin(repo_url)       AS repo_origin,
+                get_repo_group(repo_url)       AS repo_origin,
                 COUNT(*)                        AS cnt,
                 SUM(uncompressed)               AS uncompressed,
                 SUM(compressed)                 AS compressed,
@@ -361,7 +259,7 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
             ROUND(AVG(compressed_percentage), 6) AS compressed_percentage,
             ROUND(AVG(uncompressed_percentage), 6) AS uncompressed_percentage,
           FROM percentages
-          WHERE repo_origin != 'SqlPile'  -- exclude sql pile itself, we don't have enough data for it
+          WHERE repo_origin NOT in ('DBPile', 'Other')
 
           GROUP BY ALL
         ) FROM aggregates ORDER BY repo_origin, {group_key}

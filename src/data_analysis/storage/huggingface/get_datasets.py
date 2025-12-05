@@ -15,7 +15,7 @@ def save_result(con: duckdb.DuckDBPyConnection):
     pass
 
 
-def parse_card_data(id: str, card_data_str: str) -> ParseResult:
+def parse_card_data(id: str, card_data_str: str, downloads: int) -> ParseResult:
 
     # parse the YAML-like string in card_data_str to extract configs and columns
     card_data = yaml.safe_load(card_data_str)
@@ -85,7 +85,7 @@ def parse_card_data(id: str, card_data_str: str) -> ParseResult:
 
     parquet_files = get_file_infos(id)
 
-    return ParseResult(id, configs_parsed, columns_parsed, size_categories, download_size, dataset_size, license, splits_parsed, parquet_files)
+    return ParseResult(id, configs_parsed, columns_parsed, size_categories, download_size, dataset_size, license, splits_parsed, parquet_files, downloads)
 
 
 url_params = "modality:tabular,format:parquet"
@@ -123,7 +123,7 @@ for i, d in enumerate(dataset):
     card_data = d.cardData.to_yaml()
 
     try:
-        parse_result = parse_card_data(d.id, card_data)
+        parse_result = parse_card_data(d.id, card_data, d.downloads)
         results.append(parse_result)
 
     except Exception as e:
@@ -131,7 +131,7 @@ for i, d in enumerate(dataset):
         continue
 
     if len(results) >= BLOCK_SIZE:
-        store_results(results, reset=False)
+        store_results(results, reset=True)
         results = []
 
 

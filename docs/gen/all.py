@@ -1,15 +1,23 @@
-from docs.gen.sec_dataset_description import generate_dataset_description
-from docs.gen.sec_logical_analysis import generate_logical_analysis
-from docs.gen.sec_semantic_analysis import generate_semantic_analysis
-from docs.gen.sec_storage_analysis import generate_storage_analysis
+
 
 
 def run_all():
-    generate_dataset_description()
-    generate_logical_analysis()
-    generate_semantic_analysis()
-    generate_storage_analysis()
-
+    # execute all scripts in this directory that start with "sec_"
+    import os
+    import importlib.util
+    current_dir = os.path.dirname(__file__)
+    for filename in os.listdir(current_dir):
+        if filename.startswith("sec_") and filename.endswith(".py"):
+            print(f"Running {filename}...")
+            module_name = filename[:-3]
+            module_path = os.path.join(current_dir, filename)
+            spec = importlib.util.spec_from_file_location(module_name, module_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if hasattr(module, 'main'):
+                module.main()
+            else:
+                print(f"No main() function found in {filename}.")
 
 if __name__ == "__main__":
     run_all()

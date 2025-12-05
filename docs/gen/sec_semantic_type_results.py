@@ -237,8 +237,11 @@ def semantic_type_example():
         f.write(markdown_content)
 
 
+def main():
+    semantic_type_percentages()
+    semantic_type_example()
+
 
 
 if __name__ == "__main__":
-    semantic_type_percentages()
-    semantic_type_example()
+    main()
