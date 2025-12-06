@@ -49,7 +49,7 @@ MAX_VALUES_TO_ANALYZE_PER_COLUMN = 122_880
 MAX_VALUES_TO_DOWNLOAD = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 4
 MAX_GB_TO_DOWNLOAD_PER_REPO = 25 # Maximum number of GB to download per repository table when analyzing 3rd-party datasets
 MAX_GB_TO_DOWNLOAD = 1000  # Maximum number of GB to download in total when analyzing 3rd-party datasets
-N_DATASETS_TO_DOWNLOAD = 500 # Number of datasets to download from HuggingFace or Kaggle
+N_DATASETS_TO_DOWNLOAD = 300 # Number of datasets to download from HuggingFace or Kaggle
 
 def gb_to_bytes(gb: int) -> int:
     return gb * 1024 * 1024 * 1024
