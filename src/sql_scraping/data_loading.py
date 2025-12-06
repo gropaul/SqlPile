@@ -3,26 +3,7 @@ from typing import List
 
 import duckdb
 
-from src.config import logger, QUERIES_DIR_RAW, SCHEMAPILE_DIR
-
-
-permissive_licenses = [
-    "mit",
-    "apache-2.0",
-    "bsd-3-clause",
-    "bsd-2-clause",
-    "bsd-3-clause-clear",
-    "isc",
-    "zlib",
-    "0bsd",
-    "mit-0",
-    "unlicense",
-    "cc0-1.0",
-    "cc-by-4.0",      # attribution-only, no share-alike
-    "bsl-1.0",
-    "postgresql",
-    "ncsa"
-]
+from src.config import logger, QUERIES_DIR_RAW, SCHEMAPILE_DIR, PERMISSIVE_LICENSES
 
 
 def get_processed_urls() -> List[str]:
@@ -53,9 +34,9 @@ def get_all_urls(permissive_only: bool) -> List[str]:
 
     where_clause = ""
     if permissive_only:
-        licenses_str = ", ".join([f"'{lic}'" for lic in permissive_licenses])
+        licenses_str = ", ".join([f"'{lic}'" for lic in PERMISSIVE_LICENSES])
         where_clause = f"WHERE license IN ({licenses_str})"
-        logger.info(f"Filtering URLs to only include permissive licenses: {permissive_licenses}")
+        logger.info(f"Filtering URLs to only include permissive licenses: {PERMISSIVE_LICENSES}")
 
     parquet_path = os.path.join(SCHEMAPILE_DIR, "repos.parquet")
     result = duckdb.sql(f"SELECT url FROM '{parquet_path}' {where_clause}").fetchall()

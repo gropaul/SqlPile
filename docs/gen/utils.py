@@ -58,7 +58,7 @@ def get_figure(path: str, caption: str = "", description: str = "", label: str =
     return template
 
 
-def get_multi_figure(paths: List[str], caption: str, captions: List[str], label: str = "", two_column: bool = True, main_percentage: float = 0.95) -> str:
+def get_multi_figure(paths: List[str], caption: str, captions: List[str], label: str = "", two_column: bool = True, main_percentage: float = 0.95, percentages : List[float] = None) -> str:
     """
     Generate a LaTeX figure with multiple subfigures.
     Each subfigure gets a label derived from its file name.
@@ -87,11 +87,13 @@ def get_multi_figure(paths: List[str], caption: str, captions: List[str], label:
     percentage_per_figure = round(main_percentage / len(paths), 4)
 
     subfigures = []
-    for path, cap in zip(paths, captions):
+    for (index, (path, cap)) in enumerate(zip(paths, captions)):
         stem = Path(path).stem
         stem_safe = sanitize_label(stem)
         sub_label = f"{overall_label_prefix}:{stem_safe}"
         cap_str = f"\\caption{{{cap}}}" if cap else ""
+
+        percentage_per_figure = percentages[index] if percentages and index < len(percentages) else percentage_per_figure
 
         subfig = (
             f"\\begin{{subfigure}}{{{percentage_per_figure}\\linewidth}}\n"

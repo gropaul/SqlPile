@@ -1,12 +1,112 @@
 
 In the following, we will discuss how which semantic type is used in which operator for different benchmarks (TPC-H, TPC-DS, SQLStorm).
 
-\begin{figure}
+\begin{figure}[h!]
   \centering
-  \includegraphics[width=\linewidth]{assets/column_usage/semantic_type_llm/column_cnt.pdf}
-  \caption{Distribution of the semantic types of different benchmarks.}
-  \Description{Distribution of the semantic types of different benchmarks.}
-    \label{fig:column_semantic_type_usage}
+\begin{subfigure}{0.23323999999999998\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/physical_type/column_cnt_join_key.pdf}
+  \caption{Logical}
+  \label{fig:semantic_type_join_key:column_cnt_join_key}
+\end{subfigure}
+\begin{subfigure}{0.74578\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/semantic_type/column_cnt_join_key.pdf}
+  \caption{Taxonomy of Text Columns}
+  \label{fig:semantic_type_join_key:column_cnt_join_key}
+\end{subfigure}
+  \label{fig:semantic_type_join_key}
+  \caption{Distribution of semantic types used in columns involved in JOIN operations across different benchmarks.}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+\begin{subfigure}{0.23323999999999998\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/physical_type/column_cnt_aggregate.pdf}
+  \caption{Logical}
+  \label{fig:semantic_type_aggregate:column_cnt_aggregate}
+\end{subfigure}
+\begin{subfigure}{0.74578\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/semantic_type/column_cnt_aggregate.pdf}
+  \caption{Taxonomy of Text Columns}
+  \label{fig:semantic_type_aggregate:column_cnt_aggregate}
+\end{subfigure}
+  \label{fig:semantic_type_aggregate}
+  \caption{Distribution of semantic types used in columns involved in AGGREGATE operations across different benchmarks.}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+\begin{subfigure}{0.23323999999999998\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/physical_type/column_cnt_group_key.pdf}
+  \caption{Logical}
+  \label{fig:semantic_type_group_key:column_cnt_group_key}
+\end{subfigure}
+\begin{subfigure}{0.74578\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/semantic_type/column_cnt_group_key.pdf}
+  \caption{Taxonomy of Text Columns}
+  \label{fig:semantic_type_group_key:column_cnt_group_key}
+\end{subfigure}
+  \label{fig:semantic_type_group_key}
+  \caption{Distribution of semantic types used in columns involved in GROUP BY operations across different benchmarks.}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+\begin{subfigure}{0.23323999999999998\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/physical_type/column_cnt_order_key.pdf}
+  \caption{Logical}
+  \label{fig:semantic_type_order_key:column_cnt_order_key}
+\end{subfigure}
+\begin{subfigure}{0.74578\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/semantic_type/column_cnt_order_key.pdf}
+  \caption{Taxonomy of Text Columns}
+  \label{fig:semantic_type_order_key:column_cnt_order_key}
+\end{subfigure}
+  \label{fig:semantic_type_order_key}
+  \caption{Distribution of semantic types used in columns involved in ORDER BY operations across different benchmarks.}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+\begin{subfigure}{0.23323999999999998\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/physical_type/column_cnt_filter.pdf}
+  \caption{Logical}
+  \label{fig:semantic_type_filter:column_cnt_filter}
+\end{subfigure}
+\begin{subfigure}{0.74578\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/semantic_type/column_cnt_filter.pdf}
+  \caption{Taxonomy of Text Columns}
+  \label{fig:semantic_type_filter:column_cnt_filter}
+\end{subfigure}
+  \label{fig:semantic_type_filter}
+  \caption{Distribution of semantic types used in columns involved in WHERE operations across different benchmarks.}
+\end{figure}
+
+\begin{figure}[h!]
+  \centering
+\begin{subfigure}{0.23323999999999998\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/physical_type/column_cnt_payload_column.pdf}
+  \caption{Logical}
+  \label{fig:semantic_type_payload_column:column_cnt_payload_column}
+\end{subfigure}
+\begin{subfigure}{0.74578\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/column_usage/semantic_type/column_cnt_payload_column.pdf}
+  \caption{Taxonomy of Text Columns}
+  \label{fig:semantic_type_payload_column:column_cnt_payload_column}
+\end{subfigure}
+  \label{fig:semantic_type_payload_column}
+  \caption{Distribution of semantic types used in columns in materializing operators}
 \end{figure}
 
 \begin{itemize}

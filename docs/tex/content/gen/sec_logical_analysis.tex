@@ -1,37 +1,29 @@
 
 \begin{table}
-\caption{Logical Operators per query for SqlPile and TPC-[H, DS] benchmarks. The SQLPile queries are far less complex.}
+\caption{Logical Operators per query for DBPile and TPC-[H, DS] benchmarks. The DBPile queries are far less complex.}
 \label{tab:op-usage}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Operator} & \textbf{SqlPile} & \textbf{SQLStorm} & \textbf{TPC-[H, DS]} \\
+\textbf{Operator} & \textbf{DBPile} & \textbf{SQLStorm} & \textbf{TPC-[H, DS]} \\
 \midrule
-Projection & 1.278 & 3.659 & 4.025 \\
-Scan & 0.742 & 4.478 & 4.142 \\
-Filtered Scan & 0.391 & 1.448 & 3.317 \\
-Filter & 0.247 & 0.941 & 1.308 \\
-Join & 0.210 & 4.916 & 6.158 \\
-Order By & 0.116 & 1.015 & 0.892 \\
-Ungrouped Aggregate & 0.105 & 0.310 & 0.733 \\
-Grouped Aggregate & 0.066 & 1.590 & 1.550 \\
-Window Function & 0.005 & 0.585 & 0.175 \\
+Projection & 1.282 & 3.841 & 5.293 \\
+Scan & 0.742 & 4.202 & 6.870 \\
+Filtered Scan & 0.390 & 1.200 & 6.024 \\
+Filter & 0.253 & 0.858 & 2.382 \\
+Join & 0.210 & 4.462 & 10.358 \\
+Order By & 0.115 & 1.004 & 1.065 \\
+Ungrouped Aggregate & 0.105 & 0.390 & 1.041 \\
+Grouped Aggregate & 0.066 & 1.442 & 2.642 \\
+Window Function & 0.005 & 0.569 & 0.171 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 
-We analyzed the operator usage of SqlPile queries and compared them to the TPC-H and TPC-DS benchmarks. As depicted in 
-\cref{tab:op-usage}, SqlPile queries use far fewer logical operators than the TPC benchmarks.
-This comes from the fact that a lot of the queries in SqlPile are simple \texttt{SELECT} statements from a transactional workload,
-while the TPC benchmarks resemble an analytical workload with complex joins and aggregations
+We analyzed the operator usage of DBPile queries and compared them to the TPC-H and TPC-DS benchmarks. As depicted in 
+\cref{tab:op-usage}, DBPile queries use far fewer logical operators than the TPC benchmarks.
+This comes from the fact that a lot of the queries in DBPile are simple \texttt{SELECT} statements from a transactional workload,
+while the TPC benchmarks resemble an analytical workload with complex joins and aggregations.
 
-We analyzed the distribution of logical column types used in SqlPile, which are shown in \cref{tab:column-types}, which is 
+We analyzed the distribution of logical column types used in DBPile, which are shown in \cref{tab:column-types}, which is 
 similar to findings in Redset~\cite{van_renen_why_2024} and the Public BI~\cite{vogelsgesang_get_2018} benchmark.
-
-\begin{figure}
-  \centering
-  \includegraphics[width=\linewidth]{assets/column_usage/physical_type/column_cnt.pdf}
-  \caption{Distribution of physical column types in SqlPile.}
-  \Description{fig:column-physical-type-usage}
-  \label{fig:column-physical-type-usage}
-\end{figure}

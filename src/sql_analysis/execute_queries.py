@@ -768,8 +768,8 @@ def execute_repo_queries(settings: ExecutionSettings):
 
 if __name__ == "__main__":
     settings = ExecutionSettings(
-        mode='replace',
+        mode='append',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str=None, repo_not_contains_str='3rd-party-'
+        repo_id=None, repo_contains_str='3rd-party-sql', repo_not_contains_str=None
     )
     execute_repo_queries(settings)

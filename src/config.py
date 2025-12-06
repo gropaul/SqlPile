@@ -49,6 +49,7 @@ MAX_VALUES_TO_ANALYZE_PER_COLUMN = 122_880
 MAX_VALUES_TO_DOWNLOAD = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 4
 MAX_GB_TO_DOWNLOAD_PER_REPO = 25 # Maximum number of GB to download per repository table when analyzing 3rd-party datasets
 MAX_GB_TO_DOWNLOAD = 1000  # Maximum number of GB to download in total when analyzing 3rd-party datasets
+N_DATASETS_TO_DOWNLOAD = 500 # Number of datasets to download from HuggingFace or Kaggle
 
 def gb_to_bytes(gb: int) -> int:
     return gb * 1024 * 1024 * 1024
@@ -71,7 +72,26 @@ for directory in DIRS:
 # Logging configuration
 # Set the default logging level - can be changed to DEBUG, INFO, WARNING, ERROR, CRITICAL
 LOG_LEVEL = logging.INFO
-LOG_FILE = os.path.join(LOG_DIR, "sqlpile.log")
+LOG_FILE = os.path.join(LOG_DIR, "DBPile.log")
+
+PERMISSIVE_LICENSES = [
+    "mit",
+    "apache-2.0",
+    "bsd-3-clause",
+    "bsd-2-clause",
+    "bsd-3-clause-clear",
+    "isc",
+    "zlib",
+    "0bsd",
+    "mit-0",
+    "unlicense",
+    "cc0-1.0",
+    "cc-by-4.0",      # attribution-only, no share-alike
+    "bsl-1.0",
+    "postgresql",
+    "ncsa"
+]
+
 
 SOURCE_CODE_FILE_EXTENSIONS = [
     ".py",  # Python
@@ -283,7 +303,7 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Opt
         elif repo_url.startswith("https://github.com/3rd-party/3rd-party-kaggle"):
             return "Kaggle"
         else:
-            return "SqlPile"
+            return "DBPile"
 
     con.create_function("get_repo_origin", get_repo_origin, [str], str, type="native")
 

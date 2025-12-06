@@ -91,10 +91,10 @@ def get_operator_table(con: duckdb.DuckDBPyConnection, output_format: OutputForm
                 PIVOT aggregates
             ON repo_origin
                 USING MIN(op_count) as op_count, MIN(query_count) as query_count, MIN(op_per_query) as op_per_query
-            ORDER BY SqlPile_op_per_query
+            ORDER BY DBPile_op_per_query
             DESC)
             SELECT op                 AS "Operator",
-                   SqlPile_op_per_query AS "SqlPile",
+                   DBPile_op_per_query AS "DBPile",
                     SQLStorm_op_per_query AS "SQLStorm",
                    TPC_op_per_query  AS "TPC-[H, DS]"
             FROM pivoted;

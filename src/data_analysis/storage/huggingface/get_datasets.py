@@ -102,7 +102,7 @@ dataset = api.list_datasets(
 
 results = []
 
-BLOCK_SIZE = 100
+BLOCK_SIZE = 10
 
 DELAY_SECONDS = 0.2
 last_execution = 0  # timestamp of last loop iteration
@@ -114,6 +114,9 @@ for i, d in enumerate(dataset):
     if elapsed < DELAY_SECONDS:
         print(f"Sleeping for {DELAY_SECONDS - elapsed:.2f} seconds to respect rate limits...")
         time.sleep(DELAY_SECONDS - elapsed)
+
+
+    print(f"Processing dataset {i + 1}: {d.id}, Downloads: {d.downloads}")
 
     last_execution = time.time()  # mark loop start time
 

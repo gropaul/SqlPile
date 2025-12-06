@@ -10,7 +10,8 @@ from tqdm import tqdm
 import duckdb
 
 from src.config import HUGGINFACE_DATASETS_DB_PATH, HUGGINFACE_DATA_DB_PATH, MAX_VALUES_TO_ANALYZE_PER_COLUMN, \
-    HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_REPO, MAX_GB_TO_DOWNLOAD, MAX_VALUES_TO_DOWNLOAD
+    HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_REPO, MAX_GB_TO_DOWNLOAD, MAX_VALUES_TO_DOWNLOAD, \
+    PERMISSIVE_LICENSES, N_DATASETS_TO_DOWNLOAD
 
 # clear temp download dir
 
@@ -136,6 +137,9 @@ def download_data(download_locally: bool = False):
 
     total_downloaded_bytes = 0
 
+    licenses_parts = [f"'{lic}' in license" for lic in PERMISSIVE_LICENSES]
+    licenses_str = " OR ".join(licenses_parts)
+
     datasets = dataset_con.execute(f"""
         WITH config_split_sizes AS (
             SELECT parse_result_id, config_name, split, SUM(size_bytes) as total_bytes, list(path ORDER BY path) AS paths
@@ -148,13 +152,17 @@ def download_data(download_locally: bool = False):
             FROM config_split_sizes
             GROUP BY parse_result_id
         )
-        SELECT parse_result_id, biggest_split_paths AS paths
+        SELECT parse_result_id, downloads, license, biggest_split_paths AS paths
         FROM biggest_splits
-        GROUP BY ALL ORDER BY ALL;
+        JOIN parse_results ON parse_results.id = biggest_splits.parse_result_id
+        WHERE {licenses_str}
+        GROUP BY ALL
+        ORDER BY downloads DESC
+        LIMIT {N_DATASETS_TO_DOWNLOAD}
     """).fetchall()
 
-    for (dataset_id, paths) in tqdm(datasets):
-        print(f"Downloading dataset: {dataset_id}, num files: {len(paths)}")
+    for ( dataset_id, downloads, license, paths) in tqdm(datasets):
+        print(f"Downloading dataset: {dataset_id}, num files: {len(paths)}, downloads: {downloads}, license: {license}")
         # Use dataset_id as schema name (e.g., "owner/repo" becomes schema name)
         schema_name = dataset_id.replace('/', '-')
         table_name = f"{dataset_id.replace('/', '_')}"

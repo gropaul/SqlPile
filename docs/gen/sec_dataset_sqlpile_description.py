@@ -46,7 +46,7 @@ def main():
                 CREATE OR REPLACE TEMP VIEW external_repos AS
                 SELECT id
                 FROM repos
-                WHERE lower(get_repo_origin(repo_url)) != 'sqlpile'
+                WHERE lower(get_repo_origin(repo_url)) != 'DBPile'
                 """
                 )
     con.execute("""

@@ -51,14 +51,14 @@ compressed using the best available algorithm. The results of these analyses are
 def main():
 
     get_storage_percentage_table('column_base_type', output_dir=LATEX_ASSETS_DIR)
-    figure_storage_semantic_type = get_figure(
+    figure_storage_column_base_type = get_figure(
         path='assets/column_base_type.pdf',
         caption="Analysis on the storage per logical types",
         label="fig:storage-semantic-type-llm",
     )
 
     get_storage_percentage_table('semantic_type_llm', output_dir=LATEX_ASSETS_DIR)
-    figure_storage_column_base_type = get_figure(
+    figure_storage_semantic_type = get_figure(
         path='assets/semantic_type_llm.pdf',
         caption="Ratios for storage for all strings based on semantic type",
         label="fig:storage-column-base-type",

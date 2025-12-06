@@ -16,8 +16,6 @@ from pydantic import BaseModel, Field
 from src.data_analysis.semantic_type.models import get_prompt, SemanticType, BASE_SEMANTIC_TYPES, SemanticTypeRunConfig, \
     SemanticTypeColumnName, BASE_CONFIG, ID_CONFIG, SUB_CONFIGS
 
-DataSetType = Literal['kaggle', 'sqlpile']
-
 
 class OutputSchema(BaseModel):
     """Always use this tool to structure your response to the user."""
@@ -67,11 +65,11 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: Option
             LEFT JOIN repos ON tables.repo_id = repos.id
             WHERE 
                 ( 
-                    tvc.count > 10 -- the column will be used for statistics, e.g. kaggle columns
-                    OR column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
+                    -- tvc.count > 10 OR  -- the column will be used for statistics, e.g. kaggle columns
+                    column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
                     OR '3rd-party' in repo_url
                 )  
-                AND '3rd-party' in repo_url
+                AND '3rd-party-sql' in repo_url
                 {filter_null_clause}
                 {filter_semantic_type_clause}
             GROUP BY tables.repo_id, table_name, column_name
