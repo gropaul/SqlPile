@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional, Tuple
 
 import duckdb
 
@@ -44,8 +44,7 @@ def get_all_urls(permissive_only: bool) -> List[str]:
     logger.info(f"Found {len(urls)} total URLs in the database.")
     return urls
 
-
-def get_urls(filter_analysed: bool, shuffle: bool = False, permissive_licenses: bool = False) -> List[str]:
+def get_urls(filter_analysed: bool, shuffle: bool = False, permissive_licenses: bool = False, partition: Optional[Tuple[int, int]] = None) -> List[str]:
 
     processed_urls = get_processed_urls()
     all_urls = get_all_urls(permissive_licenses)
@@ -67,10 +66,25 @@ def get_urls(filter_analysed: bool, shuffle: bool = False, permissive_licenses: 
         logger.warning("No URLs found to process. Please check the database or the filtering criteria.")
         return []
 
+    # sort the URLs for consistency
+    urls.sort()
+    # Apply partitioning if specified
+    if partition is not None:
+        part_idx, n_parts = partition
+        if part_idx < 0 or part_idx >= n_parts:
+            logger.error(f"Invalid partition index {part_idx} for {n_parts} parts.")
+            return []
+        total_urls = len(urls)
+        part_size = total_urls // n_parts
+        start_idx = part_idx * part_size
+        end_idx = (part_idx + 1) * part_size if part_idx < n_parts - 1 else total_urls
+        urls = urls[start_idx:end_idx]
+        logger.info(f"Partitioned URLs: Using partition {part_idx + 1}/{n_parts}, URLs from index {start_idx} to {end_idx} (total {len(urls)} URLs).")
+
     # Shuffle the URLs if requested
     if shuffle:
         import random
         random.shuffle(urls)
-        logger.info("Shuffled the URLs.")
+        logger.info(f"Shuffled {len(urls)} URLs for processing.")
 
     return urls

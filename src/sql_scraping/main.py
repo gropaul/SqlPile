@@ -51,12 +51,23 @@ def main():
         help="Only scrape repos with permissive licenses (default: False)"
     )
 
+    # add argument for partitioning, e.g., --partition 0 4 for 0th of 4 partitions
+    parser.add_argument(
+        "--partition",
+        type=int,
+        nargs=2,
+        metavar=('INDEX', 'TOTAL'),
+        help="Process only a partition of the URLs. Provide INDEX and TOTAL."
+    )
+
+
     args = parser.parse_args()
     n_threads = args.threads
     permissive_licenses = args.permissive_licenses
+    partition = tuple(args.partition) if args.partition else None
 
     logger.info(f"Starting SQL scraping and analysis with {n_threads} threads...")
-    urls = get_urls(filter_analysed=True, shuffle=True, permissive_licenses=permissive_licenses)
+    urls = get_urls(filter_analysed=True, shuffle=True, permissive_licenses=permissive_licenses, partition=partition)
 
     logger.info(f"Total URLs to process: {len(urls)}")
     if not urls:
