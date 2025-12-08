@@ -115,6 +115,14 @@ def main(config: MappingConfig):
             WHERE {config.datasets_id_column_name} = ?
         """, (hf_id,)).fetchone()
 
+        # check if the data_source_stats already has an entry for this repo_id and source_id
+        existing_entry = dbpile_con.execute("""
+            SELECT repo_id FROM data_source_stats
+            WHERE repo_id = ? AND source_id = ?
+        """, (dbpile_id[0], hf_id)).fetchone()
+        if existing_entry is not None:
+            continue
+
         # Also insert into data_source_stats
         dbpile_con.execute("""
             INSERT INTO data_source_stats (repo_id, source_id, downloads, source_type)

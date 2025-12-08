@@ -11,7 +11,7 @@ import duckdb
 
 from src.config import HUGGINFACE_DATASETS_DB_PATH, HUGGINFACE_DATA_DB_PATH, MAX_VALUES_TO_ANALYZE_PER_COLUMN, \
     HUGGINFACE_DATASETS_CPY_DB_PATH, MAX_GB_TO_DOWNLOAD_PER_REPO, MAX_GB_TO_DOWNLOAD, MAX_VALUES_TO_DOWNLOAD, \
-    PERMISSIVE_LICENSES, N_DATASETS_TO_DOWNLOAD
+    PERMISSIVE_LICENSES, N_DATASETS_TO_PROCESS
 
 # clear temp download dir
 
@@ -173,7 +173,7 @@ def download_data(download_locally: bool = False):
         WHERE {licenses_str}
         GROUP BY ALL
         ORDER BY downloads DESC
-        LIMIT {N_DATASETS_TO_DOWNLOAD}
+        LIMIT {N_DATASETS_TO_PROCESS}
     """).fetchall()
 
     for ( dataset_id, downloads, license, paths) in tqdm(datasets):

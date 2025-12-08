@@ -12,7 +12,7 @@ from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, RE
     COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
     QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR, KAGGLE_DATA_DB_PATH, HUGGINFACE_DATA_DIR, \
-    HUGGINFACE_DATA_DB_PATH
+    HUGGINFACE_DATA_DB_PATH, N_DATASETS_TO_PROCESS
 from src.sql_analysis.utils.names import clean_name
 from src.sql_analysis.utils.delete_data import delete_repo, reset_statistics_tables
 from src.sql_analysis.execution.create_tables import create_base_tables
@@ -641,6 +641,16 @@ def execute_repo_queries(settings: ExecutionSettings):
                 queries.type IN ('SELECT', 'WITH') 
                 OR '3rd-party-sql-storm' IN repos.repo_url   -- always reprocess 3rd-party sql-storm repos
                 OR '3rd-party-tpc' IN repos.repo_url   -- always reprocess 3rd-party tpc repos
+                OR ('3rd-party-huggingface' IN repos.repo_url AND repos.id IN (
+                    SELECT DISTINCT repo_id FROM data_source_stats 
+                    WHERE source_type = 'huggingface'
+                    ORDER BY downloads DESC LIMIT {N_DATASETS_TO_PROCESS}
+                ))
+                OR ('3rd-party-kaggle' IN repos.repo_url AND repos.id IN (
+                    SELECT DISTINCT repo_id FROM data_source_stats 
+                    WHERE source_type = 'kaggle'
+                    ORDER BY downloads DESC LIMIT {N_DATASETS_TO_PROCESS}
+                ))
             ) 
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
@@ -769,8 +779,8 @@ def execute_repo_queries(settings: ExecutionSettings):
 
 if __name__ == "__main__":
     settings = ExecutionSettings(
-        mode='append',
+        mode='replace',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str=None, repo_not_contains_str=None
+        repo_id=None, repo_contains_str='3rd-party-kaggle', repo_not_contains_str=None
     )
     execute_repo_queries(settings)

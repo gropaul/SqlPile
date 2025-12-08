@@ -47,12 +47,14 @@ HEADER_N_LINES = 30  # Number of header lines to keep for each file that contain
 MAX_VALUES_TO_SAVE_PER_COLUMN = 5000  # Maximum number of values to save per column in the database
 MAX_VALUES_TO_ANALYZE_PER_COLUMN = 122_880
 MAX_VALUES_TO_DOWNLOAD = MAX_VALUES_TO_ANALYZE_PER_COLUMN * 4
-MAX_GB_TO_DOWNLOAD_PER_REPO = 25 # Maximum number of GB to download per repository table when analyzing 3rd-party datasets
+MAX_GB_TO_DOWNLOAD_PER_REPO = 25  # Maximum number of GB to download per repository table when analyzing 3rd-party datasets
 MAX_GB_TO_DOWNLOAD = 1000  # Maximum number of GB to download in total when analyzing 3rd-party datasets
-N_DATASETS_TO_DOWNLOAD = 300 # Number of datasets to download from HuggingFace or Kaggle
+N_DATASETS_TO_PROCESS = 300  # Number of datasets to download from HuggingFace or Kaggle
+
 
 def gb_to_bytes(gb: int) -> int:
     return gb * 1024 * 1024 * 1024
+
 
 RepoHandling = Literal['delete_after_processing', 'compress_after_processing', 'keep_after_processing']
 # How to handle repositories after processing
@@ -86,12 +88,11 @@ PERMISSIVE_LICENSES = [
     "mit-0",
     "unlicense",
     "cc0-1.0",
-    "cc-by-4.0",      # attribution-only, no share-alike
+    "cc-by-4.0",  # attribution-only, no share-alike
     "bsl-1.0",
     "postgresql",
     "ncsa"
 ]
-
 
 SOURCE_CODE_FILE_EXTENSIONS = [
     ".py",  # Python
@@ -178,7 +179,8 @@ CREATE OR REPLACE TEMP MACRO prepare_select_statically(sql) AS
 """
 
 
-def get_con(path: str = DATABASE_PATH, read_only: bool = False, max_threads: Optional[int] = 16) -> duckdb.DuckDBPyConnection:
+def get_con(path: str = DATABASE_PATH, read_only: bool = False,
+            max_threads: Optional[int] = 16) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(path, read_only=read_only)
 
     if max_threads is not None:
