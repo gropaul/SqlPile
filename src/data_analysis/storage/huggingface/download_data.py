@@ -107,7 +107,19 @@ def download_parquet_file(url: str, local_dir: str, hf_token: str = "") -> Tuple
         return "", 0
 
 
+def get_schema_and_table_name(dataset_id: str) -> Tuple[str, str]:
+    """
+    Converts a dataset ID into a DuckDB schema and table name.
 
+    Args:
+        dataset_id: The dataset ID in the format "owner/repo".
+
+    Returns:
+        A tuple containing the schema name and table name.
+    """
+    schema_name = dataset_id.replace('/', '-')
+    table_name = dataset_id.replace('/', '_')
+    return schema_name, table_name
 
 
 def download_data(download_locally: bool = False):
@@ -164,8 +176,7 @@ def download_data(download_locally: bool = False):
     for ( dataset_id, downloads, license, paths) in tqdm(datasets):
         print(f"Downloading dataset: {dataset_id}, num files: {len(paths)}, downloads: {downloads}, license: {license}")
         # Use dataset_id as schema name (e.g., "owner/repo" becomes schema name)
-        schema_name = dataset_id.replace('/', '-')
-        table_name = f"{dataset_id.replace('/', '_')}"
+        schema_name, table_name = get_schema_and_table_name(dataset_id)
         rows_remaining = MAX_VALUES_TO_DOWNLOAD
         gb_bytes_remaining = MAX_GB_TO_DOWNLOAD_PER_REPO
         bytes_remaining = gb_bytes_remaining * 1_000_000_000

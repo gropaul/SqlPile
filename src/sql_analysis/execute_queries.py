@@ -639,7 +639,8 @@ def execute_repo_queries(settings: ExecutionSettings):
         WHERE 
             (
                 queries.type IN ('SELECT', 'WITH') 
-                OR '3rd-party' IN repos.repo_url   -- always reprocess 3rd-party repos
+                OR '3rd-party-sql-storm' IN repos.repo_url   -- always reprocess 3rd-party sql-storm repos
+                OR '3rd-party-tpc' IN repos.repo_url   -- always reprocess 3rd-party tpc repos
             ) 
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
             and ({'repos.id = ' + str(repo_id) if repo_id else 'True'})
@@ -770,6 +771,6 @@ if __name__ == "__main__":
     settings = ExecutionSettings(
         mode='append',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str='3rd-party-sql', repo_not_contains_str=None
+        repo_id=None, repo_contains_str=None, repo_not_contains_str=None
     )
     execute_repo_queries(settings)

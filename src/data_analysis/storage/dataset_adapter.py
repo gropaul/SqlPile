@@ -26,6 +26,7 @@ class DatasetAdapter:
         source_db_alias: str,
         repo_prefix: str,
         clean_name_fn: Optional[Callable[[str], str]] = None,
+        top_n_downloaded_repos: Optional[int] = None
     ):
         """
         Initialize the dataset adapter.
@@ -41,6 +42,7 @@ class DatasetAdapter:
         self.repo_prefix = repo_prefix
         self.clean_name_fn = clean_name_fn or (lambda x: x)
         self.con = None
+        self.top_n_downloaded_repos = top_n_downloaded_repos
 
     def connect(self):
         """Connect to the main database and attach the source database."""
