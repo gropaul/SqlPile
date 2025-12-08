@@ -100,6 +100,7 @@ def main(config: MappingConfig):
         # find the repo_id in the main database
         dbpile_id = dbpile_con.execute(f"SELECT id FROM repos WHERE lower('{schema_name}') in lower(repo_name)").fetchone()
         if dbpile_id is None:
+            print(f"Failed to find dbpile id for dataset id {hf_id} with schema name {schema_name}")
             n_failed_mappings += 1
             continue
 
