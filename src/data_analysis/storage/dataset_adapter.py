@@ -1,5 +1,6 @@
 from typing import List, Optional, Callable
 import duckdb
+from tqdm import tqdm
 
 from src.config import (
     get_con,
@@ -91,7 +92,6 @@ class DatasetAdapter:
             (repo_id, repo_name, repo_url)
         )
 
-        print(f"Inserted new repository {repo_name} with id {repo_id}.")
         return repo_id
 
     def add_table_to_db(
@@ -120,7 +120,6 @@ class DatasetAdapter:
         ).fetchone()
 
         if existing_table is not None:
-            print(f"Table {table_name} already exists in repo {repo_id}. Skipping.")
             return
 
         # Get next table ID
@@ -147,8 +146,6 @@ class DatasetAdapter:
         except Exception as e:
             print(f"Error getting row count for table {table_name}: {str(e)}")
             row_count = 0
-
-        print(f"Inserted table {table_name} with id {table_id} and {row_count} rows.")
 
         # Add columns
         self._add_columns(table_id, schema_name, table_name, columns)
@@ -233,8 +230,6 @@ class DatasetAdapter:
         Args:
             schema_name: Name of the schema in the source database
         """
-        print(f"Processing schema: {schema_name}")
-
         repo_id = self.add_schema_as_repo(schema_name)
 
         if repo_id is None:
@@ -259,7 +254,7 @@ class DatasetAdapter:
         for table_name, columns in tables:
             self.add_table_to_db(repo_id, schema_name, table_name, columns)
 
-    def get_all_schemas(self) -> List[str]:
+    def get_schemas(self) -> List[str]:
         """
         Get all schemas in the source database.
 
@@ -280,10 +275,10 @@ class DatasetAdapter:
         """
         Import all schemas from the source database into the main database.
         """
-        schemas = self.get_all_schemas()
+        schemas = self.get_schemas()
         print(f"Found {len(schemas)} schemas to process.")
 
-        for schema_name in schemas:
+        for schema_name in tqdm(schemas):
             self.add_schema(schema_name)
 
     def delete_repos_by_prefix(self):
