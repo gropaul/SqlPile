@@ -103,9 +103,6 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
     if table_exists(con, "data_source_stats"):
         con.execute("DELETE FROM data_source_stats WHERE repo_id = ?", (repo_id,))
 
-    if table_exists(con, "file_results_with_id"):
-        con.execute("DELETE FROM file_results_with_id WHERE repo_id = ?", (repo_id,))
-
     if table_exists(con, "queries_parsing_error"):
         con.execute("DELETE FROM queries_parsing_error WHERE repo_id = ?", (repo_id,))
 
