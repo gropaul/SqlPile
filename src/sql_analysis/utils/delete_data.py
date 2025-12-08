@@ -100,6 +100,15 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
     if table_exists(con, "columns_compression_results"):
         con.execute("DELETE FROM columns_compression_results WHERE repo_id = ?", (repo_id,))
 
+    if table_exists(con, "data_source_stats"):
+        con.execute("DELETE FROM data_source_stats WHERE repo_id = ?", (repo_id,))
+
+    if table_exists(con, "file_results_with_id"):
+        con.execute("DELETE FROM file_results_with_id WHERE repo_id = ?", (repo_id,))
+
+    if table_exists(con, "queries_parsing_error"):
+        con.execute("DELETE FROM queries_parsing_error WHERE repo_id = ?", (repo_id,))
+
     delete_query_operator_component_expressions(con, repo_id)
     delete_query_operator_components(con, repo_id)
     delete_query_operators(con, repo_id)
