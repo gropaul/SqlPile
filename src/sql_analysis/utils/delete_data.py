@@ -16,9 +16,6 @@ def table_exists(con, table_name: str) -> bool:
         AND table_type != 'VIEW'
     """).fetchone()
 
-    # print all available tables for debugging
-    for row in con.execute("SELECT table_name FROM information_schema.tables").fetchall():
-        print("Available table:", row[0])
     count = result[0] if result is not None else 0
     return count > 0
 
