@@ -91,6 +91,9 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
     if table_exists(con, "queries_error_view"):
         con.execute("DELETE FROM queries_error_view WHERE query_id IN (SELECT id FROM queries WHERE repo_id = ?)", (repo_id,))
 
+    if table_exists(con, "queries_error_create_view"):
+        con.execute("DELETE FROM queries_error_create_view WHERE query_id IN (SELECT id FROM queries WHERE repo_id = ?)", (repo_id,))
+
     if table_exists(con, "queries_executable"):
         con.execute("DELETE FROM queries_executable WHERE query_id IN (SELECT id FROM queries WHERE repo_id = ?)", (repo_id,))
 
@@ -115,6 +118,40 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
             )
         """, (repo_id,))
 
+    # delete from column_usages
+    if table_exists(con, "column_usages") and table_exists(con, "columns") and table_exists(con, "tables"):
+        con.execute("""
+            DELETE FROM column_usages
+            WHERE column_id IN (
+                SELECT c.id FROM columns c
+                JOIN tables t ON c.table_id = t.id
+                WHERE t.repo_id = ?
+            )
+        """, (repo_id,))
+
+    # delete from column_usage_history
+    if table_exists(con, "column_usage_history") and table_exists(con, "columns") and table_exists(con, "tables"):
+        con.execute("""
+            DELETE FROM column_usage_history
+            WHERE column_id IN (
+                SELECT c.id FROM columns c
+                JOIN tables t ON c.table_id = t.id
+                WHERE t.repo_id = ?
+            )
+        """, (repo_id,))
+
+    # delete from column_sizes tables
+    for column_sizes_table in ["column_sizes", "column_sizes_text", "column_sizes_int", "column_sizes_float", "column_sizes_date"]:
+        if table_exists(con, column_sizes_table) and table_exists(con, "columns") and table_exists(con, "tables"):
+            con.execute(f"""
+                DELETE FROM {column_sizes_table}
+                WHERE column_id IN (
+                    SELECT c.id FROM columns c
+                    JOIN tables t ON c.table_id = t.id
+                    WHERE t.repo_id = ?
+                )
+            """, (repo_id,))
+
     if mode == 'all':
         if table_exists(con, "columns") and table_exists(con, "tables"):
             con.execute("""
@@ -137,6 +174,12 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
 
         if table_exists(con, TABLES_DATA_FILES_TABLE_NAME):
             con.execute(f"DELETE FROM {TABLES_DATA_FILES_TABLE_NAME} WHERE repo_id = ?", (repo_id,))
+
+        if table_exists(con, "files"):
+            con.execute("DELETE FROM files WHERE repo_id = ?", (repo_id,))
+
+        if table_exists(con, "repo_meta_data_files"):
+            con.execute("DELETE FROM repo_meta_data_files WHERE repo_id = ?", (repo_id,))
 
         if table_exists(con, "repos"):
             print("Deleting repo id", repo_id)
