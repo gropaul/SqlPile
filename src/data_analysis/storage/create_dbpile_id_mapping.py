@@ -16,6 +16,7 @@ class MappingConfig:
     dataset_path: str
     datasets_table_name: str
     datasets_id_column_name: str
+    download_column_name: str
     id_to_table_name_fn: Callable[[str], str]
 
 
@@ -67,7 +68,7 @@ def main(config: MappingConfig):
 
         if key in table_to_id:
             dataset_id = table_to_id[key]
-            print(f"Table \"{schema}\".\"{table}\" MATCHES dataset id {dataset_id}.")
+            # print(f"Table \"{schema}\".\"{table}\" MATCHES dataset id {dataset_id}.")
             found_match += 1
 
             dataset_con.execute("""
@@ -76,21 +77,32 @@ def main(config: MappingConfig):
             """, (dataset_id, schema, table))
 
         else:
-            print(f"Table \"{schema}\".\"{table}\" has NO matching dataset entry.")
+            # print(f"Table \"{schema}\".\"{table}\" has NO matching dataset entry.")
             found_no_match += 1
 
     # for all repo_tables, find the id in the dataset_con
     dbpile_con = get_con()
 
+    # create a table in dbpile with meta info on kaggle, huggingface datasets
+    dbpile_con.execute("""
+        CREATE TABLE IF NOT EXISTS data_source_stats (
+            repo_id INTEGER,
+            source_id TEXT,
+            downloads INTEGER,
+            source_type TEXT -- 'huggingface' or 'kaggle'
+        )
+    """)
+
+
+
     n_successful_mappings = 0
     n_failed_mappings = 0
 
-    for (hf_id, schema_name) in dataset_con.execute(
-            "SELECT DISTINCT id, schema_name FROM repo_tables").fetchall():
+    for (hf_id, schema_name) in dataset_con.execute("SELECT DISTINCT id, schema_name FROM repo_tables").fetchall():
         # find the repo_id in the main database
         dbpile_id = dbpile_con.execute(f"SELECT id FROM repos WHERE '{schema_name}' in repo_name").fetchone()
         if dbpile_id is None:
-            print(f"Could not find repo_id for dataset id {hf_id} in main database.")
+            # print(f"Could not find repo_id for dataset id {hf_id} in main database.")
             n_failed_mappings += 1
             continue
 
@@ -100,6 +112,17 @@ def main(config: MappingConfig):
         """, (hf_id, dbpile_id[0]))
         n_successful_mappings += 1
 
+        n_downloads = dataset_con.execute(f"""
+            SELECT {config.download_column_name} FROM {config.datasets_table_name}
+            WHERE {config.datasets_id_column_name} = ?
+        """, (hf_id,)).fetchone()
+
+        # Also insert into data_source_stats
+        dbpile_con.execute("""
+            INSERT INTO data_source_stats (repo_id, source_id, downloads, source_type)
+            VALUES (?, ?, ?, ?)
+        """, (dbpile_id[0], hf_id, n_downloads[0] if n_downloads else 0,
+              'huggingface' if 'huggingface' in config.data_path else 'kaggle'))
 
     print(f"Total tables with dataset match: {found_match}")
     print(f"Total tables without match: {found_no_match}")
@@ -111,13 +134,13 @@ def main(config: MappingConfig):
 
 
 if __name__ == "__main__":
-
     hf_config = MappingConfig(
         data_path=HUGGINFACE_DATA_DB_PATH,
         dataset_path=HUGGINFACE_DATASETS_DB_PATH,
         id_to_table_name_fn=get_schema_name_from_dataset_id,
         datasets_table_name='parse_results',
-        datasets_id_column_name='id'
+        datasets_id_column_name='id',
+        download_column_name='downloads'
     )
 
     kaggle_config = MappingConfig(
@@ -125,9 +148,9 @@ if __name__ == "__main__":
         dataset_path=KAGGLE_DATASETS_DB_PATH,
         id_to_table_name_fn=clean_name,
         datasets_table_name='kaggle_datasets',
-        datasets_id_column_name='ref'
+        datasets_id_column_name='ref',
+        download_column_name='download_count'
     )
 
-    # main(hf_config)
+    main(hf_config)
     main(kaggle_config)
-

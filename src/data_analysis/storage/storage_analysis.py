@@ -84,10 +84,24 @@ def create_columns_storage_view(con: duckdb.DuckDBPyConnection):
             size_in_bytes: size_in_bytes,
             count: count,
             count_non_null: count_non_null,
-            bits_per_value_uncompressed: if(range_value > 0, ceil(log2(range_value)), 0),
-            bytes_per_value_compressed: ifnull(size_in_bytes, 8),
-            uncompressed: bytes_per_value_compressed * count_non_null,
-            compressed: ceil((bits_per_value_uncompressed * count_non_null) / 8)
+            count_distinct: count_distinct,
+            
+            bytes_per_value_uncompressed: ifnull(size_in_bytes, 8),
+            uncompressed: bytes_per_value_uncompressed * count_non_null,
+            
+            range_value: range_value,
+            bits_per_value_packed: if(range_value > 1, ceil(log2(range_value)), 64),
+            bitpacked: ceil((bits_per_value_packed * count_non_null) / 8),
+            
+            dict_bits_per_code: if(count_distinct > 0, ceil(log2(count_distinct)), 0),
+            dict_codes_bytes_size: ceil((dict_bits_per_code * count) / 8),
+            dict_size: size_in_bytes * count_distinct,
+            dict_compressed: dict_codes_bytes_size + dict_size,
+            
+            const: if(count_distinct <= 1, 8, NULL),
+            
+            compressed: least(bitpacked, dict_compressed, const, uncompressed),
+            
             FROM column_stats_int
             JOIN columns ON column_stats_int.column_id = columns.id
             LEFT JOIN sql_type_sizes ON columns.column_type = sql_type_sizes.sql_type
@@ -180,8 +194,8 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
                 uncompressed, compressed, table_values_count.count AS n_rows
             FROM columns
             JOIN tables ON tables.id = columns.table_id
-            JOIN table_values_count ON table_values_count.table_id = columns.table_id
-            JOIN column_sizes ON column_sizes.column_id = columns.id
+            LEFT JOIN table_values_count ON table_values_count.table_id = columns.table_id
+            LEFT JOIN column_sizes ON column_sizes.column_id = columns.id
         ),
         storage_per_repo AS (
             SELECT 
