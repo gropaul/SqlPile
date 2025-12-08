@@ -110,8 +110,6 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
     delete_query_operator_component_expressions(con, repo_id)
     delete_query_operator_components(con, repo_id)
     delete_query_operators(con, repo_id)
-
-
     reset_statistics_for_repo(con, repo_id)
 
     # delete from column_values
@@ -174,9 +172,9 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
         """, (repo_id,))
 
      # delete from tables
-
     if mode == 'all':
         if table_exists(con, "tables"):
+            print("Deleting tables for repo id", repo_id)
             con.execute("DELETE FROM tables WHERE repo_id = ?", (repo_id,))
 
         if table_exists(con, TABLES_DATA_FILES_TABLE_NAME):
