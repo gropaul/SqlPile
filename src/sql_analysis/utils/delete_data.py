@@ -13,6 +13,7 @@ def table_exists(con, table_name: str) -> bool:
     result = con.execute(f"""
         SELECT COUNT(*) FROM information_schema.tables
         WHERE lower(table_name) = lower('{table_name}')
+        AND table_type != 'VIEW'
     """).fetchone()
     count = result[0] if result is not None else 0
     return count == 1
