@@ -6,33 +6,39 @@ def main():
     data_con = duckdb.connect(HUGGINFACE_DATA_DB_PATH)
     dataset_con = duckdb.connect(HUGGINFACE_DATASETS_DB_PATH, read_only=True)
 
-    found_one = 0
-    found_none = 0
+    # Get all dataset IDs that *should* exist
+    dataset_ids = {
+        id for (id,) in dataset_con.execute("SELECT id FROM parse_results").fetchall()
+    }
 
-    for (id, ) in dataset_con.execute("SELECT id FROM parse_results").fetchall():
-        schema_name, table_name = get_schema_and_table_name(id)
+    # Reverse mapping: build schema/table pairs we *expect*
+    # to find from each dataset ID.
+    expected_tables = set()
+    for id in dataset_ids:
+        schema, table = get_schema_and_table_name(id)
+        expected_tables.add((schema, table))
 
-        full_table_name = f'"{schema_name}"."{table_name}"'
-        result = data_con.execute(f"""
-            SELECT COUNT(*) 
-            FROM information_schema.tables 
-            WHERE table_schema = '{schema_name}' 
-              AND table_name = '{table_name}'
-        """).fetchone()
+    found_match = 0
+    found_no_match = 0
 
-        if result[0] > 0:
-            print(f"Dataset {id} has table {full_table_name} in the database.")
-            found_one += 1
+    # Iterate over all actual tables present in the database
+    all_tables = data_con.execute("""
+        SELECT table_schema, table_name
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+    """).fetchall()
+
+    for schema, table in all_tables:
+        if (schema, table) in expected_tables:
+            print(f"Table \"{schema}\".\"{table}\" MATCHES a dataset.")
+            found_match += 1
         else:
-            print(f"Dataset {id} is MISSING table {full_table_name} in the database.")
-            found_none += 1
+            print(f"Table \"{schema}\".\"{table}\" has NO matching dataset entry.")
+            found_no_match += 1
 
-    print(f"Total datasets with tables found: {found_one}")
-    print(f"Total datasets with tables missing: {found_none}")
-    print(f"Total datasets checked: {found_one + found_none}, percentage found: {found_one / (found_one + found_none) * 100:.2f}%")
-
-
-
+    print(f"Total tables with dataset match: {found_match}")
+    print(f"Total tables without match: {found_no_match}")
+    print(f"Total tables checked: {found_match + found_no_match}")
 
 if __name__ == "__main__":
     main()
