@@ -76,9 +76,7 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
     'all' deletes everything related to the repo, including tables and columns.
     'execution_only' only deletes data that was gathered during execution, i.e., queries and query errors.
     """
-    if mode == 'all':
-        if table_exists(con, "queries"):
-            con.execute("DELETE FROM queries WHERE repo_id = ?", (repo_id,))
+
 
     if table_exists(con, "queries_error_select"):
         con.execute("DELETE FROM queries_error_select WHERE query_id IN (SELECT id FROM queries WHERE repo_id = ?)", (repo_id,))
@@ -124,14 +122,15 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
             )
         """, (repo_id,))
 
+
+
     # delete from column_usages
     if table_exists(con, "column_usages") and table_exists(con, "columns") and table_exists(con, "tables"):
         con.execute("""
             DELETE FROM column_usages
-            WHERE column_id IN (
-                SELECT c.id FROM columns c
-                JOIN tables t ON c.table_id = t.id
-                WHERE t.repo_id = ?
+            WHERE query_id IN (
+                SELECT q.id FROM queries q
+                WHERE q.repo_id = ?
             )
         """, (repo_id,))
 
@@ -174,6 +173,10 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
 
      # delete from tables
     if mode == 'all':
+
+        if table_exists(con, "queries"):
+            con.execute("DELETE FROM queries WHERE repo_id = ?", (repo_id,))
+
         if table_exists(con, "tables"):
             print("Deleting tables for repo id", repo_id)
             con.execute("DELETE FROM tables WHERE repo_id = ?", (repo_id,))
