@@ -68,7 +68,6 @@ def main(config: MappingConfig):
 
         if key in table_to_id:
             dataset_id = table_to_id[key]
-            # print(f"Table \"{schema}\".\"{table}\" MATCHES dataset id {dataset_id}.")
             found_match += 1
 
             dataset_con.execute("""
@@ -77,7 +76,6 @@ def main(config: MappingConfig):
             """, (dataset_id, schema, table))
 
         else:
-            # print(f"Table \"{schema}\".\"{table}\" has NO matching dataset entry.")
             found_no_match += 1
 
     # for all repo_tables, find the id in the dataset_con
@@ -100,9 +98,8 @@ def main(config: MappingConfig):
 
     for (hf_id, schema_name) in dataset_con.execute("SELECT DISTINCT id, schema_name FROM repo_tables").fetchall():
         # find the repo_id in the main database
-        dbpile_id = dbpile_con.execute(f"SELECT id FROM repos WHERE '{schema_name}' in repo_name").fetchone()
+        dbpile_id = dbpile_con.execute(f"SELECT id FROM repos WHERE lower('{schema_name}') in lower(repo_name)").fetchone()
         if dbpile_id is None:
-            # print(f"Could not find repo_id for dataset id {hf_id} in main database.")
             n_failed_mappings += 1
             continue
 
@@ -128,8 +125,8 @@ def main(config: MappingConfig):
     print(f"Total tables without match: {found_no_match}")
     print(f"Total tables checked: {found_match + found_no_match}")
 
-    print(f"Total successful hf to dbpile id mappings: {n_successful_mappings}")
-    print(f"Total failed hf to dbpile id mappings: {n_failed_mappings}")
+    print(f"Total successful to dbpile id mappings: {n_successful_mappings}")
+    print(f"Total failed to dbpile id mappings: {n_failed_mappings}")
     print(f"Total hf to dbpile id mappings attempted: {n_successful_mappings + n_failed_mappings}")
 
 
@@ -152,5 +149,7 @@ if __name__ == "__main__":
         download_column_name='download_count'
     )
 
+    print("\n\nProcessing Huggingface datasets...")
     main(hf_config)
+    print("\n\nProcessing Kaggle datasets...")
     main(kaggle_config)
