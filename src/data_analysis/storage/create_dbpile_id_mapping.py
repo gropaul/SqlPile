@@ -1,15 +1,31 @@
-from src.config import HUGGINFACE_DATA_DB_PATH, HUGGINFACE_DATASETS_DB_PATH, get_con
-from src.data_analysis.storage.huggingface.download_data import get_schema_and_table_name
+from dataclasses import dataclass
+from typing import Callable, Tuple
+
+from src.config import HUGGINFACE_DATA_DB_PATH, HUGGINFACE_DATASETS_DB_PATH, get_con, KAGGLE_DATA_DB_PATH, \
+    KAGGLE_DATASETS_DB_PATH
+from src.data_analysis.storage.huggingface.download_data import get_schema_and_table_name, \
+    get_schema_name_from_dataset_id
 import duckdb
 
+from src.sql_analysis.utils.names import clean_name
 
-def main():
-    data_con = duckdb.connect(HUGGINFACE_DATA_DB_PATH)
-    dataset_con = duckdb.connect(HUGGINFACE_DATASETS_DB_PATH)
+
+@dataclass
+class MappingConfig:
+    data_path: str
+    dataset_path: str
+    datasets_table_name: str
+    datasets_id_column_name: str
+    id_to_table_name_fn: Callable[[str], str]
+
+
+def main(config: MappingConfig):
+    data_con = duckdb.connect(config.data_path)
+    dataset_con = duckdb.connect(config.dataset_path)
 
     # Create table if not exists
     dataset_con.execute("""
-        CREATE TABLE IF NOT EXISTS repo_tables (
+        CREATE OR REPLACE TABLE repo_tables (
             id TEXT,
             schema_name TEXT,
             table_name TEXT
@@ -17,39 +33,37 @@ def main():
     """)
 
     dataset_con.execute("""
-        CREATE TABLE IF NOT EXISTS hf_dbpile_id_mapping (
-            hf_dataset_id TEXT,
+        CREATE OR REPLACE TABLE dbpile_id_mapping (
+            dataset_id TEXT,
             dbpile_repo_id INTEGER
         )
     """)
 
-    # Clear old entries so the script is idempotent
-    dataset_con.execute("DELETE FROM repo_tables")
-    dataset_con.execute("DELETE FROM hf_dbpile_id_mapping")
-
     # Load dataset IDs
     dataset_ids = [
-        id for (id,) in dataset_con.execute("SELECT id FROM parse_results").fetchall()
+        id for (id,) in dataset_con
+        .execute(f"SELECT {config.datasets_id_column_name} FROM {config.datasets_table_name}").fetchall()
     ]
 
-    # Build mapping: (schema, table) → id
+    # Build mapping: schema → id
     table_to_id = {}
     for dataset_id in dataset_ids:
-        schema, table = get_schema_and_table_name(dataset_id)
-        table_to_id[(schema, table)] = dataset_id
+        schema = config.id_to_table_name_fn(dataset_id)
+        table_to_id[schema] = dataset_id
 
     found_match = 0
     found_no_match = 0
 
     # Iterate through all tables in the DuckDB repo
-    all_tables = data_con.execute("""
+    # todo: only make this on table_schema, not table_name
+    all_tables = data_con.execute(""" 
         SELECT table_schema, table_name
         FROM information_schema.tables
         WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
     """).fetchall()
 
     for schema, table in all_tables:
-        key = (schema, table)
+        key = schema
 
         if key in table_to_id:
             dataset_id = table_to_id[key]
@@ -71,8 +85,8 @@ def main():
     n_successful_mappings = 0
     n_failed_mappings = 0
 
-    for (hf_id, schema_name, table_name) in dataset_con.execute(
-            "SELECT id, schema_name, table_name FROM repo_tables").fetchall():
+    for (hf_id, schema_name) in dataset_con.execute(
+            "SELECT DISTINCT id, schema_name FROM repo_tables").fetchall():
         # find the repo_id in the main database
         dbpile_id = dbpile_con.execute(f"SELECT id FROM repos WHERE '{schema_name}' in repo_name").fetchone()
         if dbpile_id is None:
@@ -81,7 +95,7 @@ def main():
             continue
 
         dataset_con.execute("""
-            INSERT INTO hf_dbpile_id_mapping (hf_dataset_id, dbpile_repo_id)
+            INSERT INTO dbpile_id_mapping (dataset_id, dbpile_repo_id)
             VALUES (?, ?)
         """, (hf_id, dbpile_id[0]))
         n_successful_mappings += 1
@@ -97,4 +111,23 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    hf_config = MappingConfig(
+        data_path=HUGGINFACE_DATA_DB_PATH,
+        dataset_path=HUGGINFACE_DATASETS_DB_PATH,
+        id_to_table_name_fn=get_schema_name_from_dataset_id,
+        datasets_table_name='parse_results',
+        datasets_id_column_name='id'
+    )
+
+    kaggle_config = MappingConfig(
+        data_path=KAGGLE_DATA_DB_PATH,
+        dataset_path=KAGGLE_DATASETS_DB_PATH,
+        id_to_table_name_fn=clean_name,
+        datasets_table_name='kaggle_datasets',
+        datasets_id_column_name='ref'
+    )
+
+    # main(hf_config)
+    main(kaggle_config)
+

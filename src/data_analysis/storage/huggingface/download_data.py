@@ -107,6 +107,9 @@ def download_parquet_file(url: str, local_dir: str, hf_token: str = "") -> Tuple
         return "", 0
 
 
+def get_schema_name_from_dataset_id(dataset_id: str) -> str:
+    return dataset_id.replace('/', '-')
+
 def get_schema_and_table_name(dataset_id: str) -> Tuple[str, str]:
     """
     Converts a dataset ID into a DuckDB schema and table name.
@@ -117,7 +120,7 @@ def get_schema_and_table_name(dataset_id: str) -> Tuple[str, str]:
     Returns:
         A tuple containing the schema name and table name.
     """
-    schema_name = dataset_id.replace('/', '-')
+    schema_name = get_schema_name_from_dataset_id(dataset_id)
     table_name = dataset_id.replace('/', '_')
     return schema_name, table_name
 
