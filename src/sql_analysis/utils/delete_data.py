@@ -20,7 +20,7 @@ def table_exists(con, table_name: str) -> bool:
     for row in con.execute("SELECT table_name FROM information_schema.tables").fetchall():
         print("Available table:", row[0])
     count = result[0] if result is not None else 0
-    return count == 1
+    return count > 0
 
 def delete_query_operator_component_expressions(con, repo_id):
     """Delete all component expressions linked to a given repo."""
