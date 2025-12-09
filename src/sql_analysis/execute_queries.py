@@ -720,8 +720,11 @@ def execute_repo_queries(settings: ExecutionSettings):
             # *** EXECUTE QUERIES ***
 
             if settings.execute:
-                execute_queries(repo_id, repo_url, sandbox_con, con, tables, id_manager, query_id)
-                analyse_plans(con, repo_id)
+                try:
+                    execute_queries(repo_id, repo_url, sandbox_con, con, tables, id_manager, query_id)
+                    analyse_plans(con, repo_id)
+                except Exception as e:
+                    print(f"Failed to execute queries for repo {repo_id}: {e}")
 
             # *** RECORD STATISTICS ***
 
