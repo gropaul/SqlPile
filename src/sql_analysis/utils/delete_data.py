@@ -206,7 +206,6 @@ def reset_statistics_for_repo(
         con: duckdb.DuckDBPyConnection,
         repo_id: int
 ):
-    print(f"Resetting statistics for repo id {repo_id}")
     if table_exists(con, "column_stats_text"):
         con.execute(f"DELETE FROM column_stats_text WHERE column_id IN (SELECT id FROM {COLUMNS_TABLE_NAME} WHERE table_id IN (SELECT id FROM {TABLES_TABLE_NAME} WHERE repo_id = {repo_id}))")
 

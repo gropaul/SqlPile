@@ -39,5 +39,7 @@ def delete_huggingface_repos():
 
 
 if __name__ == "__main__":
-    delete_huggingface_repos()
+    delete_repos = input("Do you want to delete all existing huggingface repositories from the database? (y/n): ")
+    if delete_repos.lower() == 'y':
+        delete_huggingface_repos()
     save_huggingface_in_database()
