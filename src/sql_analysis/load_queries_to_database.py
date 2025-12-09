@@ -85,7 +85,6 @@ def create_missing_repo_for_url(con: duckdb.DuckDBPyConnection, repo_url: str) -
     return repo_id
 
 
-
 def load_queries_for_repo(repo_url: str, file_name: str, con: duckdb.DuckDBPyConnection):
     # Create a temporary table with queries for this repo only
     create_parquet_queries_with_dups = f"""
@@ -171,8 +170,7 @@ def load_queries_for_repo(repo_url: str, file_name: str, con: duckdb.DuckDBPyCon
     con.execute(query)
 
 
-
-def load_queries_to_database(source_path: str, ask: bool = True):
+def load_queries_to_database(source_path: str, ask: bool = True, append: bool = True):
     # Ask the user if they want to (re)import the data, as the old data will be removed
     if ask:
         confirm = input(
@@ -189,10 +187,15 @@ def load_queries_to_database(source_path: str, ask: bool = True):
     con.execute('SET preserve_insertion_order=false')
     con.execute('SET threads=8')
 
+    if append:
+        create_statement = "CREATE TABLE IF NOT EXISTS"
+    else:
+        create_statement = "CREATE OR REPLACE TABLE"
+
     # Create the tables before processing repos
     # Create FILES table
     con.execute(f"""
-        CREATE OR REPLACE TABLE {FILES_TABLE_NAME} (
+        {create_statement} {FILES_TABLE_NAME} (
             file_id INTEGER,
             repo_id INTEGER,
             path VARCHAR,
@@ -205,7 +208,7 @@ def load_queries_to_database(source_path: str, ask: bool = True):
 
     # Create QUERIES table
     con.execute(f"""
-        CREATE OR REPLACE TABLE {QUERIES_TABLE_NAME} (
+       {create_statement} {QUERIES_TABLE_NAME} (
             id INTEGER,
             file_id INTEGER,
             repo_id INTEGER,
@@ -220,7 +223,7 @@ def load_queries_to_database(source_path: str, ask: bool = True):
 
     # Create metadata files table
     create_table_if_not_exists = f"""
-        CREATE OR REPLACE TABLE {FILES_META_DATA_TABLE_NAME} (
+        {create_statement} {FILES_META_DATA_TABLE_NAME} (
             id INTEGER,
             repo_id INTEGER,
             file_path VARCHAR,
@@ -231,10 +234,17 @@ def load_queries_to_database(source_path: str, ask: bool = True):
     con.execute(create_table_if_not_exists)
     logger.info("Created empty metadata files table.")
 
+    filter_repos_query = "TRUE"
+    if append:
+        filter_repos_query = f"""
+            repo_url NOT IN (SELECT DISTINCT repo_url FROM {REPO_TABLE_NAME}) 
+        """
+
+
     # Get all unique repo URLs
     urls = con.execute(f"""
         SELECT repo_url, arbitrary(filename) FROM read_parquet('{source_path}', union_by_name = true)
-        WHERE len(file_results) > 0
+        WHERE len(file_results) > 0 AND {filter_repos_query}
         GROUP BY repo_url
     """).fetchall()
 
@@ -279,7 +289,6 @@ def load_queries_to_database(source_path: str, ask: bool = True):
 
 
 if __name__ == "__main__":
-
     partioned_path = f'{QUERIES_DIR_PARTITIONED}/*/*.parquet'
     raw_path = f'{QUERIES_DIR_RAW}/*/*.parquet'
     combined = f'{QUERIES_DIR_RAW}/*/*.parquet'
