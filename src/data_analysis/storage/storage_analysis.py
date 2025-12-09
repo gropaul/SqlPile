@@ -194,7 +194,7 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
                 uncompressed, compressed, table_values_count.count AS n_rows
             FROM columns
             JOIN tables ON tables.id = columns.table_id
-            LEFT JOIN table_values_count ON table_values_count.table_id = columns.table_id
+            JOIN table_values_count ON table_values_count.table_id = columns.table_id
             LEFT JOIN column_sizes ON column_sizes.column_id = columns.id
         ),
         storage_per_repo AS (
@@ -274,7 +274,6 @@ def get_storage_percentage_table(group_key: str = 'column_base_type', output_dir
             ROUND(AVG(uncompressed_percentage), 6) AS uncompressed_percentage,
           FROM percentages
           WHERE repo_origin NOT in ('DBPile', 'Other')
-
           GROUP BY ALL
         ) FROM aggregates ORDER BY repo_origin, {group_key}
 

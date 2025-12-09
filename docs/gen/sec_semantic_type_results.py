@@ -5,8 +5,54 @@ import pandas as pd
 from src.config import get_con, LATEX_ASSETS_DIR
 
 MAX_CHARS = 200
-MAX_EXAMPLES_PER_TYPE = 5
+MAX_EXAMPLES_PER_TYPE = 100
 MAX_VALUES_PER_EXAMPLE = 3
+
+
+# map from type to subtype to example value
+EXAMPLES = {
+    "Category": {
+        "Boolean": 'hall-of-fame.inducted: "Y", "N"',
+        "N/A": 'matches.winner: "DRAW", "AWAY_TEAM", "HOME_TEAM"',
+        "Other": 'player.bats: "B", "L", "R"'
+    },
+    "Entity": {
+        "Location": 'otp.station: "Airport Termina..."',
+        "N/A": 'StateNames.State: "AL", "AK", "AR"',
+        "Organization": 'game.team_home: "Indianapolis Jets"',
+        "Other": 'date_dim.day_name: "Tuesday"',
+        "Person": 'player.name_last: "Bockman"'
+    },
+    "FullText": {
+        "Formatted": 'title.title: "Fish Follies"',
+        "N/A": 'AI_scopus.Abstract: "Biclustering solut..."',
+        "Unformatted": 'reviews.message: "Material rece..."'
+    },
+    "Identifier": {
+        "Generic": 'items.id: "5c582483eb0e06d5..."',
+        "N/A": 'boarding_passes.ticket_no: "0005433722199"',
+        "Path": 'users.Url: "https://www.bruc..."',
+        "Semantic": 'fielding.team_id: "WS4", "NH1"'
+    },
+    "Numeric": {
+        "DateTime": 'orders.date: "2017-09-14 18:33:42"',
+        "N/A": 'AI_scopus.Year: "2001"',
+        "Other": 'fielding.sb: "52.0"'
+    },
+    "Other": {
+        "N/A": 'Users.password: "1309340755y"'
+    },
+    "Structured": {
+        "CSV": 'Events.Guests: "John Doe, ..."',
+        "JSON": 'round.hist: "{1:{\'RoundWinner\': ..."',
+        "List": 'Post.Tags: "<mysql><innodb>..."',
+        "Other": 'Match.shotoff: "<shotoff><value>..."',
+    },
+    "Test": {
+        "N/A": 'users.name: "test", "foo"'
+    }
+}
+
 
 
 def semantic_type_percentages():
@@ -52,7 +98,13 @@ def semantic_type_percentages():
                     a.repo_group,
                     a.semantic_type_llm,
                     a.semantic_type_llm_subtype,
-                    ROUND(100.0 * a.type_count / t.total_count, 1) as type_percentage,
+                    CASE 
+                        WHEN 100.0 * a.type_count / t.total_count > 10
+                            THEN ROUND(100.0 * a.type_count / t.total_count, 0)
+                        ELSE 
+                            ROUND(100.0 * a.type_count / t.total_count, 1)
+                    END AS type_percentage
+
                 FROM aggregates a
                 JOIN totals t ON a.repo_group = t.repo_group
             ),
@@ -91,9 +143,9 @@ def semantic_type_percentages():
     # add one column that has the average percentage across all datasets
     # replace all NaN with 0 for the purpose of averaging
     df[datasets] = df[datasets].fillna(0)
-    df["Average"] = df[datasets].mean(axis=1)
+    df["AVG"] = df[datasets].mean(axis=1)
 
-    datasets = datasets + ["Average"]
+    datasets = datasets + ["AVG"]
 
     unique_types = df["Semantic Type"].unique()
     original_df = df.copy()  # so we don't sum over rows we add later
@@ -113,24 +165,87 @@ def semantic_type_percentages():
     # add all "All" rows at once
     df = pd.concat([df, pd.DataFrame(rows_to_add)], ignore_index=True)
 
-    df = df.sort_values(by=["Semantic Type", "DBPile"], ascending=[True, False])
+    df = df.sort_values(by=["Semantic Type", "AVG"], ascending=[True, False]).reset_index(drop=True)
 
     # format all the datasets columns as percentages with 1 decimal place
     for col in datasets:
-        df[col] = df[col].apply(lambda x: str(round(x, 1)) + '\%' if( pd.notnull(x) and pd.notna(x)  and x is not None and x != 0) else '-')
+        def fmt(x):
+            if x is None or pd.isna(x) or x == 0:
+                return "-"
+            if x >= 10:
+                return f"{round(x, 0):.0f}\\%"
+            else:
+                return f"{round(x, 1):.1f}\\%"
 
+        df[col] = df[col].apply(fmt)
+
+    # fill in the example column based on the EXAMPLES dictionary
+    def get_example(row):
+        sem_type = row["Semantic Type"]
+        subtype = row["Subtype"]
+        if sem_type in EXAMPLES and subtype in EXAMPLES[sem_type] and subtype != 'N/A':
+            text = EXAMPLES[sem_type][subtype].replace("_", "\\_").replace("%", "\\%").replace("'", "\\textquotesingle ").replace('{', "\\{").replace('}', "\\}")
+            return f"\\small\\texttt{{{text}}}"
+        print(f"No example found for type {sem_type} and subtype {subtype}")
+        return ""
+
+    df.insert(2, "Examples", "")
+    df["Examples"] = df.apply(get_example, axis=1)
 
     # for all columns where there is not an 'All' or 'N/A', make the type empty
     def format_subtype(row):
+        row_idx = row.name
         if row["Subtype"] not in ["All", "N/A"]:
             return ""
-        return row["Semantic Type"]
+        return f"HEAD{row_idx}_: {row['Semantic Type']}"
+
     df["Semantic Type"] = df.apply(format_subtype, axis=1)
+
+    # rename Stack Overflow to SO
+    df = df.rename(columns={"Stack Overflow": "SO"})
+    df = df.rename(columns={"HuggingFace": "HF"})
+    df = df.rename(columns={"Semantic Type": "Type"})
+
+    # add an empty example column after the Subtype column
+
+
+
+    latex_table = df.to_latex(index=False, float_format="%.2f", na_rep="-")
+    # bold all column names
+    for col in df.columns:
+        latex_table = latex_table.replace(col, f"\\small{{\\textbf{{{col}}}}}", 1)
+
+    latex_lines = latex_table.splitlines()
+    # for each line that starts with HEAD, wrap the whole row with a bold command and extract the type name
+    formatted_lines = []
+    for line in latex_lines:
+        if line.strip().startswith("HEAD"):
+            # extract the type name
+            line_without_head = line.replace("HEAD", "")
+            row_index, rest_of_line = line_without_head.split("_:", 1)
+            # wrap every cell in bold
+            line_parts = rest_of_line.split("&")
+            line_bold_parts = [f"\\textbf{{{part.strip()}}}" for part in line_parts]
+            line_bold = " & ".join(line_bold_parts)
+
+            # replace the \\} at the end with }\\
+            if line_bold.strip().endswith("\\\\}"):
+                line_bold = line_bold.strip()[:-3].strip() + "} \\\\"
+
+            # if this is not the first line, add \addlinespace[0.6em] before the line
+            if len(formatted_lines) > 0:
+                line_bold = "\\addlinespace[0.6em] " + line_bold
+
+            formatted_lines.append(line_bold)
+
+        else:
+            formatted_lines.append(f"{line}")
+
+    latex_content = "\n".join(formatted_lines)
+    latex_content_small = f"\\begin{{small}}\n{latex_content}\n\\end{{small}}"
     # save this as a latex table
     with open(path, "w") as f:
-        f.write(df.to_latex(index=False, float_format="%.2f", na_rep="-"))
-
-
+        f.write(latex_content_small)
 
 
 def semantic_type_example():
@@ -143,7 +258,7 @@ def semantic_type_example():
             WITH ranked_columns AS (
                 SELECT
                     semantic_type_llm,
-                    semantic_type_llm_subtype,
+                    ifnull(semantic_type_llm_subtype, 'N/A') as semantic_type_llm_subtype,
                     tables.table_name as table_name,
                     columns.column_name as column_name,
                     columns.id as column_id,
@@ -154,7 +269,7 @@ def semantic_type_example():
                 FROM columns
                 JOIN tables ON tables.id = columns.table_id
                 JOIN table_values_count as tvc ON tvc.table_id = tables.id
-                WHERE tvc.count > 4000
+                WHERE tvc.count > 1000
                 ORDER BY hash(column_id)
             ),
             examples AS (
@@ -186,12 +301,11 @@ def semantic_type_example():
             subtype_counts AS (
                 SELECT
                     semantic_type_llm,
-                    semantic_type_llm_subtype,
+                    ifnull(semantic_type_llm_subtype, 'N/A') as semantic_type_llm_subtype,
                     COUNT(*) as subtype_count
                 FROM columns
                 WHERE semantic_type_llm IS NOT NULL
-                    AND semantic_type_llm_subtype IS NOT NULL
-                GROUP BY semantic_type_llm, semantic_type_llm_subtype
+                                GROUP BY semantic_type_llm, semantic_type_llm_subtype
             )
             SELECT
                 e.semantic_type_llm,
@@ -208,13 +322,13 @@ def semantic_type_example():
             JOIN subtype_counts sc ON e.semantic_type_llm = sc.semantic_type_llm
                 AND e.semantic_type_llm_subtype = sc.semantic_type_llm_subtype
             WHERE
-                e.semantic_type_llm_subtype != 'Other'
-                AND e.semantic_type_llm != 'Test'
-                AND e.semantic_type_llm IS NOT NULL
-                AND e.semantic_type_llm_subtype IS NOT NULL
+                e.semantic_type_llm IS NOT NULL
             GROUP BY e.semantic_type_llm, e.semantic_type_llm_subtype, tc.type_count, sc.subtype_count, t.total_columns
             ORDER BY e.semantic_type_llm, e.semantic_type_llm_subtype
         """).df()
+
+    # save df as csv for debugging
+    df.to_csv("semantic_type_examples_debug.csv", index=False)
 
     # Create a markdown table
     markdown_lines = []
@@ -226,7 +340,7 @@ def semantic_type_example():
         type_pct = row['type_percentage']
         subtype_pct = row['subtype_percentage']
         # if no examples, put N/A
-        if row['examples'] is not None:
+        if row['examples'] is None:
             examples = "N/A"
         else:
             examples_small = [ex[:MAX_CHARS] + ("..." if len(ex) > MAX_CHARS else "") for ex in row['examples']]

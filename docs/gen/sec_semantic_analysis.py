@@ -54,10 +54,7 @@ def main():
 
     column_physical_type_usage_plot(con, output_dir=physical_path)
     column_semantic_type_llm_usage_plot(con, output_dir=logical_path)
-    # 0.7 + 0.55 = 1.25
-    # 0.7 + 6 * 0.55 = 4.0
-    # 1.25 / 5.25 = 0.238
-    # 4.0 / 5.25 = 0.761
+
     figure_join = get_semantic_figure( type='join_key',
         caption='Distribution of semantic types used in columns involved in JOIN operations across different benchmarks.'
     )
@@ -81,12 +78,6 @@ def main():
     figure_payload = get_semantic_figure( type='payload_column',
         caption='Distribution of semantic types used in columns in materializing operators'
     )
-
-
-
-
-
-
 
     description = section.format(
         figure_join=figure_join,

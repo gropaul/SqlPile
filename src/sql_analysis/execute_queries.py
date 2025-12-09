@@ -781,6 +781,6 @@ if __name__ == "__main__":
     settings = ExecutionSettings(
         mode='replace',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str='3rd-party-kaggle', repo_not_contains_str=None
+        repo_id=None, repo_contains_str=None, repo_not_contains_str=None
     )
     execute_repo_queries(settings)

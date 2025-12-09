@@ -1,18 +1,45 @@
-
-\begin{table}
+\begin{table}[h!]
 \caption{Semantic types for string columns and their model descriptions.}
 \label{tab:semantic-types}
 \begin{tabular}{p{0.08\textwidth}p{0.23\textwidth}p{0.10\textwidth}}
 \toprule
 \textbf{Type} & \textbf{Description} & \textbf{Subcategory} \\
 \midrule
-\texttt{Numeric}        & Dates, times, timestamps, amounts, counts, prices, scores, sizes, values with unit & Amount, Timestamp \\
-\texttt{Category}       & Type, role, status, label, class, tag, (yes/no) flags & Boolean, Category \\
-\texttt{FullText}       & Descriptions, messages, summaries, notes, comments & Short, Long, Formatted \\
-\texttt{Identifier}     & Identifiers like uuids, codes, hash, token, version, link, url, slug, emails, phone numbers & Path, Semantic, System \\
-\texttt{Entity}         & Names of entities and persons, titles, labels, cities, countries, addresses & Person, Organization, Location \\
-\texttt{Semi-\linebreak structured} & Formats like \texttt{JSON}, \texttt{CSV} or simple lists & JSON, CSV, List \\
-\texttt{Test}           & Columns with content or names used for testing (e.g.\ \texttt{test}, \texttt{col}, \texttt{val1}) & N/A \\
+
+\texttt{Numeric} &
+Dates, times, timestamps, amounts, counts, prices, scores, sizes, values with unit &
+DateTime, Other \\
+\addlinespace[0.6em]
+
+\texttt{Category} &
+Type, role, status, label, class, tag, (yes/no) flags &
+Boolean, Other \\
+\addlinespace[0.6em]
+
+\texttt{FullText} &
+Descriptions, messages, summaries, notes, comments &
+Unformatted, Formatted \\
+\addlinespace[0.6em]
+
+\texttt{Identifier} &
+Identifiers like uuids, codes, hash, token, version, link, url, slug, emails, phone numbers &
+Path, Semantic, Generic \\
+\addlinespace[0.6em]
+
+\texttt{Entity} &
+Names of entities and persons, titles, labels, cities, countries, addresses &
+Person, Organization, Location \\
+\addlinespace[0.6em]
+
+\texttt{Structured} &
+Formats like \texttt{JSON}, \texttt{CSV} or simple lists &
+JSON, CSV, List \\
+\addlinespace[0.6em]
+
+\texttt{Test} &
+Columns with content or names used for testing (e.g.\ \texttt{test}, \texttt{col}, \texttt{val1}) &
+N/A \\
+
 \bottomrule
 \end{tabular}
 \end{table}

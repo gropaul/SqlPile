@@ -58,7 +58,7 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: Option
                    column_name,
                    list(DISTINCT value)[:20] as "values"
             FROM ids_to_process
-            LEFT JOIN column_values_filtered USING (column_id)
+            JOIN column_values_filtered USING (column_id)
             LEFT JOIN columns ON column_values_filtered.column_id = columns.id
             LEFT JOIN tables ON tables.id = columns.table_id
             LEFT JOIN table_values_count as tvc ON tvc.table_id = tables.id
