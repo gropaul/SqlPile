@@ -178,7 +178,6 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
             con.execute("DELETE FROM queries WHERE repo_id = ?", (repo_id,))
 
         if table_exists(con, "tables"):
-            print("Deleting tables for repo id", repo_id)
             con.execute("DELETE FROM tables WHERE repo_id = ?", (repo_id,))
 
         if table_exists(con, TABLES_DATA_FILES_TABLE_NAME):
@@ -191,7 +190,6 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
             con.execute("DELETE FROM repo_meta_data_files WHERE repo_id = ?", (repo_id,))
 
         if table_exists(con, "repos"):
-            print("Deleting repo id", repo_id)
             con.execute("DELETE FROM repos WHERE id = ?", (repo_id,))
 
 

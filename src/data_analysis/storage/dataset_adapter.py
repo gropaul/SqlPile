@@ -291,6 +291,5 @@ class DatasetAdapter:
 
         print(f"Found {len(repos)} {self.repo_prefix} repos to delete.")
 
-        for repo_id, repo_name in repos:
-            print(f"Deleting repo {repo_name} with id {repo_id}")
+        for repo_id, repo_name in tqdm(repos):
             delete_repo(self.con, repo_id)

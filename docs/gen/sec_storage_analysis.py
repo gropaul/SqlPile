@@ -1,5 +1,9 @@
 import os
+
+import numpy as np
+
 from docs.gen.utils import get_figure, format_latex_string, get_multi_figure
+from external.CompressionBenchmark.tools.benchmark import run_compression_benchmark
 from src.config import get_con, LATEX_ASSETS_DIR, LATEX_GEN_DIR
 from src.data_analysis.storage.storage_analysis import get_storage_percentage_table
 import pandas as pd
@@ -33,6 +37,8 @@ once and therefore does not support random access to individual values. As the b
 follow DuckDB’s default vector size of 2048 values, which is also the block size used in their LZ4 
 implementation.
 
+{figure_value_sizes}
+
 By analyzing the compressed and uncompressed sizes of each column and grouping the columns by semantic type, 
 we can quantify how much data of each type is stored in compressed and uncompressed form. As a first step, we 
 show how many columns of each semantic type occur across all datasets and how many values they contain. We then 
@@ -49,15 +55,14 @@ compressed using the best available algorithm. The results of these analyses are
 
 
 def main():
-
     get_storage_percentage_table('column_base_type', output_dir=LATEX_ASSETS_DIR)
+    get_storage_percentage_table('semantic_type_llm', output_dir=LATEX_ASSETS_DIR)
+
     figure_storage_column_base_type = get_figure(
         path='assets/column_base_type.pdf',
         caption="Analysis on the storage per logical types",
         label="fig:storage-semantic-type-llm",
     )
-
-    get_storage_percentage_table('semantic_type_llm', output_dir=LATEX_ASSETS_DIR)
     figure_storage_semantic_type = get_figure(
         path='assets/semantic_type_llm.pdf',
         caption="Ratios for storage for all strings based on semantic type",
@@ -66,10 +71,12 @@ def main():
 
     con = get_con(read_only=True)
 
+    figure_value_sizes, figure_compression_rate = compression_per_semantic_type(con)
     description = section.format(
         figure_storage_semantic_type=figure_storage_semantic_type,
         figure_storage_column_base_type=figure_storage_column_base_type,
-        figure_compression_rate=compression_per_semantic_type(con)
+        figure_compression_rate=figure_compression_rate,
+        figure_value_sizes=figure_value_sizes,
     )
 
     description = format_latex_string(description)
@@ -80,7 +87,6 @@ def main():
 
 
 def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
-
     df = con.sql("""
         WITH all_algo_per_column AS (
           SELECT column_id, algorithm, uncompressed_size / compressed_size as compression_rate
@@ -96,11 +102,18 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
 
     best_df = con.sql("""
         WITH best_algo_per_column AS (
-          SELECT column_id, first(algorithm ORDER BY compressed_size) as algorithm, MIN(uncompressed_size) /  MIN(compressed_size) as compression_rate
+          SELECT 
+            column_id, first(algorithm ORDER BY compressed_size) as algorithm, 
+            MIN(uncompressed_size) /  MIN(compressed_size) as compression_rate,
+            MIN(uncompressed_size / n_rows_not_empty) as uncompressed_size,
+            MIN(compressed_size / n_rows_not_empty) as compressed_size
           FROM "columns_compression_results"
           GROUP BY column_id
         )
-        SELECT semantic_type_llm, algorithm, COUNT(*) as cnt, list(compression_rate) as "compression_rates"
+        SELECT semantic_type_llm, algorithm, COUNT(*) as cnt, 
+            list(compression_rate) as "compression_rates",
+            list(uncompressed_size) as "uncompressed_sizes",
+            list(compressed_size) as "compressed_sizes"
         FROM best_algo_per_column as algo_data
         JOIN columns ON columns.id = algo_data.column_id
         GROUP BY ALL
@@ -110,6 +123,9 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
 
     n_algos = df['algorithm'].nunique()
     all_algorithms = df['algorithm'].unique()  # Get all algorithms across entire dataset
+
+    uncompressed_sizes = {}
+    compressed_size = {}
 
     paths = []
     captions = []
@@ -130,10 +146,20 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
 
         for i, algo in enumerate(all_algorithms):
             if algo in algorithms_in_subset:
-                rates = subset[subset['algorithm'] == algo]['compression_rates'].iloc[0]
+
+                algo_subset = subset[subset['algorithm'] == algo]
+                rates = algo_subset['compression_rates'].iloc[0]
 
                 if algo in list(best_algorithms_in_subset):
                     row = best_subset[best_subset['algorithm'] == algo]
+
+                    if semantic_type not in uncompressed_sizes:
+                        uncompressed_sizes[semantic_type] = list(row['uncompressed_sizes'].iloc[0])
+                        compressed_size[semantic_type] = list(row['compressed_sizes'].iloc[0])
+                    else:
+                        uncompressed_sizes[semantic_type] += list(row['uncompressed_sizes'].iloc[0])
+                        compressed_size[semantic_type] += list(row['compressed_sizes'].iloc[0])
+
                     best_cnt = row['cnt'].iloc[0]
                     ratios = row['compression_rates'].iloc[0]
                     percentage = (best_cnt / best_subset_sum) * 100 if best_subset_sum > 0 else 0
@@ -162,8 +188,8 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
         for (x_pos, median_val, percentage) in positions_with_data_median:
             # also add a red line for the median
             plt.plot([x_pos - 0.25, x_pos + 0.25], [median_val, median_val], color='red', linewidth=1)
-            plt.plot(x_pos, median_val, 'D', color='red', markersize= 3 + 7 * (percentage / 100), markeredgewidth=1, markeredgecolor='black')
-
+            plt.plot(x_pos, median_val, 'D', color='red', markersize=3 + 7 * (percentage / 100), markeredgewidth=1,
+                     markeredgecolor='black')
 
         plt.yscale('log')
         plt.ylim(1, 100)
@@ -175,7 +201,7 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
         plt.xticks(rotation=90, fontsize=12)
         plt.tight_layout()
 
-        path = os.path.join(LATEX_ASSETS_DIR, 'compression',f'compression_{semantic_type}.pdf')
+        path = os.path.join(LATEX_ASSETS_DIR, 'compression', f'compression_{semantic_type}.pdf')
         os.makedirs(os.path.dirname(path), exist_ok=True)
         plt.savefig(path)
         plt.close()
@@ -183,21 +209,121 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
         paths.append(path)
         captions.append(semantic_type)
 
+    def get_boxplot_range(data_dict, whisker: bool):
+        """Calculate min/max based on boxplot whiskers (excluding outliers)"""
+        all_whisker_values = []
+        all_complete_ranges = []
 
-    return get_multi_figure(
+        for sizes in data_dict.values():
+            if len(sizes) == 0:
+                continue
+            q1 = np.percentile(sizes, 25)
+            q3 = np.percentile(sizes, 75)
+            iqr = q3 - q1
+            lower_whisker = max(min(sizes), q1 - 1.5 * iqr)
+            upper_whisker = min(max(sizes), q3 + 1.5 * iqr)
+            mean = np.mean(sizes)
+
+            local_min = min(sizes)
+            local_max = max(sizes)
+            all_complete_ranges.extend([local_min, local_max, mean])
+            all_whisker_values.extend([lower_whisker, upper_whisker, mean])
+
+        if whisker:
+            return min(all_whisker_values), max(all_whisker_values)
+        else:
+            return min(all_complete_ranges), max(all_complete_ranges)
+
+    # Calculate global min and max based on boxplot whiskers (no outliers)
+    whisker = True
+    uncompressed_min, uncompressed_max = get_boxplot_range(uncompressed_sizes, whisker=whisker)
+    compressed_min, compressed_max = get_boxplot_range(compressed_size, whisker=whisker)
+
+    global_min = min(uncompressed_min, compressed_min) * 0.9
+    global_max = max(uncompressed_max, compressed_max) * 2.0
+
+    plt.figure(figsize=(len(uncompressed_sizes) * 0.37 + 0.7, 3.5))
+
+    # Get the keys and sort them
+    keys = list(uncompressed_sizes.keys())
+    keys.sort()
+
+    sizes_paths = []
+    sizes_captions = []
+
+    # Create both plots
+    for filename, data_dict, label in [
+        ('uncompressed_sizes', uncompressed_sizes, 'Uncompressed'),
+        ('compressed_sizes', compressed_size, 'Compressed')
+    ]:
+        plt.grid(which='major', axis='y', linestyle='--', linewidth=0.5)
+
+        for i, stype in enumerate(keys):
+            data = data_dict[stype]
+            position = i + 1
+            plt.boxplot(data, positions=[position],
+                        widths=0.4, showfliers=not whisker, showmeans=True)
+
+            # Add mean value as text
+            mean_val = sum(data) / len(data)
+            plt.text(position + 0.27, mean_val, f'{mean_val:.0f}',
+                     va='center', fontsize=10, color='black', rotation=90)
+
+        plt.yscale('log')
+
+        # make the y ticks powers of 2 from global_min to global_max
+        y_ticks = []
+        y_labels = []
+        val = 0.0625 / 2
+        while val < global_max:
+            if val >= global_min:
+                y_ticks.append(val)
+                if val >= 1:
+                    y_labels.append(f'{int(val)}')
+                else:
+                    # add as fraction
+                    divident = 1/ val
+                    y_labels.append(f'1/{int(divident)}')
+            val *= 4
+        plt.yticks(y_ticks, y_labels)
+        plt.ylim(global_min, global_max)
+        plt.ylabel('Size in Bytes')
+
+        plt.xlim(0.5, len(data_dict) + 0.7)
+        plt.xticks(
+            range(1, len(data_dict) + 1),
+            list(data_dict.keys()),
+            rotation=90,
+            fontsize=12
+        )
+        plt.tight_layout()
+
+        path = os.path.join(LATEX_ASSETS_DIR, 'compression', f'{filename}.pdf')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        plt.savefig(path)
+        plt.clf()
+
+        sizes_paths.append(path)
+        sizes_captions.append(label)
+
+    size_per_semantic_type_figure = get_multi_figure(
+        two_column=False,
+        label="fig:size_per_semantic_type",
+        caption="Sizes per semantic type for uncompressed and compressed data. Mean sizes are indicated as text next to each boxplot.",
+        paths=sizes_paths,
+        captions=sizes_captions
+    )
+
+    compression_per_semantic_type_figure = get_multi_figure(
+        two_column=True,
         label="fig:compression_per_semantic_type",
         caption="Compression ratios by semantic type and algorithm. Percentages indicate how often each algorithm achieved the best compression. Red diamonds show the median compression ratio in the columns where the algorithm performed best, with symbol size proportional to its share of best-compressed columns.",
         paths=paths,
         captions=captions
     )
 
-
-
+    return size_per_semantic_type_figure, compression_per_semantic_type_figure
 
 
 if __name__ == "__main__":
     main()
-
-
-
-

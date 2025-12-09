@@ -195,7 +195,7 @@ def boxplot_by_type(
         p_high: float = 0.99,
         log_scale: bool = True,
         ylabel: Optional[str] = None,
-        figsize=(1.7 * 1.1, 2.5 * 1.5),
+        figsize=(1.7 * 1.1, 2.0 * 1.5),
         rotate_xticks: int = 90,
         path: str = '',
         percentage: bool = False,
@@ -296,7 +296,7 @@ def generate_dups_plot(con, mode: Mode, skip_null_or_empty: bool = False, ):
     # First pass: compute log data range
     for (repo_group, semantic_type_llm, data_list) in histograms:
         # plot the values on a log scale
-        plt.figure(figsize=(1.7, 2.5))
+        plt.figure(figsize=(1.7, 2.0))
 
         top_3_percentage = []
         top_10_percentage = []
@@ -330,6 +330,10 @@ def generate_dups_plot(con, mode: Mode, skip_null_or_empty: bool = False, ):
                 values_looked_at += 1
 
             n_values = values_looked_at
+            if n_values == 0:
+                print(f"Warning: n_values is 0 for {semantic_type_llm} in {repo_group}, skipping.")
+                continue
+
             top_3_percentage.append(percentage_sum_3 / min(3, n_values))
             top_10_percentage.append(percentage_sum_10 / min(10, n_values))
             top_100_percentage.append(percentage_sum_100 / min(100, n_values))

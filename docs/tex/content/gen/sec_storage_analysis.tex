@@ -63,6 +63,24 @@ once and therefore does not support random access to individual values. As the b
 follow DuckDB’s default vector size of 2048 values, which is also the block size used in their LZ4 
 implementation.
 
+\begin{figure}[h!]
+  \centering
+\begin{subfigure}{0.475\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/uncompressed_sizes.pdf}
+  \caption{Uncompressed}
+  \label{fig:size_per_semantic_type:uncompressed_sizes}
+\end{subfigure}
+\begin{subfigure}{0.475\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compressed_sizes.pdf}
+  \caption{Compressed}
+  \label{fig:size_per_semantic_type:compressed_sizes}
+\end{subfigure}
+  \label{fig:size_per_semantic_type}
+  \caption{Sizes per semantic type for uncompressed and compressed data. Mean sizes are indicated as text next to each boxplot.}
+\end{figure}
+
 By analyzing the compressed and uncompressed sizes of each column and grouping the columns by semantic type, 
 we can quantify how much data of each type is stored in compressed and uncompressed form. As a first step, we 
 show how many columns of each semantic type occur across all datasets and how many values they contain. We then 
