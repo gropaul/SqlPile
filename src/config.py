@@ -126,7 +126,7 @@ SOURCE_CODE_FILE_EXTENSIONS = [
 ]
 
 PREPARE_SQL_STATICALLY_MACRO = """
-CREATE OR REPLACE TEMP MACRO prepare_select_statically(sql) AS
+CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
     sql
     -- backticks → double quotes
     .replace('`', '"')
@@ -179,14 +179,75 @@ CREATE OR REPLACE TEMP MACRO prepare_select_statically(sql) AS
 """
 
 
-def get_con(path: str = DATABASE_PATH, read_only: bool = False,
-            max_threads: Optional[int] = 16) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(path, read_only=read_only)
-
+def configure_connection_settings(
+        con: duckdb.DuckDBPyConnection,
+        max_threads: Optional[int] = 16,
+):
     if max_threads is not None:
         core_count = os.cpu_count() or 1
         threads_to_use = min(max_threads, core_count)
         con.execute(f"PRAGMA threads={threads_to_use};")
+
+
+def create_views(con: duckdb.DuckDBPyConnection):
+    try:
+        con.execute("""
+            CREATE OR REPLACE VIEW column_usages_unnested AS
+            SELECT *, unnest(column_ids) AS column_id
+            FROM column_usages
+        """)
+
+        con.execute("""
+            CREATE OR REPLACE VIEW values_often AS
+            WITH filtered_values AS (
+                SELECT column_id, value
+                FROM column_values
+                WHERE value != 'example text'
+                  AND value != 'None'
+                  AND length(value) > 0
+                  AND value IS NOT NULL
+            ),
+            often AS (
+                SELECT column_id
+                FROM filtered_values
+                GROUP BY column_id
+                HAVING COUNT(value) > 0
+            )
+            SELECT column_id, value
+            FROM filtered_values
+            WHERE column_id IN (SELECT column_id FROM often);
+        """)
+    except Exception:
+        logging.warning(
+            "Could not create views column_usages_unnested and values_often. "
+            "The tables might not exist yet."
+        )
+
+
+def create_macros(con: duckdb.DuckDBPyConnection):
+    cum_sum_macro = """
+        CREATE OR REPLACE MACRO list_cum_sum(xs) AS (
+          list_transform(xs, lambda x, i :
+            list_reduce(list_slice(xs, 1, i), lambda acc, y : acc + coalesce(y, 0))
+          )
+        );
+    """
+    con.execute(cum_sum_macro)
+    con.execute(PREPARE_SQL_STATICALLY_MACRO)
+
+
+def register_python_udfs(con: duckdb.DuckDBPyConnection):
+    # ---------- small helpers ----------
+
+    def format_number_as_percentage(value: Optional[float]) -> str:
+        if value is None:
+            return "NULL"
+        return f"{round(value * 100)}%"
+
+    def unify_llm_type(semantic_type: Optional[str]) -> str:
+        return semantic_type if semantic_type else "Other"
+
+    # ---------- repo / grouping ----------
 
     def get_group(repo_url: str) -> str:
         if "3rd-party-kaggle" in repo_url:
@@ -201,208 +262,134 @@ def get_con(path: str = DATABASE_PATH, read_only: bool = False,
             return "IMDB"
         elif "3rd-party-sql-storm-stackoverflow" in repo_url:
             return "Stack Overflow"
-        else:
-            if not '3rd-party' in repo_url:
-                return "DBPile"
-            else:
-                return "Excluded"
-
-    con.create_function("get_group", get_group, [str], str, type="native")
-
-    def format_number_as_percentage(value: float) -> str:
-        """Format a number as a percentage with two decimal places."""
-        if value is None:
-            return "NULL"
-        return f"{round(value * 100)}%"
-
-    # Register the custom function to format numbers as percentages
-    con.create_function("as_percentage", format_number_as_percentage, [float], str, type="native")
-
-    def unify_llm_type(semantic_type: Optional[str]) -> str:
-        return semantic_type if semantic_type else 'Other'
-
-    cum_sum_macro = """
-        -- cumulative sum over a LIST (NULLs treated as 0)
-        CREATE OR REPLACE TEMP MACRO list_cum_sum(xs) AS (
-          list_transform(xs, lambda x, i :
-            list_reduce(list_slice(xs, 1, i), lambda acc, y : acc + coalesce(y, 0))
-          )
-        );
-    """
-    con.execute(cum_sum_macro)
-
-    con.create_function('unify_llm_type', unify_llm_type, null_handling='SPECIAL')
-
-    try:
-        con.execute("""
-                          CREATE TEMP VIEW column_usages_unnested AS
-                          (
-                          SELECT *, unnest(column_ids) AS column_id
-                          FROM column_usages
-                          )
-                          """)
-
-        con.execute("""
-                        CREATE OR REPLACE TEMP VIEW values_often AS
-                        WITH filtered_values AS (
-                            SELECT column_id, value
-                            FROM column_values
-                            WHERE value != 'example text' 
-                                AND value != 'None'
-                                AND length(value) > 0
-                                AND value IS NOT NULL
-                        ),
-                        often AS (
-                            SELECT column_id
-                            FROM filtered_values
-                            GROUP BY column_id
-                            HAVING COUNT(value) > 0
-                        )
-                        SELECT column_id, value
-                        FROM filtered_values
-                        WHERE column_id IN (SELECT column_id FROM often);
-                """)
-    except Exception as e:
-        logging.warning(
-            f"Could not create views column_usages_unnested and values_often. The tables might not exist yet.")
-        pass
-
-    def unifiy_usage_types(usage_type: str) -> str:
-        usage_to_operator_map = {
-            'TOP_N_KEY': 'Order Key',
-            'SCAN_LOOKUP': 'Scan',
-            'SCAN_FILTER': 'Filter',  # When changing, make sure, Filtered Scan > Scan
-            'PROJECTION': 'Projection',
-            'ORDER_KEY': 'Order Key',
-            'JOIN_KEY': 'Join Key',
-            'GROUP_KEY': 'Group Key',
-            'DISTINCT_KEY': 'Group Key',
-            'FILTER': 'Filter',
-            'AGGREGATE': 'Aggregate',  # When changing, make sure, Ungrouped Aggregate > Grouped Aggregate
-            'WINDOW_EXPRESSION': 'Window Function',
-            'JOIN_MATERIALIZATION': 'Payload Column',
-            'ORDER_MATERIALIZATION': 'Payload Column',
-        }
-
-        if usage_type not in usage_to_operator_map:
-            raise ValueError(
-                f"Unknown usage type: '{usage_type}'. Known types: {list(usage_to_operator_map.keys())}"
-            )
-        return usage_to_operator_map[usage_type]
-
-    con.create_function(
-        "unifiy_usage_types",
-        unifiy_usage_types,
-        null_handling='SPECIAL',
-    )
+        elif "3rd-party" not in repo_url:
+            return "DBPile"
+        return "Excluded"
 
     def get_repo_origin(repo_url: str) -> str:
-
         if repo_url.startswith("https://github.com/3rd-party/3rd-party-tpc"):
             return "TPC"
         elif repo_url.startswith("https://github.com/3rd-party/3rd-party-sql-storm"):
             return "SQLStorm"
         elif repo_url.startswith("https://github.com/3rd-party/3rd-party-kaggle"):
             return "Kaggle"
-        else:
+        return "DBPile"
+
+    def get_repo_group(repo_url: str) -> str:
+        if "3rd-party-kaggle" in repo_url:
+            return "Kaggle"
+        elif "3rd-party-huggingface" in repo_url:
+            return "HF"
+        elif "3rd-party-sql-storm-imdb" in repo_url:
+            return "IMDB"
+        elif "3rd-party-sql-storm-stackoverflow" in repo_url:
+            return "SO"
+        elif "3rd-party-sql-storm-tp" in repo_url:
+            return "TPC"
+        elif "3rd-party" not in repo_url:
             return "DBPile"
+        return "Other"
 
-    con.create_function("get_repo_origin", get_repo_origin, [str], str, type="native")
+    # ---------- usage / operator mapping ----------
 
-    def get_repo_group(repo_url):
-        if '3rd-party-kaggle' in repo_url:
-            return 'Kaggle'
-        elif '3rd-party-huggingface' in repo_url:
-            return 'HF'
-        elif '3rd-party-sql-storm-imdb' in repo_url:
-            return 'IMDB'
-        elif '3rd-party-sql-storm-stackoverflow' in repo_url:
-            return 'SO'
-        elif '3rd-party-sql-storm-tp' in repo_url:
-            return 'TPC'
-
-        if not '3rd-party' in repo_url:
-            return 'DBPile'
-
-        return 'Other'
-
-    con.create_function("get_repo_group", get_repo_group, [str], str, type="native")
-
-    def udf_get_table_name_from_create(query: str) -> Optional[str]:
-        # Remove extra whitespace and normalize casing for matching
-        cleaned_query = re.sub(r'\s+', ' ', query.strip()).lower()
-        # rewrite "create temporary table" or "create temp table" to "create table"
-        cleaned_query = re.sub(r'\bcreate\s+(temporary|temp)\s+table\b', 'create table', cleaned_query)
-        # rewrite "create table if not exists" to "create table"
-        cleaned_query = re.sub(r'\bcreate\s+table\s+if\s+not\s+exists\b', 'create table', cleaned_query)
-        # rewrite "create or replace table" to "create table"
-        cleaned_query = re.sub(r'\bcreate\s+or\s+replace\s+table\b', 'create table', cleaned_query)
-
-        # regex pattern to match CREATE TABLE statements
-        pattern = re.compile(
-            r'CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"\[\]\w\.]+)',
-            re.IGNORECASE
-        )
-
-        match = pattern.match(cleaned_query)
-        if match:
-            name = match.group(1).strip('`"[]')
-            # if the table name is a qualified name (e.g., schema.table), return only the table name
-            if '.' in name:
-                name = name.split('.')[-1]
-            return name.lower()
-        else:
-            return None
-
-    def udf_is_create_view(query: str) -> bool:
-        """Check if the query is a CREATE VIEW, CREATE MATERIALIZED VIEW, or CREATE TEMP VIEW."""
-        cleaned_query = re.sub(r'\s+', ' ', query.strip()).lower()
-
-        pattern = re.compile(
-            r'''
-            ^create                                   # must start with 'create'
-            (\s+or\s+replace)?                        # optional 'or replace'
-            (\s+temp(?:orary)?)?                      # optional 'temp' or 'temporary'
-            (\s+materialized)?                        # optional 'materialized'
-            \s+view                                   # 'view' keyword
-            (\s+if\s+not\s+exists)?                   # optional 'if not exists'
-            \s+[`"\[\]\w\.]+                          # identifier follows
-            ''',
-            re.IGNORECASE | re.VERBOSE
-        )
-
-        return bool(pattern.match(cleaned_query))
+    def unifiy_usage_types(usage_type: str) -> str:
+        usage_to_operator_map = {
+            "TOP_N_KEY": "Order Key",
+            "SCAN_LOOKUP": "Scan",
+            "SCAN_FILTER": "Filter",
+            "PROJECTION": "Projection",
+            "ORDER_KEY": "Order Key",
+            "JOIN_KEY": "Join Key",
+            "GROUP_KEY": "Group Key",
+            "DISTINCT_KEY": "Group Key",
+            "FILTER": "Filter",
+            "AGGREGATE": "Aggregate",
+            "WINDOW_EXPRESSION": "Window Function",
+            "JOIN_MATERIALIZATION": "Payload Column",
+            "ORDER_MATERIALIZATION": "Payload Column",
+        }
+        if usage_type not in usage_to_operator_map:
+            raise ValueError(f"Unknown usage type: {usage_type}")
+        return usage_to_operator_map[usage_type]
 
     def usage_type_to_operator(usage_type: str) -> str:
         usage_to_operator_map = {
-            'TOP_N_KEY': 'Order By',
-            'SCAN_LOOKUP': 'Scan',
-            'SCAN_FILTER': 'Filtered Scan',  # When changing, make sure, Filtered Scan > Scan
-            'PROJECTION': 'Projection',
-            'ORDER_KEY': 'Order By',
-            'JOIN_KEY': 'Join',
-            'GROUP_KEY': 'Grouped Aggregate',
-            'DISTINCT_KEY': 'Grouped Aggregate',
-            'FILTER': 'Filter',
-            'AGGREGATE': 'Ungrouped Aggregate',  # When changing, make sure, Ungrouped Aggregate > Grouped Aggregate
-            'WINDOW_EXPRESSION': 'Window Function',
-            'JOIN_MATERIALIZATION': 'Join',
-            'ORDER_MATERIALIZATION': 'Order By',
+            "TOP_N_KEY": "Order By",
+            "SCAN_LOOKUP": "Scan",
+            "SCAN_FILTER": "Filtered Scan",
+            "PROJECTION": "Projection",
+            "ORDER_KEY": "Order By",
+            "JOIN_KEY": "Join",
+            "GROUP_KEY": "Grouped Aggregate",
+            "DISTINCT_KEY": "Grouped Aggregate",
+            "FILTER": "Filter",
+            "AGGREGATE": "Ungrouped Aggregate",
+            "WINDOW_EXPRESSION": "Window Function",
+            "JOIN_MATERIALIZATION": "Join",
+            "ORDER_MATERIALIZATION": "Order By",
         }
-
         if usage_type not in usage_to_operator_map:
-            raise ValueError(
-                f"Unknown usage type: '{usage_type}'. Known types: {list(usage_to_operator_map.keys())}"
-            )
-
+            raise ValueError(f"Unknown usage type: {usage_type}")
         return usage_to_operator_map[usage_type]
 
-    # register the UDF
-    con.create_function("get_table_name_udf", udf_get_table_name_from_create, null_handling="special")
-    con.create_function("is_create_view_udf", udf_is_create_view, null_handling="special")
+    # ---------- SQL parsing ----------
+
+    def udf_get_table_name_from_create(query: str) -> Optional[str]:
+        cleaned = re.sub(r"\s+", " ", query.strip()).lower()
+        cleaned = re.sub(r"\bcreate\s+(temporary|temp)\s+table\b", "create table", cleaned)
+        cleaned = re.sub(r"\bcreate\s+table\s+if\s+not\s+exists\b", "create table", cleaned)
+        cleaned = re.sub(r"\bcreate\s+or\s+replace\s+table\b", "create table", cleaned)
+
+        pattern = re.compile(
+            r"create\s+table\s+([`\"\[\]\w\.]+)",
+            re.IGNORECASE,
+        )
+
+        match = pattern.match(cleaned)
+        if not match:
+            return None
+
+        name = match.group(1).strip("`\"[]")
+        return name.split(".")[-1].lower()
+
+    def udf_is_create_view(query: str) -> bool:
+        cleaned = re.sub(r"\s+", " ", query.strip()).lower()
+        pattern = re.compile(
+            r"^create(\s+or\s+replace)?(\s+temp(orary)?)?(\s+materialized)?\s+view",
+            re.IGNORECASE,
+        )
+        return bool(pattern.match(cleaned))
+
+    # ---------- registration ----------
+
+    con.create_function("unifiy_usage_types", unifiy_usage_types, null_handling="SPECIAL")
+    con.create_function("unify_llm_type", unify_llm_type, null_handling="SPECIAL")
+
+    con.create_function("as_percentage", format_number_as_percentage, [float], str, type="native")
+    con.create_function("get_group", get_group, [str], str, type="native")
+    con.create_function("get_repo_origin", get_repo_origin, [str], str, type="native")
+    con.create_function("get_repo_group", get_repo_group, [str], str, type="native")
     con.create_function("usage_type_to_operator", usage_type_to_operator, [str], str, type="native")
 
-    con.execute(PREPARE_SQL_STATICALLY_MACRO)
+    con.create_function("get_table_name_udf", udf_get_table_name_from_create, null_handling="SPECIAL")
+    con.create_function("is_create_view_udf", udf_is_create_view, null_handling="SPECIAL")
+
+
+def configure_con(
+        con: duckdb.DuckDBPyConnection,
+        max_threads: Optional[int] = 16,
+):
+    configure_connection_settings(con, max_threads)
+    create_views(con)
+    create_macros(con)
+    register_python_udfs(con)
+
+
+def get_con(path: str = DATABASE_PATH, read_only: bool = False,
+            max_threads: Optional[int] = 16) -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect(path, read_only=read_only)
+
+    configure_con(con, max_threads=max_threads)
 
     return con
 

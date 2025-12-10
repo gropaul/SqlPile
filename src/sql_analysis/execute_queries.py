@@ -4,6 +4,7 @@ import os.path
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
+import time
 
 import duckdb
 from tqdm import tqdm
@@ -14,7 +15,7 @@ from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, RE
     COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
     QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR, KAGGLE_DATA_DB_PATH, HUGGINFACE_DATA_DIR, \
-    HUGGINFACE_DATA_DB_PATH, N_DATASETS_TO_PROCESS
+    HUGGINFACE_DATA_DB_PATH, N_DATASETS_TO_PROCESS, configure_con, create_macros
 from src.sql_analysis.utils.names import clean_name
 from src.sql_analysis.utils.delete_data import delete_repo, reset_statistics_tables
 from src.sql_analysis.execution.create_tables import create_base_tables
@@ -43,8 +44,12 @@ n_successful_insertions = 0
 EXCLUDED_REPOS = [16340]
 
 
+# Type alias for DuckDB connection
+DuckDBConnection = duckdb.DuckDBPyConnection
+
+
 class IDManager:
-    def __init__(self, con: duckdb.DuckDBPyConnection):
+    def __init__(self, con: DuckDBConnection):
         error_id_res = con.execute(f"SELECT MAX(id) FROM {QUERIES_ERROR_SELECT_TABLE_NAME}").fetchone()
         self.error_id = error_id_res[0] if error_id_res and error_id_res[0] is not None else 0
 
@@ -84,7 +89,7 @@ def make_create_statement(complete_quoted_table_name, columns):
     return create_statement
 
 
-def create_sandbox_tables(repo_id: int, con: duckdb.DuckDBPyConnection,
+def create_sandbox_tables(repo_id: int, con: DuckDBConnection,
                           sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
     tables_with_columns = con.execute("""
                                       SELECT table_id,
@@ -171,7 +176,7 @@ def get_table_name_from_insert(sql: str) -> Optional[str]:
         return None
 
 
-def populate_tables_with_inserts(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+def populate_tables_with_inserts(repo_id: int, repo_url: str, con: DuckDBConnection,
                                  sandbox_con: duckdb.DuckDBPyConnection) -> List[Table]:
     """
     Populate the tables with data from the repo.
@@ -265,7 +270,7 @@ def get_table_qualifier(table_name: str, database_schema: Optional[str]) -> str:
     else:
         return quote(table_name)
 
-def populate_tables_with_files(repo_id: int, con: duckdb.DuckDBPyConnection,
+def populate_tables_with_files(repo_id: int, con: DuckDBConnection,
                                sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table],
                                database_schema: str
                                ):
@@ -331,7 +336,7 @@ def populate_empty_tables(tables: List[Table], sandbox_con: duckdb.DuckDBPyConne
 
 
 def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo_url: str,
-                  con: duckdb.DuckDBPyConnection,
+                  con: DuckDBConnection,
                   sandbox_con: duckdb.DuckDBPyConnection, tables: List[Table],
                   id_manager: IDManager) -> MockQueryResult:
     result: MockQueryResult = try_to_mock_and_execute_query(sandbox_con, sql_prepared, tables)
@@ -367,7 +372,7 @@ def execute_query(query_id: int, sql: str, sql_prepared: str, repo_id: int, repo
     return result
 
 
-def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
+def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyConnection, con: DuckDBConnection,
                     tables: List[Table], id_manager: IDManager, query_id: Optional[int] = None):
     logging.info(f"Executing queries for repo {repo_id} ({repo_url}). Loading queries...")
     queries_deduped = con.execute(f"""
@@ -387,7 +392,8 @@ def execute_queries(repo_id: int, repo_url: str, sandbox_con: duckdb.DuckDBPyCon
         execute_query(query_id, sql, sql_prepared, repo_id, repo_url, con, sandbox_con, tables, id_manager)
 
 
-def get_tables_from_create_statements(repo_id: int, con: duckdb.DuckDBPyConnection):
+def get_tables_from_create_statements(repo_id: int, con: DuckDBConnection):
+    print("Start create_queries")
     create_queries = con.execute(f"""
     WITH distrinct_queries AS (
         SELECT sql, id, repo_id, type
@@ -411,6 +417,8 @@ def get_tables_from_create_statements(repo_id: int, con: duckdb.DuckDBPyConnecti
     ORDER BY repo_id
     """).fetchall()
 
+    print("Executed create_queries")
+
     if not create_queries:
         logging.info(f"No new CREATE TABLE queries found for repo {repo_id}")
         return
@@ -428,7 +436,7 @@ def get_tables_from_create_statements(repo_id: int, con: duckdb.DuckDBPyConnecti
             """, (repo_id, query_id, sql, str(e)))
 
 
-def save_string_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: duckdb.DuckDBPyConnection,
+def save_string_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnection, con: DuckDBConnection,
                               artificial_populated_ids: List[int], database_schema: str):
     logging.info(f"The following tables were artificially populated: {artificial_populated_ids}")
     # get the columns that where recorded in the executable queries and for which we don't have values yet
@@ -474,7 +482,7 @@ def save_string_column_values(repo_id: int, sandbox_con: duckdb.DuckDBPyConnecti
             continue
 
 
-def save_table_counts(repo_id: int, con: duckdb.DuckDBPyConnection, sandbox_con: duckdb.DuckDBPyConnection,
+def save_table_counts(repo_id: int, con: DuckDBConnection, sandbox_con: duckdb.DuckDBPyConnection,
                       artificial_populated_ids: List[int], database_schema: str):
     table_counts = con.execute(f"""
         SELECT id, table_name_clean 
@@ -500,7 +508,7 @@ def save_table_counts(repo_id: int, con: duckdb.DuckDBPyConnection, sandbox_con:
             continue
 
 
-def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
+def create_views(repo_id: int, repo_url: str, con: DuckDBConnection,
                  sandbox_con: duckdb.DuckDBPyConnection):
     view_queries = con.execute(f"""
         WITH repo_queries AS MATERIALIZED (
@@ -541,7 +549,7 @@ def create_views(repo_id: int, repo_url: str, con: duckdb.DuckDBPyConnection,
             f"Processed {n_views} view creation queries in repo {repo_id} ({repo_url}), successfully created {n_success} views, failed to create {n_views - n_success} views.")
 
 
-def save_columns_compression_results(repo_id: int, result_path: str, con: duckdb.DuckDBPyConnection,
+def save_columns_compression_results(repo_id: int, result_path: str, con: DuckDBConnection,
                                      schema: str = 'main'):
 
     # create the compression benchmark results table if it doesn't exist
@@ -621,31 +629,56 @@ class ExecutionSettings:
         self.n_parallel = n_parallel
 
 
-def execute_internal(thread_idx: int, settings: ExecutionSettings, repos: List[tuple], con: duckdb.DuckDBPyConnection, id_manager: IDManager, query_id: Optional[int] = None):
+def execute_parallel(thread_idx: int, settings: ExecutionSettings, repos: List[tuple], main_con: DuckDBConnection, id_manager: IDManager, query_id: Optional[int] = None):
+    # Create a thread-local cursor - DuckDB's recommended approach for multi-threading
+    # Reference: https://duckdb.org/docs/stable/guides/python/multiple_threads
+
+    # wait for thread seconds to avoid all threads starting at the same time
+    select_sleep = thread_idx * 1
+    print(f"Thread {thread_idx}: Sleeping for {select_sleep} seconds to stagger start")
+    time.sleep(select_sleep)
+
+    print(f"Thread {thread_idx}: Creating thread-local cursor")
+
+    con = main_con.cursor()
+
+
+    print(f"Thread {thread_idx}: Configuring connection")
+    create_macros(con)
+
+    print(f"Thread {thread_idx}: Starting processing {len(repos)} repositories")
 
     with tqdm(repos, desc=f"Processing repositories (thread {thread_idx})", unit="repo") as pbar:
         for repo_id, repo_url, repo_name, cnt in pbar:
             logging.info(f"Thread {thread_idx}: Processing repo {repo_id} ({repo_name}) with {cnt} queries.")
 
             if settings.mode == 'replace':
+                print(f"Thread {thread_idx}: Delete {repo_id}")
                 delete_repo(con, repo_id, mode='execution_only')
 
             # initialize the sandbox connection
+            print(f"Thread {thread_idx}: Init sandbox con for repo_id {repo_id}")
+
             sandbox_database_path = os.path.join(DATA_DIR, f'sandbox_{repo_id}.db')
             sandbox_con = duckdb.connect(sandbox_database_path)
             for function in EXTRA_FUNCTIONS:
                 sandbox_con.execute(function)
 
+            print(f"Thread {thread_idx}: get_tables_from_create_statements")
+
             get_tables_from_create_statements(repo_id, con)
 
+            print(f"Thread {thread_idx}: Starting getting tables")
             tables = create_sandbox_tables(repo_id, con, sandbox_con)
 
             new_tables = populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
             tables.extend(new_tables)
+            print(f"Thread {thread_idx}: Create views")
 
             create_views(repo_id, repo_url, con, sandbox_con)
 
             # *** SET UP SANDBOX DB WITH DATA ***
+            print(f"Thread {thread_idx}: Setting up sandbox con")
 
             sandbox_con_is_persistent = False
             if '3rd-party-kaggle' in repo_name:
@@ -667,14 +700,18 @@ def execute_internal(thread_idx: int, settings: ExecutionSettings, repos: List[t
 
             populate_tables_with_files(repo_id, con, sandbox_con, tables, database_schema)
             artificial_populated_ids = []
-            if not sandbox_con_is_persistent:
-                artificial_populated_ids = populate_empty_tables(tables, sandbox_con, database_schema)
 
+            if not sandbox_con_is_persistent:
+                print(f"Thread {thread_idx}: Start populating tables")
+                artificial_populated_ids = populate_empty_tables(tables, sandbox_con, database_schema)
             # *** EXECUTE QUERIES ***
 
             if settings.execute:
                 try:
+                    print(f"Thread {thread_idx}: Start execute")
                     execute_queries(repo_id, repo_url, sandbox_con, con, tables, id_manager, query_id)
+                    print(f"Thread {thread_idx}: End execute")
+
                     analyse_plans(con, repo_id)
                 except Exception as e:
                     logging.error(f"Failed to execute queries for repo {repo_id}: {e}")
@@ -700,7 +737,9 @@ def execute_internal(thread_idx: int, settings: ExecutionSettings, repos: List[t
                     logging.error(f"Failed to run compression benchmark for repo {repo_id}: {e}")
 
             # Delete the sandbox database if needed
-            con.execute("CHECKPOINT;")
+            # print(f"Thread {thread_idx}: Start checkpoint for repo_id {repo_id}")
+            # con.execute("CHECKPOINT;")
+            # print(f"Thread {thread_idx}: Checkpoint completed for repo_id {repo_id}")
             if not sandbox_con_is_persistent:
                 os.remove(sandbox_database_path)  # delete the sandbox database file
 
@@ -717,17 +756,19 @@ def execute_internal(thread_idx: int, settings: ExecutionSettings, repos: List[t
                 'Usages': con.execute(f"SELECT COUNT(*) FROM {COLUMN_USAGES_TABLE_NAME}").fetchone()[0],
             })
 
+    # Close the thread-local cursor when done
+    con.close()
 
 
 def execute_repo_queries(settings: ExecutionSettings):
-    con = get_con()
+    raw_con = get_con()
 
-    create_base_tables(con, settings.mode)
+    create_base_tables(raw_con, settings.mode)
 
     if settings.mode == 'restart':
-        reset_statistics_tables(con)
+        reset_statistics_tables(raw_con)
 
-    con.close()
+    raw_con.close()
     con = get_con(DATABASE_PATH)  # reploads some views
 
     # if the mode is append we have to get rid of the queries already executed
@@ -764,32 +805,52 @@ def execute_repo_queries(settings: ExecutionSettings):
             {append_filter if settings.mode == 'append' else ''}
         GROUP BY ALL
         ORDER BY repos.id DESC -- from recently added to oldest
+        LIMIT 10
     """).fetchall()
 
     # create executable_queries table if it doesn't exist
 
     id_manager = IDManager(con)
-    with ThreadPoolExecutor(max_workers=settings.n_parallel) as executor:
-        for idx in range(settings.n_parallel):
-            repos_subset = [repo for i, repo in enumerate(repos) if i % settings.n_parallel == idx]
-            executor.submit(
-                execute_internal,
-                idx,
-                settings,
-                repos_subset,
-                con,
-                id_manager,
-                query_id
+    execute_tasks_parallel(settings, repos, con, id_manager, query_id)
 
-            )
-    con.close()
+
+def execute_tasks_parallel(settings: ExecutionSettings, repos: List[tuple], con: DuckDBConnection, id_manager: IDManager, query_id: Optional[int] = None):
+
+    try:
+        with ThreadPoolExecutor(max_workers=settings.n_parallel) as executor:
+            futures = []
+            for idx in range(settings.n_parallel):
+                repos_subset = [repo for i, repo in enumerate(repos) if i % settings.n_parallel == idx]
+                future = executor.submit(
+                    execute_parallel,
+                    idx,
+                    settings,
+                    repos_subset,
+                    con,  # Pass the main connection to each thread
+                    id_manager,
+                    query_id
+                )
+                futures.append(future)
+
+            # Wait for all threads to complete
+            for future in futures:
+                future.result()
+    finally:
+        con.execute("CHECKPOINT;")
+        con.close()
 
 
 if __name__ == "__main__":
+
+    start_time = time.time()
     settings = ExecutionSettings(
         mode='replace',
         execute=True, collect_statistics=True, compress=True,
         repo_id=None, repo_contains_str=None, repo_not_contains_str=None,
-        n_parallel=2
+        n_parallel=1
     )
     execute_repo_queries(settings)
+
+    end_time = time.time()
+    elapsed = end_time - start_time
+    print(f"\n=== All done in {elapsed:.2f} seconds ===\n")
