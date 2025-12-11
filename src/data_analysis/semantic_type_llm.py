@@ -1,4 +1,5 @@
 import os
+import threading
 
 import pandas as pd
 from langchain_ollama import ChatOllama
@@ -51,7 +52,7 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: Option
             column_values_filtered AS (
                 SELECT *
                 FROM column_values
-                WHERE length(value) > 0
+                WHERE length(value) > 0 AND value IS NOT NULL
             )
             SELECT list(DISTINCT column_id) as column_ids,
                    table_name,
@@ -65,14 +66,14 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: Option
             LEFT JOIN repos ON tables.repo_id = repos.id
             WHERE 
                 ( 
-                    -- tvc.count > 10 OR  -- the column will be used for statistics, e.g. kaggle columns
-                    column_id IN (SELECT column_id FROM column_usages_unnested) -- the column is used in queries
-                    OR '3rd-party' in repo_url
+                    column_id IN (SELECT DISTINCT column_id FROM column_usages_unnested) -- the column is used in queries
+                    TRUE OR '3rd-party' in repo_url
                 )  
-                AND '3rd-party-sql' in repo_url
+                -- AND '3rd-party-sql-storm-imdb' in repo_url
                 {filter_null_clause}
                 {filter_semantic_type_clause}
             GROUP BY tables.repo_id, table_name, column_name
+            HAVING len(values) > 2
             ORDER BY tables.repo_id DESC, table_name, column_name
             """
     result = con.execute(query).fetchall()
@@ -125,10 +126,10 @@ def batch_data(data: List[DataRow]) -> List[List[DataRowJson]]:
 
 
 Providers = Literal['ollama', 'openai']
-Models = Literal['qwen3:8b', 'gpt-4', 'gpt-3.5-turbo']
+Models = Literal['qwen3:8b', 'gpt-4', 'gpt-3.5-turbo', 'gpt-4o-mini', 'gpt-5-mini']
 ModelsProviderMap: Dict[Providers, List[Models]] = {
     'ollama': ['qwen3:8b'],
-    'openai': ['gpt-4', 'gpt-3.5-turbo']
+    'openai': ['gpt-4', 'gpt-3.5-turbo', 'gpt-4o-mini', 'gpt-5-mini'],
 }
 
 MODEL_ARGS = {
@@ -137,15 +138,17 @@ MODEL_ARGS = {
     },
     'gpt-4': {},
     'gpt-3.5-turbo': {},
+    'gpt-4o-mini': {},
+    'gpt-5-mini': {},
 }
 
 
 def get_batch_size_for_model(model: Models) -> int:
     provider = get_provider_from_model(model)
     if provider == 'ollama':
-        return 10
+        return 5
     elif provider == 'openai':
-        return 20
+        return 10
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
@@ -157,7 +160,7 @@ def get_provider_from_model(model: Models) -> Providers:
     raise ValueError(f"Model {model} not found in any provider mapping.")
 
 
-def setup_model() -> BaseLLM:
+def setup_model(ask: bool = False) -> BaseLLM:
     provider = get_provider_from_model(MODEL)
     if provider == 'ollama':
         base = ChatOllama(
@@ -170,10 +173,11 @@ def setup_model() -> BaseLLM:
 
         if os.environ.get("OPENAI_API_KEY") is None:
             raise ValueError("OPENAI_API_KEY environment variable not set for OpenAI provider.")
-        result = input(
-            f"You are about to use OpenAI model {MODEL} which may incur costs. Do you want to proceed? (yes/no): ")
-        if result.lower() != 'yes':
-            raise RuntimeError("User aborted OpenAI model usage.")
+        if ask:
+            result = input(f"You are about to use OpenAI model {MODEL} which may incur costs. Do you want to proceed? (yes/no): ")
+            if result.lower() != 'yes':
+                raise RuntimeError("User aborted OpenAI model usage.")
+
         base = ChatOpenAI(
             model=MODEL,
             temperature=0,
@@ -186,7 +190,7 @@ def setup_model() -> BaseLLM:
 
     # Add retry with keyword args:
     retryable = model.with_retry(
-        stop_after_attempt=3,
+        stop_after_attempt=1,
         wait_exponential_jitter=True
     )
 
@@ -251,8 +255,8 @@ Sample Values: {column_data['values'][:10]}
         return [None] * len(batch)
 
 
-def process_batches(batches: List[List[DataRowJson]], output_file: str, semantic_types_input: List[SemanticType],
-                    target_column: SemanticTypeColumnName) -> List[Dict[str, Any]]:
+def process_batch_worker(thread_idx: int, batches: List[List[DataRowJson]], output_file: str, semantic_types_input: List[SemanticType],
+                         target_column: SemanticTypeColumnName) -> List[Dict[str, Any]]:
     model = setup_model()
     results = []
 
@@ -295,8 +299,7 @@ def save_results(results: List[Dict[str, Any]], target_column: SemanticTypeColum
     copy_csv_to_database(new_df, target_column=target_column)
 
 
-# MODEL: Models = 'gpt-3.5-turbo'
-MODEL: Models = 'qwen3:8b'
+
 
 
 def clear_columns():
@@ -319,17 +322,26 @@ def add_columns():
     con.execute("ALTER TABLE columns ADD COLUMN IF NOT EXISTS semantic_type_llm_subtype VARCHAR;")
 
 
-def copy_csv_to_database(df: pd.DataFrame, target_column: SemanticTypeColumnName):
-    con = duckdb.connect(DATABASE_PATH)
+# global mutex for all DB writes
+_db_write_lock = threading.Lock()
 
-    for _, row in df.iterrows():
-        column_id = row['column_id']
-        semantic_type = row['semantic_type']
-        con.execute(f"""
-            UPDATE columns
-            SET {target_column} = ?
-            WHERE id = ?
-        """, (semantic_type, column_id))
+def copy_csv_to_database(df: pd.DataFrame, target_column: SemanticTypeColumnName):
+
+    # make this thread save to the database using a mutex lock
+
+    with _db_write_lock:
+        con = duckdb.connect(DATABASE_PATH)
+
+        for _, row in df.iterrows():
+            column_id = row['column_id']
+            semantic_type = row['semantic_type']
+            con.execute(f"""
+                UPDATE columns
+                SET {target_column} = ?
+                WHERE id = ?
+            """, (semantic_type, column_id))
+
+        con.close()
 
 
 def run_semantic_type_analysis(output_file: str, config: SemanticTypeRunConfig):
@@ -348,16 +360,50 @@ def run_semantic_type_analysis(output_file: str, config: SemanticTypeRunConfig):
     batches = batch_data(data)
     logger.info(f"Retrieved {len(batches)} batches with a total of {sum(len(batch) for batch in batches)} columns")
 
-    results = process_batches(batches, output_file=output_file, semantic_types_input=config.semantic_types,
-                              target_column=config.target_column)
+    n_threads = config.n_threads
+    from concurrent.futures import ThreadPoolExecutor
+
+    n_threads = config.n_threads
+
+    n_batches = len(batches)
+    batches_per_thread = (n_batches + n_threads - 1) // n_threads
+    batches_for_threads = []
+    for i in range(n_threads):
+        start_idx = i * batches_per_thread
+        end_idx = min(start_idx + batches_per_thread, n_batches)
+        batches_for_threads.append(batches[start_idx:end_idx])
+
+    def run_parallel():
+        with ThreadPoolExecutor(max_workers=n_threads) as executor:
+            futures = [
+                executor.submit(
+                    process_batch_worker,
+                    thread_idx=i,
+                    batches=batches_for_threads[i],
+                    output_file=output_file,
+                    semantic_types_input=config.semantic_types,
+                    target_column=config.target_column
+                )
+                for i in range(n_threads)
+            ]
+
+        # Collect results in order of thread_idx
+        return [f.result() for f in futures]
+
+    results = run_parallel()
+
     logger.info("Semantic type determination completed")
 
 
-if __name__ == "__main__":
-    # clear_columns()
-    output_file = "semantic_types_sqlpile.csv"
-    print("FILTERING FOR 3rd-part")
+# MODEL: Models = 'gpt-3.5-turbo'
+MODEL: Models = 'gpt-4o-mini'
 
+if __name__ == "__main__":
+    clear_columns()
+    output_file = "semantic_types_sqlpile.csv"
+    setup_model(ask=True)
+
+    BASE_CONFIG.n_threads = 4 # Till said up to 120 are possible, but let's start with 4
     run_semantic_type_analysis(output_file, BASE_CONFIG)
 
     for sub_config in SUB_CONFIGS:

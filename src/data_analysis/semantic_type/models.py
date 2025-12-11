@@ -23,10 +23,14 @@ class SemanticType:
 SemanticTypeColumnName = Literal['semantic_type_llm', 'semantic_type_llm_subtype']
 
 class SemanticTypeRunConfig:
-    def __init__(self, semantic_types: List[SemanticType], target_column: SemanticTypeColumnName, filter_semantic_type: Optional[str], allow_other: bool = True):
+    def __init__(self, semantic_types: List[SemanticType], target_column: SemanticTypeColumnName,
+                 filter_semantic_type: Optional[str], allow_other: bool = True,
+                 n_threads: int = 1
+                 ):
         self.semantic_types = semantic_types
         self.target_column = target_column
         self.filter_semantic_type = filter_semantic_type
+        self.n_threads = n_threads
         if allow_other:
             self.semantic_types.append(SemanticType("Other", "when none of the other types fit"))
 
