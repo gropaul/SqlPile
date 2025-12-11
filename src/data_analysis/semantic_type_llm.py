@@ -14,7 +14,7 @@ from langchain_core.language_models import BaseLLM
 from pydantic import BaseModel, Field
 
 from src.data_analysis.semantic_type.models import get_prompt, SemanticType, BASE_SEMANTIC_TYPES, SemanticTypeRunConfig, \
-    SemanticTypeColumnName, BASE_CONFIG, ID_CONFIG, SUB_CONFIGS
+    SemanticTypeColumnName, BASE_CONFIG, SUB_CONFIGS
 
 
 class OutputSchema(BaseModel):
@@ -97,7 +97,7 @@ def batch_data(data: List[DataRow]) -> List[List[DataRowJson]]:
             values_reduced = []
             total_characters = 0
 
-            MAX_WIDTH = 250
+            MAX_WIDTH = 300
             while total_characters < MAX_WIDTH and values:
                 remaining_characters = MAX_WIDTH - total_characters
                 value = values.pop(0)

@@ -846,7 +846,7 @@ if __name__ == "__main__":
     settings = ExecutionSettings(
         mode='replace',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str=None, repo_not_contains_str=None,
+        repo_id=None, repo_contains_str='3rd-party-sql-', repo_not_contains_str=None,
         n_parallel=1
     )
     execute_repo_queries(settings)

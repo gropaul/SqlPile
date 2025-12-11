@@ -1,7 +1,8 @@
 from typing import List, Literal, Optional
 
 SYSTEM_PROMPT = """
-Based on the table name, column name, and sample values, determine the semantic type of each column.
+Based on the table name, column name, and sample values, determine the semantic type of each column. 
+Base your decision rather on the values than the column name.
 Every column must fit one of the types:
 
 {{TYPES_LIST}}

@@ -126,7 +126,7 @@ SOURCE_CODE_FILE_EXTENSIONS = [
 ]
 
 PREPARE_SQL_STATICALLY_MACRO = """
-CREATE OR REPLACE MACRO prepare_select_statically(sql) AS
+CREATE OR REPLACE TEMP MACRO prepare_select_statically(sql) AS
     sql
     -- backticks → double quotes
     .replace('`', '"')
@@ -226,7 +226,7 @@ def create_views(con: duckdb.DuckDBPyConnection):
 
 def create_macros(con: duckdb.DuckDBPyConnection):
     cum_sum_macro = """
-        CREATE OR REPLACE MACRO list_cum_sum(xs) AS (
+        CREATE OR REPLACE TEMP MACRO list_cum_sum(xs) AS (
           list_transform(xs, lambda x, i :
             list_reduce(list_slice(xs, 1, i), lambda acc, y : acc + coalesce(y, 0))
           )

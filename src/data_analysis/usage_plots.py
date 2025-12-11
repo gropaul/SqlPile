@@ -149,19 +149,22 @@ def get_data_for_usage(con: duckdb.DuckDBPyConnection, group_column: str, where_
                     ui.column_id,
                     q.id AS query_id,
                     q.repo_id,
-                    {group_column} as group_column
+                    {group_column} as group_column,
+                    uncompressed / count AS uncompressed_value_size,
+                    
                   FROM unnested_ids ui
                   JOIN columns c ON c.id = ui.column_id
                   JOIN queries q ON q.id = ui.query_id
-                  JOIN column_usage_history h
-                    ON h.column_id = ui.column_id AND h.usage_id = ui.id
+                  JOIN column_usage_history h ON h.column_id = ui.column_id AND h.usage_id = ui.id
                   JOIN repos r ON q.repo_id = r.id
+                  LEFT JOIN column_sizes ON column_sizes.column_id = c.id
                   {join_clause}
                   WHERE
                     {f"ui.usage_type = '{usage}'" if usage else "TRUE"}
                     AND ({where_clause})
                     AND ui.meta_data.right_table_is_chunk_get IS NOT TRUE
-                    AND len(list_distinct(list_transform(history[:-2], x -> x.expression_class))) <= 1 -- this only takes usages that come straight from the column, not through transformations
+                    AND lower(c.column_name) in lower(ui.expression)  -- only consider usages where the column name is directly used
+                    -- AND len(list_distinct(list_transform(history[:-2], x -> x.expression_class))) <= 1 -- this only takes usages that come straight from the column, not through transformations
                     AND q.id NOT IN (SELECT query_id FROM column_usages_outliers)
                 ),
                 counts AS (
@@ -172,7 +175,8 @@ def get_data_for_usage(con: duckdb.DuckDBPyConnection, group_column: str, where_
                     COUNT(b.column_id) AS column_cnt,                    
                     COUNT(DISTINCT b.column_id) AS column_distinct_cnt,
                     COUNT(DISTINCT b.query_id)  AS query_cnt,
-                    COUNT(DISTINCT b.repo_id)   AS repo_cnt
+                    COUNT(DISTINCT b.repo_id)   AS repo_cnt,
+                    SUM(ifnull(b.uncompressed_value_size, 0)) AS uncompressed_value_size
                   FROM base b
                   GROUP BY ALL
                 ),
@@ -182,7 +186,8 @@ def get_data_for_usage(con: duckdb.DuckDBPyConnection, group_column: str, where_
                     COUNT(column_id)                      AS total_column_cnt,  
                     COUNT(DISTINCT column_id)     AS total_column_distinct_cnt,
                     COUNT(DISTINCT query_id)      AS total_query_cnt,
-                    COUNT(DISTINCT repo_id)       AS total_repo_cnt
+                    COUNT(DISTINCT repo_id)       AS total_repo_cnt,
+                    SUM(ifnull(uncompressed_value_size, 0)) AS total_uncompressed_value_size
                   FROM base
                   GROUP BY data_source
                 )
@@ -194,6 +199,7 @@ def get_data_for_usage(con: duckdb.DuckDBPyConnection, group_column: str, where_
                   1.0 * c.column_distinct_cnt / NULLIF(t.total_column_distinct_cnt, 0)  AS column_distinct_percentage,
                   1.0 * c.query_cnt           / NULLIF(t.total_query_cnt, 0)            AS query_percentage,
                   1.0 * c.repo_cnt            / NULLIF(t.total_repo_cnt, 0)             AS repo_percentage,
+                    1.0 * c.uncompressed_value_size    / NULLIF(t.total_uncompressed_value_size, 0) AS uncompressed_value_size_percentage,
                   c.column_cnt,
                 c.column_distinct_cnt,
                 c.query_cnt,
@@ -540,6 +546,7 @@ def create_vertical_bar_plot(all_results, count_type, output_dir, all_usage_type
         'column_distinct_cnt': 4,
         'query_cnt': 5,
         'repo_cnt': 6,
+        'total_uncompressed_value_size': 7,
         'column_base_type': 3,
         'semantic_type_llm': 3
     }
@@ -790,9 +797,11 @@ def column_semantic_type_llm_usage_plot(con: duckdb.DuckDBPyConnection, output_d
                              all_groups_ordered=['Identifier', 'Category', 'Entity', 'FullText', 'Structured',
                                                  'Numeric'], needs_y_ticks=False, custom_legend=['DBPile', 'Snowflake',
                                                                                                    'SQLStorm', 'TPC'])
-    # create_stacked_bar_plot(all_results, 'column_distinct_cnt', dir)
-    # create_stacked_bar_plot(all_results, 'query_cnt', dir)
-    # create_stacked_bar_plot(all_results, 'repo_cnt', dir)
+    # create_vertical_bar_plot(all_results, 'total_uncompressed_value_size', output_dir,
+    #                          all_groups_ordered=['Identifier', 'Category', 'Entity', 'FullText', 'Structured',
+    #                                              'Numeric'], needs_y_ticks=False, custom_legend=['DBPile', 'Snowflake',
+    #                                                                                                'SQLStorm', 'TPC'])
+
 
 
 OUTPUT_FORMAT = 'pdf'
