@@ -11,23 +11,23 @@ All statistics in this work are computed at the level of a single row group.
 For this paper, we assume a row group size of 122,880 values, which corresponds to the default configuration used by DuckDB.
 As these statistics also correlate with compressibility, we want to have the same methodology in retrieving the column stats as the compression results.
 
-%\begin{figure}
-%  \centering
-%\begin{subfigure}{0.35\linewidth}
-%   \centering
-%  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/TPC/All_duplicates.pdf}
-%  \caption{TPC-[H/DS]}
-%  \label{fig:string_properties_dups_tpc_vs_others:all_duplicates}
-%\end{subfigure}
-%\begin{subfigure}{0.35\linewidth}
-%   \centering
-%  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/All_duplicates.pdf}
-%  \caption{Other}
-%  \label{fig:string_properties_dups_tpc_vs_others:all_duplicates}
-%\end{subfigure}
-%  \label{fig:string_properties_dups_tpc_vs_others}
-%  \caption{Duplicate value rates for TPC-[H/DS] datasets vs. all other datasets.}
-%\end{figure}
+\begin{figure}[h!]
+  \centering
+\begin{subfigure}{0.35\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/TPC/All_duplicates.pdf}
+  \caption{TPC-[H/DS]}
+  \label{fig:string_properties_dups_tpc_vs_others:all_duplicates}
+\end{subfigure}
+\begin{subfigure}{0.35\linewidth}
+   \centering
+  \includegraphics[width=\linewidth]{assets/string_stats/duplicates/Other/All_duplicates.pdf}
+  \caption{Other}
+  \label{fig:string_properties_dups_tpc_vs_others:all_duplicates}
+\end{subfigure}
+  \label{fig:string_properties_dups_tpc_vs_others}
+  \caption{Duplicate value rates for TPC-[H/DS] datasets vs. all other datasets.}
+\end{figure}
 
 First, we examine how many duplicates string columns contain and how these duplicates are distributed. 
 For this, we only considered columns with at least 122{,}880 values. Duplicate empty or null values 

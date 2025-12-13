@@ -7,37 +7,37 @@ of the total storage footprint — both compressed and uncompressed — is occup
   \centering
 \begin{subfigure}{0.1583\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Category.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/compression_Category.pdf}
   \caption{Category}
   \label{fig:compression_per_semantic_type:compression_category}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Entity.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/compression_Entity.pdf}
   \caption{Entity}
   \label{fig:compression_per_semantic_type:compression_entity}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_FullText.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/compression_FullText.pdf}
   \caption{FullText}
   \label{fig:compression_per_semantic_type:compression_fulltext}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Identifier.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/compression_Identifier.pdf}
   \caption{Identifier}
   \label{fig:compression_per_semantic_type:compression_identifier}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Numeric.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/compression_Numeric.pdf}
   \caption{Numeric}
   \label{fig:compression_per_semantic_type:compression_numeric}
 \end{subfigure}
 \begin{subfigure}{0.1583\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compression_Structured.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/compression_Structured.pdf}
   \caption{Structured}
   \label{fig:compression_per_semantic_type:compression_structured}
 \end{subfigure}
@@ -58,13 +58,13 @@ Finally, we benchmark LZ4, a general-purpose compression algorithm.
   \centering
 \begin{subfigure}{0.475\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/uncompressed_sizes.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/uncompressed_sizes.pdf}
   \caption{Uncompressed}
   \label{fig:size_per_semantic_type:uncompressed_sizes}
 \end{subfigure}
 \begin{subfigure}{0.475\linewidth}
    \centering
-  \includegraphics[width=\linewidth]{/Users/paul/workspace/SqlPile/docs/tex/assets/compression/compressed_sizes.pdf}
+  \includegraphics[width=\linewidth]{assets/compression/compressed_sizes.pdf}
   \caption{Compressed}
   \label{fig:size_per_semantic_type:compressed_sizes}
 \end{subfigure}
@@ -140,15 +140,10 @@ with only 24\% of all columns but 58\% of all text values. As seen in \Cref{fig:
 up 9\% of the compressed storage size.
 
 \insight{While text columns might make up a small share of values, they can dominate storage size due 
-to their larger average size per value. How much larger strongly varies by dataset. After compression, \texttt{FullText} 
-and \texttt{Identifier} strings make up ~ 80\% of all \texttt{Text} bytes stored}
-
-
-
+to their larger average size per value. How much larger strongly varies by dataset. After compression, FullText
+and Identifier columns make up ~ 80\% of all Text bytes stored}
 
 Todo: Write something about kaggle
-
-
 
 Todo: Maybe write about which percentage of the total storage is still variable size after compression. The idea
 is that if you do DictCompression, not only is your string smaller but your dict codes are fixed size integers, much 

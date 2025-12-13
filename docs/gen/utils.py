@@ -139,6 +139,12 @@ def format_latex_string(latex_str: str) -> str:
       - Escape %
       - Convert one-level Markdown lists into LaTeX itemize/enumerate
     """
+
+    # replace all absolute paths with relatives
+    # /Users/paul/workspace/SqlPile/docs/tex/assets -> assets
+
+    latex_str = re.sub(r'/[A-Za-z0-9/_\-.]+/docs/tex/assets', r'assets', latex_str)
+
     # Inline code
     formatted = re.sub(r'`([^`]+)`', r'\\texttt{\1}', latex_str)
 

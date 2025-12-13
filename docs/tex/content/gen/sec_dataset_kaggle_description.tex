@@ -5,17 +5,17 @@ and HuggingFace, which are mainly used for ML and AI applications.
 
 For our dataset, we looked at datasets on Kaggle and Huggingface provided as Parquet files. 
 From Kaggle, we retrieved 53 datasets with 2,122 tables, 
-averaging 53,257 rows per table. Huggingface provides 159 
-datasets with 159 tables and an average of 98,243 rows per table.
+averaging 53,257 rows per table. Huggingface provides 160 
+datasets with 160 tables and an average of 100,102 rows per table.
 For both sources, parquet datasets typically contain only a 
 single table. For kaggle, there are more tables per dataset as we downloaded 128 SQLite-based 
 Kaggle datasets in addition to the parquet based datasets.
 
-Huggingface and Kaggle use very wide tables, with about 9.4 
+Huggingface and Kaggle use very wide tables, with about 9.3 
 and 14.2 columns per table, respectively. In contrast, TPC-[H, DS] 
 tables average only 15.2 columns, and DBPile tables about 
-6.7. For all tables, we limited the extracted data to a maximum of 
+6.8. For all tables, we limited the extracted data to a maximum of 
 491,520 rows in order to analyze value distributions and compression 
 ratios without excessively increasing the overall dataset size. We store these subsets in one 
 duckdb database with different schemas per dataset, leading to a total database size of about
-18.13 GB for Kaggle and 112.08 GB for Huggingface.
+18.13 GB for Kaggle and 112.07 GB for Huggingface.
