@@ -16,16 +16,19 @@ while Kaggle and HuggingFace feature a lot of `Float` columns. This comes from m
 Todo: Add Redset, Snowflake data here. 
 """
 
+
 def main():
     con = get_con(read_only=True)
     column_type_tbl = get_column_type_table(
         con,
         output_format='latex',
         label='tab:column-types',
-        caption='Most common logical column types in DBPile, IMDB, Stackoverflow (SO), TPC-[H, DS], '
-                'Kaggle and HuggingFace (HF). For DBPile, the most columns are of type `Text` while '
-                'for TPC-[H, DS] benchmarks, the most common type is `Integer`. Kaggle and HuggingFace '
-                'feature a lot of float columns, coming from wide ML feature tables.'
+        caption="""
+        Most common logical column types across DBPile, IMDB, Stack Overflow (SO), TPC-H/DS, HuggingFace (HF), and 
+        Redshift~\cite{van_renen_why_2024}. In DBPile and Redshift, the majority of columns are of type `Text`,
+         whereas TPC-H and TPC-DS are dominated by `Integer` columns. HuggingFace contains a comparatively 
+         large share of `Float` columns, reflecting the prevalence of wide machine-learning feature tables.
+        """
     )
 
     filled_text = section.format(

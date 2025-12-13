@@ -30,12 +30,9 @@ We show that which each of these classes we can see distinct physical characteri
 (length, character distribution) and usage patterns in query execution that can be exploited for efficient storage and
 query processing.
 
-- Add a introduction to the Research Questions here -
+In particular, we address the following research questions
 
-- Iterate over the research questions after the list, explain them in more detail, combine this with
-in which section they are answered -
 
-- Capatilize section -
 
 \begin{enumerate}
     \item[(RQ1)] Is there an effective and meaningful way to classify variable-length text columns based on their semantic type?
@@ -53,14 +50,17 @@ Our work differs from previous studies such as~\cite{van_renen_why_2024, vogelsg
 in that we also release this dataset containing detailed information about the analyzed tables, columns, values, queries,
 query execution traces, column usages, and compression results.
 
+Here comes the structure of the paper
+
 \section{Introducing DBPile}\label{sec:data-collection}
 
-As outlined before, variable-length text columns are very heterogeneous and can have a wide range of properties.
+Variable-length text columns are very heterogeneous and can have a wide range of properties.
 To quantitatively analyze and understand their properties and usages, we need a dataset that contains many
 real-world database schemas, queries, and sufficiently populated tables.
 So far, there is no such dataset publicly available that meets these requirements.
 While the studies on the Snowflake Data Cloud~\cite{szlang_workload_2025} and Amazon Redshift~\cite{van_renen_why_2024}
-analyze real-world workloads; however, the underlying data is not publicly available.
+analyze real-world workloads; the underlying data is their customer's data and therefore for privacy reasons
+not publicly available.
 
 One publicly available dataset that offers over 200k schemas is SchemaPile~\cite{dohmen_schemapile_2024}, a collection
 of database schemas extracted from DDL and DML statements found in SQL files across public code repositories.
@@ -69,13 +69,12 @@ This leads to a table only containing 27.6 values on average.
 In addition, SchemaPile only provides schema and table information and limit data in the tables, but no \texttt{SELECT} statements.
 
 One other source of publicly available generated datasets is the TPC benchmark suite.
-Combining the SELECT statements from TPC-H and TPC-DS leads to a total of 22 + 99 = 121 queries on 8 + 24 = 32 tables, which is too small for a comprehensive analysis.
-One additional point of criticism that we already anticipate here but will discuss later is that the text from the columns is very unrealistic.
+Combining the SELECT statements from TPC-H and TPC-DS leads to a total of 121 queries on 32 tables, too small for a comprehensive analysis.
+One additional point of criticism that we will later discuss in more detail is that the tuples of \texttt{VARCHAR} columns are very unrealistic.
 For example, the \texttt{customer.c\_name} has the format \texttt{Customer\#0000000X}, while the \texttt{customer.c\_address} contains random strings of characters.
-Therefore, we cannot use these datasets as our baseline for analyzing string properties.
-On the contrary, we will compare our findings against these benchmarks later in the paper to recommend improvements for future benchmark designs.
+We will compare our findings against these benchmarks later to recommend improvements for future benchmark designs.
 
-Another benchmark available on real-world data is the Join Order Benchmark~\cite{leis_how_2015}, which uses the IMDB dataset.
+A real-world data benchmark is the Join Order Benchmark~\cite{leis_how_2015}, which uses the IMDB dataset.
 This benchmark features 113 queries on 21 tables, not enough for a comprehensive analysis.
 
 A recent benchmark published is SQLStorm~\cite{schmidt_sqlstorm_2025}.
@@ -104,7 +103,7 @@ and query processing patterns in \cref{sec:query-processing}.
 
 \subsection{Dataset Content and Schema}\label{subsec:data-collection-pipeline}
 
-An abstracted overview of the DBPile schema is shown in \cref{fig:figure}.
+An abstract overview of the DBPile schema is shown in \cref{fig:figure}.
 The basic building blocks of the dataset are \texttt{Repositories}, for which we store the queries contained in them.
 For repositories coming from SchemaPile, we scrape all code files as explained in \cref{subsec:sqlpile-dataset}.
 For benchmark datasets like TPC-H, TPC-DS, and SQLStorm, we retrieve the queries from their repositories.
@@ -139,7 +138,7 @@ which is also used in other benchmarks~\cite{han_cardinality_2021, marcus_bao_20
 \subsection{Adding Kaggle and Huggingface}\label{subsec:kaggle-datasets}
 \input{content/gen/sec_dataset_kaggle_description}
 
-\section{Strings in DBPile}
+\section{Variable-length Text Columns in DBPile}\label{sec:strings-in-dbpile}
 \input{content/gen/sec_strings_in_db_pile}
 
 
@@ -151,12 +150,14 @@ of \ac{DBMS} store in these columns and how they use them, we need to understand
 In this section, we present a taxonomy of variable-length text columns based on their semantic type.
 
 \input{assets/table_semantic_types}
-Our taxonomy design was guided by four goals: (1) intuitive categories that reflect real-world use cases,
-(2) minimal category count, (3) mutual exclusivity, and (4) high coverage without overreliance on an `Other` category.
+Our taxonomy design was guided by four main goals: (1) the categories are clear and intuitive and reflect
+real-world use; (2) the number of categories is kept as small as possible; (3) the categories are mutually
+exclusive and do not overlap; and (4) the taxonomy achieves broad coverage without relying heavily on an “Other” category.
 
 We developed our taxonomy through an iterative process.
-By examining samples of columns from our dataset, we repeatedly refined an initial set of manually
-defined categories until we achieved both high coverage and clear boundaries with as few categories as possible.
+By examining samples of columns from our dataset, we repeatedly refined an initial set of manually defined categories.
+This process continued until we achieved high coverage and clear boundaries while keeping the number of categories
+as small as possible.
 The resulting taxonomy consists of six groups, each reflecting a distinct semantic type that captures the
 majority of use cases observed in our data: Numeric, Category, FullText, Identifier, Entity, and Semi-structured.
 
@@ -194,8 +195,10 @@ Then, we batch five columns per prompt and constructed the user prompt as follow
 \end{quote}
 
 After categorizing all columns into the base types, we performed a second classification step to assign subcategories using the same approach.
-\subsection{Results}\label{sec:semantic-type-results}
-\begin{table*}[ht]
+\subsection{Taxonomy Distribution}\label{sec:semantic-type-results}
+Table~\ref{tab:semantic-type-distribution} shows all semantic types with their subcategories and examples as well as
+their distribution across the different datasets.
+\begin{table*}[t!]
     \input{assets/semantic_type_percentages}
     \caption{Distribution of semantic types across different datasets.}
     \label{tab:semantic-type-distribution}
@@ -207,7 +210,6 @@ After categorizing all columns into the base types, we performed a second classi
 
 \section{Storage}\label{sec:storage}
 \input{content/gen/sec_storage_analysis}
-
 
 
 \section{Query Processing}\label{sec:query-processing}

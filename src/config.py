@@ -241,7 +241,7 @@ def register_python_udfs(con: duckdb.DuckDBPyConnection):
 
     def format_number_as_percentage(value: Optional[float]) -> str:
         if value is None:
-            return "NULL"
+            return "0%"
         return f"{round(value * 100)}%"
 
     def unify_llm_type(semantic_type: Optional[str]) -> str:

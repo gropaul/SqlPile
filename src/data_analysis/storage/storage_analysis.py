@@ -115,9 +115,17 @@ def create_columns_storage_view(con: duckdb.DuckDBPyConnection):
             total_table_size: total_table_size,
             count: count,
             count_non_null: count_non_null,
-            bits_per_value: ceil(32 / 3),  -- assuming ALP compression
+            
+            bits_per_value_alp: ceil(32 / 3),  -- assuming ALP compression
+            total_bytes_alp: ceil((bits_per_value_alp * count_non_null) / 8),
+            
+            dict_bits_per_code: if(count_distinct > 0, ceil(log2(count_distinct)), 0),
+            dict_codes_bytes_size: ceil((dict_bits_per_code * count) / 8),
+            dict_size: 4 * count_distinct,
+            dict_compressed: dict_codes_bytes_size + dict_size,
+            
             uncompressed: 4 * count_non_null,
-            compressed: ceil((bits_per_value * count_non_null) / 8)
+            compressed: least(total_bytes_alp, dict_compressed, uncompressed)
             FROM column_stats_float)
     """)
 

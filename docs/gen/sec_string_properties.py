@@ -14,13 +14,16 @@ SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
 SECTION_TEMPLATE = """
 As stated in our introduction, we aim to answer how different groups in our string taxonomy differ in their 
-characteristics (RQ2). In order to do so, we analyzed string columns from Kaggle, Huggingface, IMDB
-and Stackoverflow. For each column, 
-we compute the count, null count, empty count, distinct count, length percentiles, a value histogram, a char histogram
-and more, which is available in DBPile's `column\_stats\_text` table.
-All Statistics where calculated on one row group. For this paper, we assume a row group size of 122880 values, similar to DuckDB. 
-In DBMS as file formats like parquet \\cite{{NEEDED}}, values are stored and compressed in Row Groups of this size. 
-As these properties corelate with compressibility we want to have the same methodology in retrieving the column stats as the compression results.
+characteristics (RQ2).
+Therefore we analyzed string columns from Kaggle, Huggingface, IMDB and Stackoverflow.
+For each column, we compute the count, null count, empty count, distinct count, length percentiles, a value histogram, a char histogram
+and more, which is available in DBPile's \\texttt{{column\_stats\_text}} table.
+
+In DBMS storage engines and analytical file formats such as Parquet \cite{{NEEDED}}, values are stored
+and compressed in row groups of a fixed size.
+All statistics in this work are computed at the level of a single row group.
+For this paper, we assume a row group size of 122,880 values, which corresponds to the default configuration used by DuckDB.
+As these statistics also correlate with compressibility, we want to have the same methodology in retrieving the column stats as the compression results.
 
 {STRING_DUPS_TPC_VS_OTHERS_FIGURE}
 

@@ -13,43 +13,84 @@ import duckdb
 SECTION_NAME = __file__.split("/")[-1].replace(".py", ".tex")
 
 section = """
-In this section, we analyze the compressibility of the different groups in our string taxonomy to investigate
-which types of strings compress well and which could benefit from further research. \\cref{{fig:compression_per_semantic_type}}
-shows the compression ratios achieved by different algorithms for each group in our taxonomy.
+In this section, we analyze the compressibility of the different groups in our string taxonomy to understand which 
+types of strings compress well and which may benefit from further research. Our goal is to determine how much 
+of the total storage footprint — both compressed and uncompressed — is occupied by each taxonomy category (RQ3).
 
 {figure_compression_rate}
 
-We benchmarked four widely used compression algorithms that are known to perform well on string data. First, we consider 
+For this, we benchmarked four widely used compression algorithms that are known to perform well on string data. First, we consider 
 standard dictionary compression, which builds a dictionary of frequently occurring strings and replaces each string 
 with a shorter code. Next, we evaluate FSST, a specialized string compression algorithm that identifies repeated 
 substrings, stores them in a dictionary, and replaces them with one-byte codes. We also include FSST12, a 
 variant of FSST that uses 12-bit codes to support a larger symbol table. Additionally, we evaluate OnPair, 
-which—similar to FSST—uses a dictionary and code assignments to replace substrings. 
+which — similar to FSST — uses a dictionary and code assignments to replace substrings. 
 In contrast, OnPair16 employs 16-bit codes and a novel algorithm for identifying repeated substrings.
 Finally, we benchmark LZ4, a general-purpose compression algorithm.
 
+{figure_value_sizes}
+
 The effectiveness of a compression algorithm strongly depends on how it is integrated into the target system. 
-Our benchmarking setup closely follows the approach used in DuckDB: each column is compressed independently 
-on a per–row-group basis, with each row group containing 128,000 values. 
+Our benchmarking setup closely follows the approach used in a columnar \\ac{{OLAP}} \\ac{{DBMS}} like DuckDB: 
+each column is compressed independently on a per–row-group basis, with each row group containing 128,000 values. 
 Thus a single FSST symbol table is built and applied to one such 128k-value row group.
 In contrast to Dictionary and FSST, LZ4 compresses an entire block of data at 
 once and therefore does not support random access to individual values. As the block granularity, we 
 follow DuckDB’s default vector size of 2048 values, which is also the block size used in their LZ4 
 implementation.
 
-{figure_value_sizes}
-
-By analyzing the compressed and uncompressed sizes of each column and grouping the columns by semantic type, 
-we can quantify how much data of each type is stored in compressed and uncompressed form. As a first step, we 
-show how many columns of each semantic type occur across all datasets and how many values they contain. We then 
-examine how much storage space the values of each semantic type occupy both in their uncompressed form and when 
-compressed using the best available algorithm. The results of these analyses are shown in 
-\\cref{{fig:storage-semantic-type-llm}} and \\cref{{fig:storage-column-base-type}}.
-
 
 {figure_storage_column_base_type}
 
-{figure_storage_semantic_type}
+By analyzing the compressed and uncompressed sizes of each column and grouping the columns by semantic type, 
+we can quantify how much data of each type is stored in compressed and uncompressed form as depicted in \\cref{{fig:storage-column-base-type}}. 
+This figure shows the percentage of columns, values, and storage size (uncompressed and compressed) per logical column type and 
+can be read as follows: Each dataset corresponds to one row in each subfigure, with TPC being the first row in each section.
+From this we can see that while `Text` columns make up 41% of all columns in TPC-[H, DS], 
+they only account for 17% of all values. This is because dimension tables, which contain 
+most of the `Text` columns (names, descriptions, categories), have far fewer rows than 
+fact tables, which are dominated by `Integer` foreign keys and numeric measures. This 
+reflects how normalization reduces data redundancy: rather than repeating text values 
+across millions of fact table rows, the text is stored once in dimension tables and 
+referenced via integer keys. For example, while the `store\_sales` has 23 rows of type `Int` and `DECIMAL`, 
+it has a reference to the 160x smaller `item` table, where `Text` columns like `i\_item\_desc` and `i\_brand` make 
+up 55% of all columns. Similar patterns can be observed in the IMDB schema, where 45% of `Text` columns contain 
+only 30% of all values. 
+
+However, this pattern does not hold for the Stack Overflow, Kaggle, and Hugging Face datasets. 
+In Kaggle and Hugging Face, many datasets consist of a denormalized single wide table, leading to a higher share 
+of text columns and values. In Stack Overflow, the data is dominated by user-generated content such as 
+questions and answers, leading to a column and value percentage of 30%.
+\insight{{In normalized schemas text columns are frequent but account for a small share of values, as textual attributes are concentrated in small dimension tables. 
+Having many text columns does not necessarily mean having many text values.}}
+In the section of \Cref{{fig:storage-column-base-type}}, we can now see the storage size occupied by each logical column type in
+uncompressed form. The figure shows that in TPC-[H, DS] and IMDB, 
+the compressed size of the `Text` columns make up twice as much as their share of values (37% vs. 17% in TPC, 65% vs. 33% in IMDB).
+For SO, the 30% values that where strings are responsible for 95% of all uncompressed bytes stored. 
+If we then look at the compressed size, we can see that for TPC-[H, DS], the share of `Text` columns on the stored bytes 
+ decreases from uncompressed 37% to compressed 27%. For the other dataset, this decrease is not that drastic, only dropping 
+ by around three percentage points. 
+ 
+ {figure_storage_semantic_type}
+ 
+ Why this is the case can be explained with \Cref{{fig:storage-semantic-type-llm}}, which follows the same structure as
+ \Cref{{fig:storage-column-base-type}}, but instead of grouping by logical column type, it only considers the `text` columns and 
+groups these by our taxonomy. We can see that for TPC-[H, DS], the `Categorical` strings (e.g., product categories, customer segments) make up the largest share of
+with only 24% of all columns but 58% of all text values. As seen in \Cref{{fig:compression_per_semantic_type}}, `Categorical` compress very well. This is why they only make 
+up 9% of the compressed storage size.
+
+\insight{{While text columns might make up a small share of values, they can dominate storage size due 
+to their larger average size per value. How much larger strongly varies by dataset. After compression, FullText
+and Identifier columns make up ~ 80% of all Text bytes stored}}
+
+Todo: Write something about kaggle
+
+Todo: Maybe write about which percentage of the total storage is still variable size after compression. The idea
+is that if you do DictCompression, not only is your string smaller but your dict codes are fixed size integers, much 
+better for GPU processing.
+
+
+
 
 """
 
@@ -288,7 +329,7 @@ def compression_per_semantic_type(con: duckdb.DuckDBPyConnection) -> str:
                     y_labels.append(f'{int(val)}')
                 else:
                     # add as fraction
-                    divident = 1/ val
+                    divident = 1 / val
                     y_labels.append(f'1/{int(divident)}')
             val *= 4
         plt.yticks(y_ticks, y_labels)

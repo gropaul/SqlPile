@@ -104,12 +104,12 @@ def main():
     percentages_per_type = []
     for (index, (query_type, count)) in enumerate(number_of_queries_per_type):
         percentage = (count / number_of_queries) * 100
-    number_formatted = format_number(count)
-    # text_item = f"{number_formatted} `{query_type}` ({percentage:.2f}%)"
-    text_item = f"{number_formatted} `{query_type}`"
-    if index == 0:
-        text_item = f"{number_formatted} distinct `{query_type}`"
-    percentages_per_type.append(text_item)
+        number_formatted = format_number(count)
+        # text_item = f"{number_formatted} `{query_type}` ({percentage:.2f}%)"
+        text_item = f"{number_formatted} `{query_type}`"
+        if index == 0:
+            text_item = f"{number_formatted} distinct `{query_type}`"
+        percentages_per_type.append(text_item)
 
     number_of_queries_per_type_str = join_list(percentages_per_type, final_word="statements")
 

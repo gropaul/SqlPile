@@ -47,7 +47,7 @@ def get_figure(path: str, caption: str = "", description: str = "", label: str =
     label_str = f"\\label{{{label}}}" if label else ""
 
     template = (
-        "\\begin{figure}\n"
+        "\\begin{figure}[h!]\n"
         "  \\centering\n"
         f"  \\includegraphics[width=\\linewidth]{{{path}}}\n"
         f"  {cap_str}\n"

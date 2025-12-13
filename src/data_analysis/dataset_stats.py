@@ -120,7 +120,38 @@ def test_get_operator_table():
 def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputFormat = 'markdown',
                           label: str = 'tab-number-of-operators',
                           caption: str = 'Distribution of Operator Types in Queries') -> str:
-    query = """
+    redset_raw = {
+        "varchar": 52.1,
+        "numeric(P, S)": 10.2,
+        "integer": 9.1,
+        "bigint": 7.0,
+        "timestamp w/o tz": 6.2,
+        "double": 4.5,
+        "boolean": 3.9,
+        "date": 2.2,
+        "smallint": 2.1,
+        "char(N)": 1.7,
+        "float": 0.4,
+        "timestamp w/ tz": 0.4,
+    }
+
+    redset_groups = {
+        'Text': ['varchar', 'char(N)'],
+        'Int': ['integer', 'bigint', 'smallint'],
+        'DateTime': ['timestamp w/o tz', 'date', 'timestamp w/ tz'],
+        'Float': ['double', 'float', 'numeric(P, S)']
+    }
+
+    sums = {
+        group: sum(redset_raw[k] for k in keys)
+        for group, keys in redset_groups.items()
+    }
+    # VALUES ('Amsterdam', 1), ('London', 2);
+    table_sql = f" (VALUES " + ", ".join(
+        f"('{group}', {perc})" for group, perc in sums.items()
+    ) + ") redset(column_base_type, redset_perc)"
+
+    query = f"""
             WITH column_counts AS (SELECT column_base_type,
                                           get_repo_group(repos.repo_url) AS repo_origin,
                                           COUNT(*)                       AS column_count
@@ -131,7 +162,7 @@ def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputF
                                    GROUP BY column_base_type, repo_origin),
                  columns_total_count AS (SELECT repo_origin, SUM(column_count) as total_count
                                          FROM column_counts
-                                         GROUP BY repo_origin),
+                                         GROUP BY repo_origin), 
                  counts_aggregated AS (SELECT cc.column_base_type,
                                               cc.repo_origin,
                                               cc.column_count                   AS column_count,
@@ -143,22 +174,27 @@ def get_column_type_table(con: duckdb.DuckDBPyConnection, output_format: OutputF
                  pivoted AS (
                 PIVOT counts_aggregated
             ON repo_origin
-                USING MIN(column_count) as column_count, MIN(column_perc) as column_perc
+                USING AVG(column_count) as column_count, AVG(column_perc) as column_perc
             ORDER BY DBPile_column_perc DESC
                 )
-            SELECT column_base_type                 AS "Type",
+            SELECT pivoted.column_base_type                 AS "Type",
                    as_percentage(DBPile_column_perc) AS "DBPile",
-                   as_percentage(Kaggle_column_perc) AS "Kaggle",
+                   -- as_percentage(Kaggle_column_perc) AS "Kaggle",
                    as_percentage(HF_column_perc) AS "HF",
                    as_percentage(IMDB_column_perc) AS "IMDB",
                    as_percentage(SO_column_perc) AS "SO",
-                   as_percentage(TPC_column_perc)  AS "TPC"
+                   as_percentage(TPC_column_perc)  AS "TPC",
+                   as_percentage(redset.redset_perc / 100) AS "Redshift"
             FROM pivoted
-            WHERE column_base_type NOT IN ('Boolean', 'OTHER')
+            JOIN {table_sql} ON pivoted.column_base_type = redset.column_base_type
+            WHERE pivoted.column_base_type NOT IN ('Boolean', 'OTHER')
             """
-
     df = con.execute(query).df()
     table_operators = format_df(df, output_format, label, caption)
+    table_operators = table_operators.replace('NaN', '-')
+    table_operators = table_operators.replace('NaN', '-')
+
+    # replace NaN with -
     return table_operators
 
 
