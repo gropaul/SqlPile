@@ -60,7 +60,13 @@ def main():
 
     figure_storage_column_base_type = get_figure(
         path='assets/column_base_type.pdf',
-        caption="Analysis on the storage per logical types",
+        caption="""
+        Storage analysis for the TPC-[H, DS], IMDB, Stackoverflow (SO), Kaggle, HuggingFace (HF) and DBPile. 
+        We show the percentage of columns, values, and storage size (uncompressed and compressed) per logical column type. 
+        TPC-[H, DS] is in the first row of each section: 41% of its columns are of type `Text`, but these columns only account for 17% of values. 
+        The `Text` values then represent 37% of the uncompressed storage, but only 26% of the compressed storage. 
+        \\Cref{fig:storage-column-base-type} shows why.
+        """,
         label="fig:storage-semantic-type-llm",
     )
     figure_storage_semantic_type = get_figure(

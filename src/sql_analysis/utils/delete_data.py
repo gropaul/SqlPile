@@ -202,6 +202,8 @@ def reset_statistics_tables(con: duckdb.DuckDBPyConnection):
     con.execute(f"DROP TABLE IF EXISTS column_stats_datetime")
 
 
+
+
 def reset_statistics_for_repo(
         con: duckdb.DuckDBPyConnection,
         repo_id: int

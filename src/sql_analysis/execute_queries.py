@@ -634,13 +634,17 @@ def execute_parallel(thread_idx: int, settings: ExecutionSettings, repos: List[t
     # Reference: https://duckdb.org/docs/stable/guides/python/multiple_threads
 
     # wait for thread seconds to avoid all threads starting at the same time
-    select_sleep = thread_idx * 1
-    print(f"Thread {thread_idx}: Sleeping for {select_sleep} seconds to stagger start")
-    time.sleep(select_sleep)
 
-    print(f"Thread {thread_idx}: Creating thread-local cursor")
+    if thread_idx > 0:
+        select_sleep = thread_idx * 1
+        print(f"Thread {thread_idx}: Sleeping for {select_sleep} seconds to stagger start")
+        time.sleep(select_sleep)
 
-    con = main_con.cursor()
+        print(f"Thread {thread_idx}: Creating thread-local cursor")
+
+        con = main_con.cursor()
+    else:
+        con = main_con
 
 
     print(f"Thread {thread_idx}: Configuring connection")
@@ -772,7 +776,7 @@ def execute_repo_queries(settings: ExecutionSettings):
     con = get_con(DATABASE_PATH)  # reploads some views
 
     # if the mode is append we have to get rid of the queries already executed
-    append_filter = "AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids)"
+    append_filter = "AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids) AND queries.id NOT IN (SELECT query_id FROM queries_error_select) "
 
     query_id = settings.query_id
     repo_id = settings.repo_id
@@ -789,12 +793,14 @@ def execute_repo_queries(settings: ExecutionSettings):
                 OR ('3rd-party-huggingface' IN repos.repo_url AND repos.id IN (
                     SELECT DISTINCT repo_id FROM data_source_stats 
                     WHERE source_type = 'huggingface'
-                    ORDER BY downloads DESC LIMIT {N_DATASETS_TO_PROCESS}
+                    ORDER BY downloads DESC 
+                    LIMIT {N_DATASETS_TO_PROCESS}
                 ))
                 OR ('3rd-party-kaggle' IN repos.repo_url AND repos.id IN (
                     SELECT DISTINCT repo_id FROM data_source_stats 
                     WHERE source_type = 'kaggle'
-                    ORDER BY downloads DESC LIMIT {N_DATASETS_TO_PROCESS}
+                    ORDER BY downloads DESC 
+                    LIMIT {N_DATASETS_TO_PROCESS}
                 ))
             ) 
             and ({'queries.id = ' + str(query_id) if query_id else 'True'})
@@ -805,7 +811,6 @@ def execute_repo_queries(settings: ExecutionSettings):
             {append_filter if settings.mode == 'append' else ''}
         GROUP BY ALL
         ORDER BY repos.id DESC -- from recently added to oldest
-        LIMIT 10
     """).fetchall()
 
     # create executable_queries table if it doesn't exist
@@ -815,6 +820,16 @@ def execute_repo_queries(settings: ExecutionSettings):
 
 
 def execute_tasks_parallel(settings: ExecutionSettings, repos: List[tuple], con: DuckDBConnection, id_manager: IDManager, query_id: Optional[int] = None):
+
+    if settings.n_parallel <= 1:
+        execute_parallel(
+            -1,
+            settings,
+            repos,
+            con,
+            id_manager,
+            query_id
+        )
 
     try:
         with ThreadPoolExecutor(max_workers=settings.n_parallel) as executor:
@@ -836,17 +851,18 @@ def execute_tasks_parallel(settings: ExecutionSettings, repos: List[tuple], con:
             for future in futures:
                 future.result()
     finally:
-        con.execute("CHECKPOINT;")
-        con.close()
+        pass
+        # con.execute("CHECKPOINT;")
+        # con.close()
 
 
 if __name__ == "__main__":
 
     start_time = time.time()
     settings = ExecutionSettings(
-        mode='replace',
+        mode='append',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str='3rd-party-sql-', repo_not_contains_str=None,
+        repo_id=None, repo_contains_str=None, repo_not_contains_str=None,
         n_parallel=1
     )
     execute_repo_queries(settings)

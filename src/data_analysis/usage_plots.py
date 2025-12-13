@@ -350,7 +350,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir, all_usage_types
 
     OTHER_KEY = 'Other'
     all_group_types.add(OTHER_KEY)  # Add 'Other' that will be all types < x% percent
-    all_data_sources = sorted(list(all_data_sources))
+    all_data_sources = sorted(list(all_data_sources), key=get_order_key)
     all_group_types = sorted(list(all_group_types), key=get_order_key)
     if all_usage_types_ordered:
         all_usage_types = all_usage_types_ordered
@@ -387,7 +387,7 @@ def create_stacked_bar_plot(all_results, count_type, output_dir, all_usage_types
             group_type: np.zeros(n_data_sources) for group_type in all_group_types
         }
 
-        for (data_source_index, data_source) in enumerate(sorted(all_data_sources)):
+        for (data_source_index, data_source) in enumerate(all_data_sources):
             relevant_rows = [row for row in all_results[data_usage_type] if row[1] == data_source]
 
             percentage_sum = 0
@@ -504,10 +504,10 @@ def get_hatch_for_source(data_source: str):
 
 def get_color_for_source(data_source: str):
     color_map = {
-        'DBPile': (0.4, 0.7608, 0.6471, 1.0),
+        'Snowflake': (0.1411764705882353, 0.6196078431372549, 0.8627450980392157, 1.0),
         'SQLStorm': (0.9882, 0.5529, 0.3843, 1.0),
         'TPC': (0.5529, 0.6275, 0.7961, 1.0),
-        'Snowflake': (0.6510, 0.8471, 0.3294, 1.0),
+        'DBPile': (0.6510, 0.8471, 0.3294, 1.0),
         'Other': (0.5804, 0.4039, 0.7412, 1.0)
     }
     if data_source in color_map:
@@ -613,11 +613,14 @@ def create_vertical_bar_plot(all_results, count_type, output_dir, all_usage_type
         # Filter out group types with max < 3%
         filtered_percentages = {}
         for group_type, ds_values in percentages_per_type.items():
-            max_val = max(ds_values.values())
-            if max_val >= 0.05 or all_groups_ordered is not None:
-                filtered_percentages[group_type] = ds_values
-                if group_type not in all_group_types_filtered:
-                    all_group_types_filtered.append(group_type)
+            try:
+                max_val = max(ds_values.values())
+                if max_val >= 0.05 or all_groups_ordered is not None:
+                    filtered_percentages[group_type] = ds_values
+                    if group_type not in all_group_types_filtered:
+                        all_group_types_filtered.append(group_type)
+            except:
+                print(f"Error processing group type {group_type} with values {ds_values}")
 
         if extra_data:
             if extra_label not in all_data_sources:
@@ -840,11 +843,15 @@ def get_order_key(usage_type: str) -> int:
         'Category': 6,
         'Contact': 7,
 
-        # Soruce Types
+        # Source Types
         'DBPile': 0,
         'Snowflake': 1,
         'SQLStorm': 2,
         'TPC': 3,
+        'IMDB': 4,
+        'SO': 5,
+        'HF': 6,
+        'Kaggle': 7,
     }
 
     return order_map.get(usage_type, 99)  # Default to 5 for unknown types

@@ -67,9 +67,9 @@ def get_sql_pile_data(con: duckdb.DuckDBPyConnection, filter_column_null: Option
             WHERE 
                 ( 
                     column_id IN (SELECT DISTINCT column_id FROM column_usages_unnested) -- the column is used in queries
-                    TRUE OR '3rd-party' in repo_url
+                    OR '3rd-party' in repo_url
                 )  
-                -- AND '3rd-party-sql-storm-imdb' in repo_url
+                -- AND '3rd-party-sql' in repo_url 
                 {filter_null_clause}
                 {filter_semantic_type_clause}
             GROUP BY tables.repo_id, table_name, column_name

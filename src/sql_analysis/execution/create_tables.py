@@ -43,31 +43,31 @@ def create_base_tables(con: duckdb.DuckDBPyConnection, mode: ExecutionMode):
         )
     """)
 
-    con.execute(f"""
-        {create_statement} {QUERY_OPERATOR_TABLE_NAME} (
-            id BIGINT {primary_key()},
-            query_id BIGINT,
-            node_id VARCHAR,
-            node_type VARCHAR,
-            meta_data JSON
-        )
-    """)
-
-    con.execute(f"""
-        {create_statement} {QUERY_OPERATOR_COMPONENTS_TABLE_NAME} (
-            id BIGINT {primary_key()},
-            operator_id BIGINT {foreign_key(QUERY_OPERATOR_TABLE_NAME, 'id')},
-            component_type VARCHAR
-        )
-    """)
-
-    con.execute(f"""
-        {create_statement} {QUERY_OPERATOR_COMPONENT_EXPRESSIONS} (
-            id BIGINT {primary_key()},
-            component_id BIGINT {foreign_key(QUERY_OPERATOR_COMPONENTS_TABLE_NAME, 'id')},
-            expression JSON,
-        )
-    """)
+    # con.execute(f"""
+    #     {create_statement} {QUERY_OPERATOR_TABLE_NAME} (
+    #         id BIGINT {primary_key()},
+    #         query_id BIGINT,
+    #         node_id VARCHAR,
+    #         node_type VARCHAR,
+    #         meta_data JSON
+    #     )
+    # """)
+    #
+    # con.execute(f"""
+    #     {create_statement} {QUERY_OPERATOR_COMPONENTS_TABLE_NAME} (
+    #         id BIGINT {primary_key()},
+    #         operator_id BIGINT {foreign_key(QUERY_OPERATOR_TABLE_NAME, 'id')},
+    #         component_type VARCHAR
+    #     )
+    # """)
+    #
+    # con.execute(f"""
+    #     {create_statement} {QUERY_OPERATOR_COMPONENT_EXPRESSIONS} (
+    #         id BIGINT {primary_key()},
+    #         component_id BIGINT {foreign_key(QUERY_OPERATOR_COMPONENTS_TABLE_NAME, 'id')},
+    #         expression JSON,
+    #     )
+    # """)
 
     # create a view that contains all the ids of queries that have been already executed
     con.execute(f"""
