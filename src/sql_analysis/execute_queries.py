@@ -863,9 +863,9 @@ if __name__ == "__main__":
 
     start_time = time.time()
     settings = ExecutionSettings(
-        mode='replace',
-        execute=False, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str='3rd-party-sql-storm-tpc', repo_not_contains_str=None,
+        mode='append',
+        execute=True, collect_statistics=True, compress=True,
+        repo_id=None, repo_contains_str=None, repo_not_contains_str=None,
         n_parallel=1
     )
     execute_repo_queries(settings)
