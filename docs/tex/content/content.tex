@@ -154,8 +154,7 @@ Our taxonomy design was guided by four main goals: (1) the categories are clear 
 real-world use; (2) the number of categories is kept as small as possible; (3) the categories are mutually
 exclusive and do not overlap; and (4) the taxonomy achieves broad coverage without relying heavily on an “Other” category.
 
-We developed our taxonomy through an iterative process.
-By examining samples of columns from our dataset, we repeatedly refined an initial set of manually defined categories.
+We developed our taxonomy through an iterative process by examining samples of columns from our dataset, we repeatedly refined an initial set of manually defined categories.
 This process continued until we achieved high coverage and clear boundaries while keeping the number of categories
 as small as possible.
 The resulting taxonomy consists of six groups, each reflecting a distinct semantic type that captures the
@@ -164,7 +163,7 @@ majority of use cases observed in our data: Numeric, Category, FullText, Identif
 In addition, we added a \texttt{Test} type to capture columns that are only used for testing purposes.
 With the data coming from public repositories, we found a significant number of such columns we wanted to exclude from the analysis.
 To further classify the columns, we defined subcategories for each type that capture more specific use cases.
-All types and their description are summarized in \cref{tab:semantic-types}.
+All base-types and their description are summarized in \cref{tab:semantic-types}.
 
 \subsection{Semantic Type Pipeline}\label{sec:semantic-type-pipeline}
 To classify text columns into semantic types, we used an \ac{LLM} (Qwen3.5 via Ollama, \texttt{qwen3:8b}) to assign a single semantic label to every text column.

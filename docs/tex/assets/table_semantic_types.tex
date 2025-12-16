@@ -1,44 +1,37 @@
 \begin{table}[h!]
 \caption{Semantic types for string columns and their model descriptions.}
 \label{tab:semantic-types}
-\begin{tabular}{p{0.08\textwidth}p{0.23\textwidth}p{0.10\textwidth}}
+\begin{tabular}{p{0.08\textwidth}p{0.33\textwidth}}
 \toprule
-\textbf{Type} & \textbf{Description} & \textbf{Subcategory} \\
+\textbf{Type} & \textbf{Description} \\
 \midrule
 
 \texttt{Numeric} &
-Dates, times, timestamps, amounts, counts, prices, scores, sizes, values with unit &
-DateTime, Other \\
-\addlinespace[0.6em]
+Dates, times, timestamps, amounts, counts, prices, scores, sizes, values with unit  \\
+\addlinespace[0.3em]
 
 \texttt{Category} &
-Type, role, status, label, class, tag, (yes/no) flags &
-Boolean, Other \\
-\addlinespace[0.6em]
+Type, role, status, label, class, tag, (yes/no) flags  \\
+\addlinespace[0.3em]
 
 \texttt{FullText} &
-Descriptions, messages, summaries, notes, comments &
-Unformatted, Formatted \\
-\addlinespace[0.6em]
+Descriptions, messages, summaries, notes, comments \\
+\addlinespace[0.3em]
 
 \texttt{Identifier} &
-Identifiers like uuids, codes, hash, token, version, link, url, slug, emails, phone numbers &
-Path, Semantic, Generic \\
-\addlinespace[0.6em]
+Identifiers like uuids, codes, hash, token, version, link, url, slug, emails, phone numbers \\
+\addlinespace[0.3em]
 
 \texttt{Entity} &
-Names of entities and persons, titles, labels, cities, countries, addresses &
-Person, Organization, Location \\
-\addlinespace[0.6em]
+Names of entities and persons, titles, labels, cities, countries, addresses \\
+\addlinespace[0.3em]
 
 \texttt{Structured} &
-Formats like \texttt{JSON}, \texttt{CSV} or simple lists &
-JSON, CSV, List \\
-\addlinespace[0.6em]
+Formats like \texttt{JSON}, \texttt{CSV} or simple lists  \\
+\addlinespace[0.3em]
 
 \texttt{Test} &
-Columns with content or names used for testing (e.g.\ \texttt{test}, \texttt{col}, \texttt{val1}) &
-N/A \\
+Columns with content or names used for testing (e.g.\ \texttt{test}, \texttt{col}, \texttt{val1}) \\
 
 \bottomrule
 \end{tabular}

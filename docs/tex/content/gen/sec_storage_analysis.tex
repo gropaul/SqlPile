@@ -47,12 +47,12 @@ of the total storage footprint — both compressed and uncompressed — is occup
 
 For this, we benchmarked four widely used compression algorithms that are known to perform well on string data. First, we consider 
 standard dictionary compression, which builds a dictionary of frequently occurring strings and replaces each string 
-with a shorter code. Next, we evaluate FSST, a specialized string compression algorithm that identifies repeated 
+with a shorter code. Next, we evaluate FSST~\cite{boncz_fsst_2020}, a specialized string compression algorithm that identifies repeated 
 substrings, stores them in a dictionary, and replaces them with one-byte codes. We also include FSST12, a 
-variant of FSST that uses 12-bit codes to support a larger symbol table. Additionally, we evaluate OnPair, 
+variant of FSST that uses 12-bit codes to support a larger symbol table. Additionally, we evaluate OnPair~\cite{gargiulo_onpair_2025}, 
 which — similar to FSST — uses a dictionary and code assignments to replace substrings. 
 In contrast, OnPair16 employs 16-bit codes and a novel algorithm for identifying repeated substrings.
-Finally, we benchmark LZ4, a general-purpose compression algorithm.
+Finally, we benchmark LZ4~\cite{noauthor_lz4lz4_2025}, a general-purpose compression algorithm.
 
 \begin{figure}[h!]
   \centering
@@ -115,7 +115,7 @@ However, this pattern does not hold for the Stack Overflow, Kaggle, and Hugging 
 In Kaggle and Hugging Face, many datasets consist of a denormalized single wide table, leading to a higher share 
 of text columns and values. In Stack Overflow, the data is dominated by user-generated content such as 
 questions and answers, leading to a column and value percentage of 30\%.
-\insight{In normalized schemas text columns are frequent but account for a small share of values, as textual attributes are concentrated in small dimension tables. 
+\insight{In normalized schemas text columns are frequent but account for a small share of values, as textual attributes are concentrated in smaller dimension tables. 
 Having many text columns does not necessarily mean having many text values.}
 In the section of \Cref{fig:storage-column-base-type}, we can now see the storage size occupied by each logical column type in
 uncompressed form. The figure shows that in TPC-[H, DS] and IMDB, 

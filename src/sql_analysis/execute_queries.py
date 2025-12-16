@@ -654,112 +654,115 @@ def execute_parallel(thread_idx: int, settings: ExecutionSettings, repos: List[t
 
     with tqdm(repos, desc=f"Processing repositories (thread {thread_idx})", unit="repo") as pbar:
         for repo_id, repo_url, repo_name, cnt in pbar:
-            logging.info(f"Thread {thread_idx}: Processing repo {repo_id} ({repo_name}) with {cnt} queries.")
+            try:
+                logging.info(f"Thread {thread_idx}: Processing repo {repo_id} ({repo_name}) with {cnt} queries.")
 
-            if settings.mode == 'replace':
-                print(f"Thread {thread_idx}: Delete {repo_id}")
-                delete_repo(con, repo_id, mode='execution_only')
+                if settings.mode == 'replace':
+                    print(f"Thread {thread_idx}: Delete {repo_id}")
+                    delete_repo(con, repo_id, mode='execution_only')
 
-            # initialize the sandbox connection
-            print(f"Thread {thread_idx}: Init sandbox con for repo_id {repo_id}")
+                # initialize the sandbox connection
+                print(f"Thread {thread_idx}: Init sandbox con for repo_id {repo_id}")
 
-            sandbox_database_path = os.path.join(DATA_DIR, f'sandbox_{repo_id}.db')
-            sandbox_con = duckdb.connect(sandbox_database_path)
-            for function in EXTRA_FUNCTIONS:
-                sandbox_con.execute(function)
+                sandbox_database_path = os.path.join(DATA_DIR, f'sandbox_{repo_id}.db')
+                sandbox_con = duckdb.connect(sandbox_database_path)
+                for function in EXTRA_FUNCTIONS:
+                    sandbox_con.execute(function)
 
-            print(f"Thread {thread_idx}: get_tables_from_create_statements")
+                print(f"Thread {thread_idx}: get_tables_from_create_statements")
 
-            get_tables_from_create_statements(repo_id, con)
+                get_tables_from_create_statements(repo_id, con)
 
-            print(f"Thread {thread_idx}: Starting getting tables")
-            tables = create_sandbox_tables(repo_id, con, sandbox_con)
+                print(f"Thread {thread_idx}: Starting getting tables")
+                tables = create_sandbox_tables(repo_id, con, sandbox_con)
 
-            new_tables = populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
-            tables.extend(new_tables)
-            print(f"Thread {thread_idx}: Create views")
+                new_tables = populate_tables_with_inserts(repo_id, repo_url, con, sandbox_con)
+                tables.extend(new_tables)
+                print(f"Thread {thread_idx}: Create views")
 
-            create_views(repo_id, repo_url, con, sandbox_con)
+                create_views(repo_id, repo_url, con, sandbox_con)
 
-            # *** SET UP SANDBOX DB WITH DATA ***
-            print(f"Thread {thread_idx}: Setting up sandbox con")
+                # *** SET UP SANDBOX DB WITH DATA ***
+                print(f"Thread {thread_idx}: Setting up sandbox con")
 
-            sandbox_con_is_persistent = False
-            if '3rd-party-kaggle' in repo_name:
-                database_schema = repo_name.replace('3rd-party-kaggle-', '')
+                sandbox_con_is_persistent = False
+                if '3rd-party-kaggle' in repo_name:
+                    database_schema = repo_name.replace('3rd-party-kaggle-', '')
+                    sandbox_con.close()
+                    sandbox_database_path = KAGGLE_DATA_DB_PATH
+                    sandbox_con = duckdb.connect(sandbox_database_path, read_only=True)  # switch to the kaggle database
+                    sandbox_con_is_persistent = True
+                elif '3rd-party-huggingface' in repo_name:
+                    database_schema = repo_name.replace('3rd-party-huggingface-', '')
+                    sandbox_con.close()
+                    sandbox_database_path = HUGGINFACE_DATA_DB_PATH
+                    sandbox_con = duckdb.connect(sandbox_database_path, read_only=True)
+                    sandbox_con_is_persistent = True
+                else:
+                    database_schema = 'main'
+
+                # *** POPULATE SANDBOX DB WITH DATA IF NEEDED ***
+
+                populate_tables_with_files(repo_id, con, sandbox_con, tables, database_schema)
+                artificial_populated_ids = []
+
+                if not sandbox_con_is_persistent:
+                    print(f"Thread {thread_idx}: Start populating tables")
+                    artificial_populated_ids = populate_empty_tables(tables, sandbox_con, database_schema)
+                # *** EXECUTE QUERIES ***
+
+                if settings.execute:
+                    try:
+                        print(f"Thread {thread_idx}: Start execute")
+                        execute_queries(repo_id, repo_url, sandbox_con, con, tables, id_manager, query_id)
+                        print(f"Thread {thread_idx}: End execute")
+
+                        analyse_plans(con, repo_id)
+                    except Exception as e:
+                        logging.error(f"Failed to execute queries for repo {repo_id}: {e}")
+
+                # *** RECORD STATISTICS ***
+
+                save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids, database_schema)
+                save_table_counts(repo_id, con, sandbox_con, artificial_populated_ids, database_schema)
+
+                if settings.collect_statistics:
+                    record_statistics_for_repo(con, sandbox_con, repo_id, database_schema)
+
                 sandbox_con.close()
-                sandbox_database_path = KAGGLE_DATA_DB_PATH
-                sandbox_con = duckdb.connect(sandbox_database_path, read_only=True)  # switch to the kaggle database
-                sandbox_con_is_persistent = True
-            elif '3rd-party-huggingface' in repo_name:
-                database_schema = repo_name.replace('3rd-party-huggingface-', '')
-                sandbox_con.close()
-                sandbox_database_path = HUGGINFACE_DATA_DB_PATH
-                sandbox_con = duckdb.connect(sandbox_database_path, read_only=True)
-                sandbox_con_is_persistent = True
-            else:
-                database_schema = 'main'
 
-            # *** POPULATE SANDBOX DB WITH DATA IF NEEDED ***
+                # *** COMPRESSION BENCHMARK ***
 
-            populate_tables_with_files(repo_id, con, sandbox_con, tables, database_schema)
-            artificial_populated_ids = []
+                if settings.compress:
+                    output_path = os.path.join(TMP_DIR, f"compression_benchmark_repo_{repo_id}.csv")
+                    try:
+                        run_compression_benchmark(sandbox_database_path, output_path, database_schema)
+                        save_columns_compression_results(repo_id, output_path, con, database_schema)
+                    except Exception as e:
+                        logging.error(f"Failed to run compression benchmark for repo {repo_id}: {e}")
 
-            if not sandbox_con_is_persistent:
-                print(f"Thread {thread_idx}: Start populating tables")
-                artificial_populated_ids = populate_empty_tables(tables, sandbox_con, database_schema)
-            # *** EXECUTE QUERIES ***
+                # Delete the sandbox database if needed
+                # print(f"Thread {thread_idx}: Start checkpoint for repo_id {repo_id}")
+                # con.execute("CHECKPOINT;")
+                # print(f"Thread {thread_idx}: Checkpoint completed for repo_id {repo_id}")
+                if not sandbox_con_is_persistent:
+                    os.remove(sandbox_database_path)  # delete the sandbox database file
 
-            if settings.execute:
-                try:
-                    print(f"Thread {thread_idx}: Start execute")
-                    execute_queries(repo_id, repo_url, sandbox_con, con, tables, id_manager, query_id)
-                    print(f"Thread {thread_idx}: End execute")
+                # Update counts
+                error_count = id_manager.n_error
+                success_count = id_manager.n_success
+                total = success_count + error_count
 
-                    analyse_plans(con, repo_id)
-                except Exception as e:
-                    logging.error(f"Failed to execute queries for repo {repo_id}: {e}")
-
-            # *** RECORD STATISTICS ***
-
-            save_string_column_values(repo_id, sandbox_con, con, artificial_populated_ids, database_schema)
-            save_table_counts(repo_id, con, sandbox_con, artificial_populated_ids, database_schema)
-
-            if settings.collect_statistics:
-                record_statistics_for_repo(con, sandbox_con, repo_id, database_schema)
-
-            sandbox_con.close()
-
-            # *** COMPRESSION BENCHMARK ***
-
-            if settings.compress:
-                output_path = os.path.join(TMP_DIR, f"compression_benchmark_repo_{repo_id}.csv")
-                try:
-                    run_compression_benchmark(sandbox_database_path, output_path, database_schema)
-                    save_columns_compression_results(repo_id, output_path, con, database_schema)
-                except Exception as e:
-                    logging.error(f"Failed to run compression benchmark for repo {repo_id}: {e}")
-
-            # Delete the sandbox database if needed
-            # print(f"Thread {thread_idx}: Start checkpoint for repo_id {repo_id}")
-            # con.execute("CHECKPOINT;")
-            # print(f"Thread {thread_idx}: Checkpoint completed for repo_id {repo_id}")
-            if not sandbox_con_is_persistent:
-                os.remove(sandbox_database_path)  # delete the sandbox database file
-
-            # Update counts
-            error_count = id_manager.n_error
-            success_count = id_manager.n_success
-            total = success_count + error_count
-
-            # Dynamically update tqdm description
-            percent_success = (success_count / total * 100) if total > 0 else 0
-            pbar.set_postfix({
-                'Success Rate': f"{percent_success:.2f}%",
-                'Success Count': success_count,
-                'Usages': con.execute(f"SELECT COUNT(*) FROM {COLUMN_USAGES_TABLE_NAME}").fetchone()[0],
-            })
-
+                # Dynamically update tqdm description
+                percent_success = (success_count / total * 100) if total > 0 else 0
+                pbar.set_postfix({
+                    'Success Rate': f"{percent_success:.2f}%",
+                    'Success Count': success_count,
+                    'Usages': con.execute(f"SELECT COUNT(*) FROM {COLUMN_USAGES_TABLE_NAME}").fetchone()[0],
+                })
+            except Exception as e:
+                logging.error(f"Thread {thread_idx}: Failed to process repo {repo_id} ({repo_name}): {e}")
+                continue
     # Close the thread-local cursor when done
     con.close()
 
