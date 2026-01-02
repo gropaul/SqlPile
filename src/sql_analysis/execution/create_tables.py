@@ -2,7 +2,7 @@ from src.config import QUERIES_EXECUTABLE_TABLE_NAME, QUERIES_ERROR_SELECT_TABLE
     QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, QUERIES_ERROR_INSERT_TABLE_NAME, \
     COLUMN_VALUES_TABLE_NAME, TABLE_VALUES_COUNT_TABLE_NAME, COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, \
     QUERY_OPERATOR_TABLE_NAME, QUERY_OPERATOR_COMPONENTS_TABLE_NAME, QUERY_OPERATOR_COMPONENT_EXPRESSIONS, \
-    QUERIES_TABLE_NAME
+    QUERIES_TABLE_NAME, REPOS_PROCESSED_TABLE_NAME
 from src.sql_analysis.execution.models import ExecutionMode
 from src.sql_analysis.load_schemapile_json_to_ddb import primary_key, foreign_key
 import duckdb
@@ -27,6 +27,15 @@ def create_base_tables(con: duckdb.DuckDBPyConnection, mode: ExecutionMode):
             logical_plan_optimized JSON,
             logical_plan_optimized_detailed JSON,
             physical_plan JSON
+        )
+    """)
+
+    # create processed table with the repo id to track which repos have been processed
+    con.execute(f"""
+        {create_statement} {REPOS_PROCESSED_TABLE_NAME} (
+            repo_id BIGINT {foreign_key(REPO_TABLE_NAME, 'id')},
+            repo_url VARCHAR,
+            processed_at TIMESTAMP
         )
     """)
 

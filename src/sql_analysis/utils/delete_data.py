@@ -3,7 +3,8 @@ from typing import Literal
 import duckdb
 
 from src.config import TABLES_DATA_FILES_TABLE_NAME, COLUMNS_TABLE_NAME, TABLES_TABLE_NAME, \
-    QUERY_OPERATOR_COMPONENT_EXPRESSIONS, QUERY_OPERATOR_COMPONENTS_TABLE_NAME, QUERY_OPERATOR_TABLE_NAME
+    QUERY_OPERATOR_COMPONENT_EXPRESSIONS, QUERY_OPERATOR_COMPONENTS_TABLE_NAME, QUERY_OPERATOR_TABLE_NAME, \
+    REPOS_PROCESSED_TABLE_NAME
 
 DeleteMode = Literal['all', 'execution_only']
 
@@ -81,6 +82,10 @@ def delete_repo(con: duckdb.DuckDBPyConnection, repo_id: int, mode: DeleteMode =
     if table_exists(con, "queries_error_select"):
         con.execute("DELETE FROM queries_error_select WHERE query_id IN (SELECT id FROM queries WHERE repo_id = ?)", (repo_id,))
         con.execute("DELETE FROM queries_error_select WHERE repo_id = ?", (repo_id,))
+
+    if table_exists(con, REPOS_PROCESSED_TABLE_NAME):
+        con.execute(f"DELETE FROM {REPOS_PROCESSED_TABLE_NAME} WHERE repo_id = ?", (repo_id,))
+
 
     if table_exists(con, "queries_error_create"):
         con.execute("DELETE FROM queries_error_create WHERE table_id IN (SELECT id FROM tables WHERE repo_id = ?)", (repo_id,))

@@ -425,6 +425,7 @@ def setup_logging():
 # Initialize logger
 logger = setup_logging()
 REPO_TABLE_NAME = 'repos'
+REPOS_PROCESSED_TABLE_NAME = 'repos_processed'
 REPO_META_DATA_FILES_TABLE_NAME = 'repos_meta_data'
 
 FILES_TABLE_NAME = 'files'

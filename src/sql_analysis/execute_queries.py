@@ -15,7 +15,7 @@ from src.config import DATABASE_PATH, get_con, MAX_VALUES_TO_SAVE_PER_COLUMN, RE
     COLUMN_USAGES_TABLE_NAME, COLUMN_USAGES_HISTORY_TABLE_NAME, QUERIES_EXECUTABLE_TABLE_NAME, \
     QUERIES_ERROR_SELECT_TABLE_NAME, QUERIES_ERROR_CREATE_TABLE_NAME, QUERIES_ERROR_CREATE_VIEW_TABLE_NAME, \
     QUERIES_ERROR_INSERT_TABLE_NAME, QUERIES_TABLE_NAME, DATA_DIR, TMP_DIR, KAGGLE_DATA_DB_PATH, HUGGINFACE_DATA_DIR, \
-    HUGGINFACE_DATA_DB_PATH, N_DATASETS_TO_PROCESS, configure_con, create_macros
+    HUGGINFACE_DATA_DB_PATH, N_DATASETS_TO_PROCESS, configure_con, create_macros, REPOS_PROCESSED_TABLE_NAME
 from src.sql_analysis.utils.names import clean_name
 from src.sql_analysis.utils.delete_data import delete_repo, reset_statistics_tables
 from src.sql_analysis.execution.create_tables import create_base_tables
@@ -661,6 +661,8 @@ def execute_parallel(thread_idx: int, settings: ExecutionSettings, repos: List[t
                     print(f"Thread {thread_idx}: Delete {repo_id}")
                     delete_repo(con, repo_id, mode='execution_only')
 
+                con.execute(f"INSERT INTO {REPOS_PROCESSED_TABLE_NAME} (repo_id, repo_url, processed_at) VALUES (?, ?, CURRENT_TIMESTAMP)", (repo_id, repo_url))
+
                 # initialize the sandbox connection
                 print(f"Thread {thread_idx}: Init sandbox con for repo_id {repo_id}")
 
@@ -779,7 +781,9 @@ def execute_repo_queries(settings: ExecutionSettings):
     con = get_con(DATABASE_PATH)  # reploads some views
 
     # if the mode is append we have to get rid of the queries already executed
-    append_filter = "AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids) AND queries.id NOT IN (SELECT query_id FROM queries_error_select) "
+    append_filter = (f"AND queries.id NOT IN (SELECT query_id FROM executed_queries_ids) "
+                     f"AND queries.id NOT IN (SELECT query_id FROM queries_error_select) "
+                     f"AND repos.id NOT IN (SELECT DISTINCT repo_id FROM {REPOS_PROCESSED_TABLE_NAME}) ")
 
     query_id = settings.query_id
     repo_id = settings.repo_id
@@ -865,7 +869,7 @@ if __name__ == "__main__":
     settings = ExecutionSettings(
         mode='append',
         execute=True, collect_statistics=True, compress=True,
-        repo_id=None, repo_contains_str=None, repo_not_contains_str=None,
+        repo_id=None, repo_contains_str='3rd-party', repo_not_contains_str=None,
         n_parallel=1
     )
     execute_repo_queries(settings)
